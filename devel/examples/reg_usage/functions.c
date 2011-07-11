@@ -15,11 +15,9 @@
 #include <linux/smp.h>      /* smp_processor_id() */
 #include <linux/sched.h>    /* current, etc. */
 
-/* NB The path is here to make sure the build system does not pull the 
+/* [NB] "kedr/" is here to make sure the build system does not pull the 
  * "insn.h" file provided by the kernel. */
-// TODO: hide "arch/x86/include" somehow. Use another header may be that 
-// uses this header.
-#include "arch/x86/include/asm/insn.h" /* instruction decoder machinery */
+#include <kedr/asm/insn.h> /* instruction decoder machinery */
 
 #include "functions.h"
 #include "debug_util.h"

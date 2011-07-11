@@ -1,6 +1,11 @@
 /*
  * x86 instruction analysis
  *
+ * Written by Masami Hiramatsu <mhiramat@redhat.com>
+ *
+ * Handling of register usage information was implemented by 
+ *  Eugene A. Shatokhin <spectre@ispras.ru>, 2011
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,8 +24,8 @@
  */
 
 #include <linux/string.h>
-#include "../include/asm/inat.h"
-#include "../include/asm/insn.h"
+#include <kedr/asm/inat.h>
+#include <kedr/asm/insn.h>
 
 #define get_next(t, insn)	\
 	({t r; r = *(t*)insn->next_byte; insn->next_byte += sizeof(t); r; })
