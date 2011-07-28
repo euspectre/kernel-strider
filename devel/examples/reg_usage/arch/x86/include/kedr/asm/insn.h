@@ -3,6 +3,11 @@
 /*
  * x86 instruction analysis
  *
+ * Written by Masami Hiramatsu <mhiramat@redhat.com>
+ *
+ * Handling of register usage information was implemented by 
+ *  Eugene A. Shatokhin <spectre@ispras.ru>, 2011
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -180,5 +185,13 @@ static inline int insn_offset_immediate(struct insn *insn)
 {
 	return insn_offset_displacement(insn) + insn->displacement.nbytes;
 }
+
+/* Returns nonzero if 'insn' is a no-op instruction of one of the commonly 
+ * used kinds. If the function returns nonzero, 'insn' is a no-op. If it 
+ * returns 0, 'insn' may or may not be a no-op. */ 
+extern int insn_is_noop(struct insn *insn);
+
+
+// TODO: unsigned int insn_register_usage_mask().
 
 #endif /* _ASM_X86_INSN_H */

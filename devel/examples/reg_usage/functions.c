@@ -1150,6 +1150,14 @@ do_process_insn(struct kedr_tmod_function *func, struct insn *insn,
 	return 0;
 }
 
+static int 
+dbg_proc(struct kedr_tmod_function *func, struct insn *insn, void *data) {
+	pr_info("[DBG] %3lx: %s\n", 
+		(unsigned long)insn->kaddr - (unsigned long)func->addr,
+		(insn_is_noop(insn) ? "no-op" : ""));	
+	return 0;
+}
+
 /* Create an instrumented variant of function specified by 'func'. 
  * The function returns 0 if successful, an error code otherwise. 
  * 
@@ -1209,6 +1217,16 @@ instrument_function(struct kedr_tmod_function *func, struct module *mod)
 	debug_util_print_string(func->name);
 	debug_util_print_u64((u64)(unsigned long)(func->instrumented_addr), 
 		" %llx\n");
+	//<>
+	
+	//<>
+	if (0 == strcmp(func->name, "cfake_open")) {
+		int result;
+		pr_info("[DBG] Calling for_each_insn_in_function()\n");
+		result = for_each_insn_in_function(func, dbg_proc, NULL);
+		pr_info("[DBG] for_each_insn_in_function() returned %d\n", 
+			result);
+	}
 	//<>
 	
 	/* Save the bytes to be overwritten by the jump instruction and

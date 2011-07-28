@@ -519,3 +519,176 @@ void insn_get_length(struct insn *insn)
 	insn->length = (unsigned char)((unsigned long)insn->next_byte
 				     - (unsigned long)insn->kaddr);
 }
+
+/* Convenience macros. */
+#define X86_REX_R_EQ_B(rex) ((X86_REX_R(rex) >> 2) == (X86_REX_B(rex)))
+#define X86_REX_R_EQ_X(rex) ((X86_REX_R(rex) >> 2) == (X86_REX_X(rex) >> 1))
+
+/* Nonzero if the instruction has legacy prefixes 66h or 67h (address size 
+ * override or operand size override). The prefixes are expected to be 
+ * decoded  before calling this function. */
+static inline int 
+insn_has_size_override_prefix(struct insn *insn) {
+	unsigned char i;
+	struct insn_field *prefixes = &insn->prefixes;
+	for (i = 0; i < prefixes->nbytes; ++i) {
+		if (prefixes->bytes[i] == 0x66 || prefixes->bytes[i] == 0x67)
+			return 1;
+	}
+	return 0;
+}
+
+/* A helper function checking if the given "lea" instruction is a no-op.
+ * See insn_is_noop() for details and for the description of 'rex' 
+ * parameter. */
+static int 
+insn_lea_is_noop(struct insn *insn, u8 rex)
+{
+	u8 modRM = insn->modrm.bytes[0];
+	u8 modRM_mod, modRM_reg, modRM_rm;
+	
+	u8 sib = insn->sib.bytes[0];  /* missing fields are 0 */
+	u8 sib_ss, sib_index, sib_base;
+	
+	modRM_mod = X86_MODRM_MOD(modRM);
+	modRM_reg = X86_MODRM_REG(modRM);
+	modRM_rm =  X86_MODRM_RM(modRM);
+	
+	sib_ss =    X86_SIB_SCALE(sib);
+	sib_index = X86_SIB_INDEX(sib);
+	sib_base =  X86_SIB_BASE(sib);
+	
+	/* Without REX.W, lea operates on 32-bit values on x86-64 by 
+	 * default, and such operations may not be no-ops. Example: 
+	 * "lea (%esi), %esi" zeroes the higher 32 bits of %rsi.*/
+	if (!X86_REX_W(rex))
+		return 0;
+	
+	if (modRM_mod == 0) {
+		if (modRM_rm == 5) /* 101(b), disp32 or RIP-relative */
+			return 0;
+		
+		if (modRM_rm != 4) { 
+			/* != 100(b) => no SIB, "lea (%regB), %regA" */
+			return (modRM_rm == modRM_reg && 
+				X86_REX_R_EQ_B(rex));
+		}
+		
+		/* modRM_rm == 4 => SIB byte present */
+		if (sib_index == 4 && !X86_REX_X(rex)) {
+		/* SIB.Index == 100(b) and REX.X is not set => no index */
+			/* "lea (%regB,,), %regA" */
+			return (sib_base != 5 &&     /* => base is used */
+				sib_base == modRM_reg &&
+				X86_REX_R_EQ_B(rex));
+		}
+		
+		/* SIB.Index != 100(b) or REX.X is set => index register 
+		 * is used. "lea disp32(,%regB,1), %regA" */
+		return (sib_ss == 0 &&
+			sib_base == 5 && /* => [scaled index] + disp32 */
+			sib_index == modRM_reg &&
+			X86_REX_R_EQ_X(rex) && 
+			insn->displacement.value == 0);
+	}
+	else if (modRM_mod == 1 || modRM_mod == 2) {
+		if (modRM_rm != 4) { /* => no SIB byte */
+			return (modRM_rm == modRM_reg &&
+				X86_REX_R_EQ_B(rex) &&
+				insn->displacement.value == 0);
+		}
+		
+		/* modRM_rm == 4 => SIB byte present */
+		if (sib_index != 4 || X86_REX_X(rex))
+			return 0; 
+			/* No noops if index is used. Even if SIB.Base == 5,
+			 * the address would be [scaled index]+disp+[rbp] */
+		
+		/* SIB.Index == 4 && REX.X is not set => no index register */
+		if (sib_base == 5) { /* disp8/32 + [rbp] */
+			return (modRM_reg == 5 && 
+				!X86_REX_R(rex) && !X86_REX_B(rex) &&
+				insn->displacement.value == 0);
+			/* %rbp is used if REX.B==0. The docs are not clear
+			 * about %r13 if REX.B==1, so let's go a safer route
+			 * and require REX.R==0 && REX.B==0. */
+		}
+		
+		/* SIB.base != 5 => base register is used. */
+		return (sib_base == modRM_reg &&
+			X86_REX_R_EQ_B(rex) &&
+			insn->displacement.value == 0);
+	}
+	
+	return 0; /* unknown or not a no-op */
+}
+
+/**
+ * insn_is_noop() - Check if the instruction is a no-op of one of the 
+ * commonly used kinds. 
+ * @insn:	&struct insn containing instruction
+ *
+ * The function returns non-zero for a no-op, 0 if unknown not a no-op.
+ * If necessary, decodes the instruction first.
+ */
+int insn_is_noop(struct insn *insn)
+{
+	/* REX prefix on x86-64 (0 if absent because struct insn is zeroed
+	 * during initialization). On x86-32, we set it to a "fake" value
+	 * with REX.W set and REX.R, REX.X, REX.B unset. This allows to 
+	 * avoid additional #ifdefs in the code because the requirements for
+	 * REX prefix of no-ops on x86-64 will hold for this fake prefix 
+	 * on x86-32 too: REX.W==1, REX.X == 0; REX.R==REX.B; REX.X==REX.R,
+	 * where applicable. */ 
+	u8 rex;
+	u8 modRM;
+#ifdef CONFIG_X86_64
+	rex = insn->rex_prefix.bytes[0];
+#else /* CONFIG_X86_32 */
+	rex = 0x48; /* 01001000(b) */
+#endif
+
+	/* Decode the instruction if it is not already decoded. */
+	insn_get_length(insn); 
+	
+	switch (insn->opcode.bytes[0]) {
+	case 0x90:	/* Group: "nop" */
+		/* Require REX.R==REX.X==REX.B==0, for simplicity. */
+		return ((rex & 0x07) == 0);
+		
+	case 0x86:	/* Group: "xchg/mov reg8, reg8" */
+	case 0x88:
+	case 0x8a:
+		modRM = insn->modrm.bytes[0];
+		return (X86_MODRM_MOD(modRM) == 3 &&
+			X86_REX_R_EQ_B(rex) && 
+			X86_MODRM_REG(modRM) == X86_MODRM_RM(modRM));
+	
+	case 0x87:	/* Group: "xchg/mov reg32/64, reg32/64" */
+	case 0x89:
+	case 0x8b:
+		modRM = insn->modrm.bytes[0];
+		/* We also require REX.W==1 because if xchg/mov work with 
+		 * 32-bit registers in 64-bit mode, the higher parts of the 
+		 * destination registers will be zeroed => this is not a
+		 * no-op. See Intel Software Developer's Manual Vol1, 
+		 * section 3.4.1.1, 
+		 * "General-Purpose Registers in 64-Bit Mode". */
+		return (X86_REX_W(rex) && 
+			X86_MODRM_MOD(modRM) == 3 &&
+			X86_REX_R_EQ_B(rex) && 
+			X86_MODRM_REG(modRM) == X86_MODRM_RM(modRM));
+		
+	case 0x0f:	/* Group: "0f 1f <...>, multi-byte nop" */
+		/* struct insn is filled with all 0s during initialization,
+		 * so we don't need to check insn->opcode.nbytes == 2. */
+		return (insn->opcode.bytes[1] == 0x1f);
+		
+	case 0x8d:	/* Group: "lea" */
+		return (!insn_has_size_override_prefix(insn) &&
+			insn_lea_is_noop(insn, rex));
+
+	default: break;
+	}
+	return 0; /* unknown or not a no-op */
+}

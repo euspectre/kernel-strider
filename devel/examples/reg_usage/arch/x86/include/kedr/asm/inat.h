@@ -95,8 +95,8 @@
 #define INAT_FLAG_BITS	7
 
 /* Register usage info that can be deduced from the opcode. 
- * To obtain he complete information other parts of instruction may be 
- * necessary (REX prefix, Mod R/M and SIB bytes)*/
+ * To obtain the complete information, other parts of instruction may be 
+ * necessary to investigate (REX prefix, Mod R/M and SIB bytes) */
 #define INAT_USES_REG_OFFS	(INAT_FLAG_OFFS + INAT_FLAG_BITS)
 #define INAT_USES_REG_AX	(1 << (INAT_USES_REG_OFFS + 0))
 #define INAT_USES_REG_CX	(1 << (INAT_USES_REG_OFFS + 1))
