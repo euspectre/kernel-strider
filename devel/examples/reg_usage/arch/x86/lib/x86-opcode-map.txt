@@ -197,13 +197,13 @@ AVXcode:
 # Register usage data for XCHG r8,rAX should be handled separately.
 90: NOP | PAUSE (F3) | XCHG r8,rAX
 # Register usage data for XCHG reg,rAX should be handled separately.
-91: XCHG rCX/r9,rAX
-92: XCHG rDX/r10,rAX
-93: XCHG rBX/r11,rAX
-94: XCHG rSP/r12,rAX
-95: XCHG rBP/r13,rAX
-96: XCHG rSI/r14,rAX
-97: XCHG rDI/r15,rAX
+91: XCHG rCX/r9,rAX     Regs: AX
+92: XCHG rDX/r10,rAX    Regs: AX
+93: XCHG rBX/r11,rAX    Regs: AX
+94: XCHG rSP/r12,rAX    Regs: AX
+95: XCHG rBP/r13,rAX    Regs: AX
+96: XCHG rSI/r14,rAX    Regs: AX
+97: XCHG rDI/r15,rAX    Regs: AX
 98: CBW/CWDE/CDQE       Regs: AX
 99: CWD/CDQ/CQO         Regs: DX,AX
 # Register usage data for CALL should be handled separately.
