@@ -172,7 +172,7 @@ function print_table(tbl,name,fmt,n)
 	for (i = 0; i < n; i++) {
 		id = sprintf(fmt, i)
 		if (tbl[id])
-			print "	[" id "] = " tbl[id] ","
+			print "	[" id "] = {.attributes = " tbl[id] "},"
 	}
 	print "};"
 }

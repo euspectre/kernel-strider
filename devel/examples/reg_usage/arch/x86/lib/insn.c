@@ -76,8 +76,8 @@ void insn_get_prefixes(struct insn *insn)
 	nb = 0;
 	lb = 0;
 	b = peek_next(insn_byte_t, insn);
-	attr = inat_get_opcode_attribute(b);
-	while (inat_is_legacy_prefix(attr)) {
+	inat_get_opcode_attribute(&attr, b);
+	while (inat_is_legacy_prefix(&attr)) {
 		/* Skip if same prefix */
 		for (i = 0; i < nb; i++)
 			if (prefixes->bytes[i] == b)
@@ -86,14 +86,14 @@ void insn_get_prefixes(struct insn *insn)
 			/* Invalid instruction */
 			break;
 		prefixes->bytes[nb++] = b;
-		if (inat_is_address_size_prefix(attr)) {
+		if (inat_is_address_size_prefix(&attr)) {
 			/* address size switches 2/4 or 4/8 */
 			if (insn->x86_64)
 				insn->addr_bytes ^= 12;
 			else
 				insn->addr_bytes ^= 6;
-		} else if (inat_is_operand_size_prefix(attr)) {
-			/* oprand size switches 2/4 */
+		} else if (inat_is_operand_size_prefix(&attr)) {
+			/* operand size switches 2/4 */
 			insn->opnd_bytes ^= 6;
 		}
 found:
@@ -101,7 +101,7 @@ found:
 		insn->next_byte++;
 		lb = b;
 		b = peek_next(insn_byte_t, insn);
-		attr = inat_get_opcode_attribute(b);
+		inat_get_opcode_attribute(&attr, b);
 	}
 	/* Set the last prefix */
 	if (lb && lb != insn->prefixes.bytes[3]) {
@@ -118,8 +118,8 @@ found:
 	/* Decode REX prefix */
 	if (insn->x86_64) {
 		b = peek_next(insn_byte_t, insn);
-		attr = inat_get_opcode_attribute(b);
-		if (inat_is_rex_prefix(attr)) {
+		inat_get_opcode_attribute(&attr, b);
+		if (inat_is_rex_prefix(&attr)) {
 			insn->rex_prefix.value = b;
 			insn->rex_prefix.nbytes = 1;
 			insn->next_byte++;
@@ -132,8 +132,8 @@ found:
 
 	/* Decode VEX prefix */
 	b = peek_next(insn_byte_t, insn);
-	attr = inat_get_opcode_attribute(b);
-	if (inat_is_vex_prefix(attr)) {
+	inat_get_opcode_attribute(&attr, b);
+	if (inat_is_vex_prefix(&attr)) {
 		insn_byte_t b2 = peek_nbyte_next(insn_byte_t, insn, 1);
 		if (!insn->x86_64) {
 			/*
@@ -146,7 +146,7 @@ found:
 		}
 		insn->vex_prefix.bytes[0] = b;
 		insn->vex_prefix.bytes[1] = b2;
-		if (inat_is_vex3_prefix(attr)) {
+		if (inat_is_vex3_prefix(&attr)) {
 			b2 = peek_nbyte_next(insn_byte_t, insn, 2);
 			insn->vex_prefix.bytes[2] = b2;
 			insn->vex_prefix.nbytes = 3;
@@ -195,22 +195,24 @@ void insn_get_opcode(struct insn *insn)
 		insn_byte_t m, p;
 		m = insn_vex_m_bits(insn);
 		p = insn_vex_p_bits(insn);
-		insn->attr = inat_get_avx_attribute(op, m, p);
-		if (!inat_accept_vex(insn->attr))
-			insn->attr = 0;	/* This instruction is bad */
+		inat_get_avx_attribute(&insn->attr, op, m, p);
+		if (!inat_accept_vex(&insn->attr)) 
+			inat_zero_insn_attr(&insn->attr);
+			/* This instruction is bad */
 		goto end;	/* VEX has only 1 byte for opcode */
 	}
 
-	insn->attr = inat_get_opcode_attribute(op);
-	while (inat_is_escape(insn->attr)) {
+	inat_get_opcode_attribute(&insn->attr, op);
+	while (inat_is_escape(&insn->attr)) {
 		/* Get escaped opcode */
 		op = get_next(insn_byte_t, insn);
 		opcode->bytes[opcode->nbytes++] = op;
 		pfx = insn_last_prefix(insn);
-		insn->attr = inat_get_escape_attribute(op, pfx, insn->attr);
+		inat_get_escape_attribute(&insn->attr, op, pfx, &insn->attr);
 	}
-	if (inat_must_vex(insn->attr))
-		insn->attr = 0;	/* This instruction is bad */
+	if (inat_must_vex(&insn->attr))
+		inat_zero_insn_attr(&insn->attr);
+		/* This instruction is bad */
 end:
 	opcode->got = 1;
 }
@@ -232,18 +234,18 @@ void insn_get_modrm(struct insn *insn)
 	if (!insn->opcode.got)
 		insn_get_opcode(insn);
 
-	if (inat_has_modrm(insn->attr)) {
+	if (inat_has_modrm(&insn->attr)) {
 		mod = get_next(insn_byte_t, insn);
 		modrm->value = mod;
 		modrm->nbytes = 1;
-		if (inat_is_group(insn->attr)) {
+		if (inat_is_group(&insn->attr)) {
 			pfx = insn_last_prefix(insn);
-			insn->attr = inat_get_group_attribute(mod, pfx,
-							      insn->attr);
+			inat_get_group_attribute(&insn->attr, mod, pfx,
+				&insn->attr);
 		}
 	}
 
-	if (insn->x86_64 && inat_is_force64(insn->attr))
+	if (insn->x86_64 && inat_is_force64(&insn->attr))
 		insn->opnd_bytes = 8;
 	modrm->got = 1;
 }
@@ -455,16 +457,16 @@ void insn_get_immediate(struct insn *insn)
 	if (!insn->displacement.got)
 		insn_get_displacement(insn);
 
-	if (inat_has_moffset(insn->attr)) {
+	if (inat_has_moffset(&insn->attr)) {
 		__get_moffset(insn);
 		goto done;
 	}
 
-	if (!inat_has_immediate(insn->attr))
+	if (!inat_has_immediate(&insn->attr))
 		/* no immediates */
 		goto done;
 
-	switch (inat_immediate_size(insn->attr)) {
+	switch (inat_immediate_size(&insn->attr)) {
 	case INAT_IMM_BYTE:
 		insn->immediate.value = get_next(char, insn);
 		insn->immediate.nbytes = 1;
@@ -495,7 +497,7 @@ void insn_get_immediate(struct insn *insn)
 	default:
 		break;
 	}
-	if (inat_has_second_immediate(insn->attr)) {
+	if (inat_has_second_immediate(&insn->attr)) {
 		insn->immediate2.value = get_next(char, insn);
 		insn->immediate2.nbytes = 1;
 	}
@@ -526,7 +528,7 @@ void insn_get_length(struct insn *insn)
 
 /* Nonzero if the instruction has legacy prefixes 66h or 67h (address size 
  * override or operand size override). The prefixes are expected to be 
- * decoded  before calling this function. */
+ * decoded before calling this function. */
 static inline int 
 insn_has_size_override_prefix(struct insn *insn) {
 	unsigned char i;
@@ -692,3 +694,84 @@ int insn_is_noop(struct insn *insn)
 	}
 	return 0; /* unknown or not a no-op */
 }
+
+/**
+ * insn_register_usage_mask() - Get information about the general-purpose 
+ * registers the instruction uses/
+ * @insn:	&struct insn containing instruction
+ *
+ * If necessary, decodes the instruction first.
+ * 
+ * The function returns register usage mask for a given instruction. For 
+ * each register used by the instruction the corresponding bit 
+ * (mask & insn_uses_reg(reg)) will be set. The remaining bits will be 0, 
+ * including the higher 16 bits. 
+ * Note that this function cannot determine which registers 'call' and 'jmp'
+ * instructions and the corresponding function calls use, except SP. This 
+ * depends on whether an instruction actually leads outside of the caller 
+ * function or it is a trick like 'call 0x05, pop %reg' or the like. 
+ */
+unsigned int insn_register_usage_mask(struct insn *insn)
+{
+	unsigned int usage_mask;
+	unsigned int reg_code;
+	insn_byte_t *opcode;
+	insn_byte_t rex;
+	
+	/* insn_is_noop() will also decode the instruction if it is not 
+	 * already decoded. */
+	if (insn_is_noop(insn))
+		return 0;
+	
+	/* First get what the decoder already knows from the opcode. */
+	usage_mask = inat_reg_usage_attribute(&insn->attr);
+	
+	opcode = insn->opcode.bytes;
+	rex = insn->rex_prefix.bytes[0]; /* always 0 on x86-32 */
+	
+	/* 1. Special cases that do not need analysing Mod R/M and SIB */
+	/* 1.1. 1-byte inc and dec on x86-32 */
+	if (opcode[0] >= 0x40 && opcode[0] <= 0x47) {
+		usage_mask |= X86_REG_MASK(opcode[0] - 0x40);
+		return usage_mask;
+	}
+	
+	if (opcode[0] >= 0x48 && opcode[0] <= 0x4f) {
+		usage_mask |= X86_REG_MASK(opcode[0] - 0x48);
+		return usage_mask;
+	}
+	
+	/* 1.2. push r32/r64, pop r32/r64 */
+	if (opcode[0] >= 0x50 && opcode[0] <= 0x57) {
+		reg_code = opcode[0] - 0x50;
+		reg_code |= X86_REX_B(rex);
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
+	
+	if (opcode[0] >= 0x58 && opcode[0] <= 0x5f) {
+		reg_code = opcode[0] - 0x58;
+		reg_code |= X86_REX_B(rex);
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
+	
+	/* 1.3. xchg %rax, %r8 (90h) and xchg %rax, %reg (91h-97h) */
+	if (opcode[0] == 0x90 && X86_REX_B(rex)) {
+		return (X86_REG_MASK(INAT_REG_CODE_AX) | 
+			X86_REG_MASK(INAT_REG_CODE_8));
+	}
+	
+	if (opcode[0] > 0x90 && opcode[0] <= 0x97) {
+		reg_code = opcode[0] - 0x90;
+		reg_code |= X86_REX_B(rex);
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
+	
+	/* 1.4.  */
+	
+	// TODO
+	return usage_mask;
+}
+

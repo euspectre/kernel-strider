@@ -22,7 +22,19 @@
  */
 
 /* Instruction attributes */
-typedef unsigned int insn_attr_t;
+typedef struct insn_attr
+{ 
+	/* Attributes of the instruction as a whole */
+	unsigned int attributes; 
+	
+	/* Codes for the addressing method and the operand type for two
+	 * operands */
+	unsigned char addr_method1;
+	unsigned char opnd_type1;
+	unsigned char addr_method2;
+	unsigned char opnd_type2;
+} insn_attr_t;
+
 typedef unsigned char insn_byte_t;
 typedef signed int insn_value_t;
 

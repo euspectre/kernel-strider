@@ -474,22 +474,23 @@ prepare_funcs_for_detour(void)
 int
 kedr_init_function_subsystem(void)
 {
-	//<>
-	static unsigned char insn_buffer[16] = {
-		0x0F, 0xB0, 0x08
-	};
-	struct insn insn;
-	//<>
-	
 	num_funcs = 0;
 	
 	//<>
-	kernel_insn_init(&insn, (void *)&insn_buffer[0]);
-	insn_get_length(&insn);  /* Decode the instruction */
+	{
+		static unsigned char insn_buffer[16] = {
+			/* ds:lea 0x00(%rsi,%riz,1), %rsi */
+			/*0x3e, 0x48, 0x8d, 0x74, 0x26, 0x00 */
+			
+			/*0x0f, 0xa2*/ /* cpuid */
+			0x0f, 0xb0, 0x0a /* cmpxchg %cl, (%rdx) */
+		};
+		struct insn insn;
 		
-	pr_info("[DBG] length: %u, raw reg usage attr: %08x\n",
-		insn.length, 
-		inat_reg_usage_attribute(insn.attr) >> INAT_USES_REG_OFFS);
+		kernel_insn_init(&insn, (void *)&insn_buffer[0]);
+		pr_info("[DBG] reg usage mask: %08x\n",
+			insn_register_usage_mask(&insn));
+	}
 	//<>
 	
 	// TODO: more initialization tasks here if necessary
@@ -1150,13 +1151,13 @@ do_process_insn(struct kedr_tmod_function *func, struct insn *insn,
 	return 0;
 }
 
-static int 
+/*static int 
 dbg_proc(struct kedr_tmod_function *func, struct insn *insn, void *data) {
 	pr_info("[DBG] %3lx: %s\n", 
 		(unsigned long)insn->kaddr - (unsigned long)func->addr,
 		(insn_is_noop(insn) ? "no-op" : ""));	
 	return 0;
-}
+}*/
 
 /* Create an instrumented variant of function specified by 'func'. 
  * The function returns 0 if successful, an error code otherwise. 
@@ -1220,13 +1221,13 @@ instrument_function(struct kedr_tmod_function *func, struct module *mod)
 	//<>
 	
 	//<>
-	if (0 == strcmp(func->name, "cfake_open")) {
+	/*if (0 == strcmp(func->name, "cfake_open")) {
 		int result;
 		pr_info("[DBG] Calling for_each_insn_in_function()\n");
 		result = for_each_insn_in_function(func, dbg_proc, NULL);
 		pr_info("[DBG] for_each_insn_in_function() returned %d\n", 
 			result);
-	}
+	}*/
 	//<>
 	
 	/* Save the bytes to be overwritten by the jump instruction and

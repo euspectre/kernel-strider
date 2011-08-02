@@ -186,12 +186,22 @@ static inline int insn_offset_immediate(struct insn *insn)
 	return insn_offset_displacement(insn) + insn->displacement.nbytes;
 }
 
+/* To check if a register <N> is used, just test the corresponding bit in 
+ * the register usage mask: if (mask & X86_REG_MASK(INAT_REG_CODE_<N>) ...*/
+#define X86_REG_MASK(reg_code)	(1 << (reg_code))
+
 /* Returns nonzero if 'insn' is a no-op instruction of one of the commonly 
  * used kinds. If the function returns nonzero, 'insn' is a no-op. If it 
  * returns 0, 'insn' may or may not be a no-op. */ 
 extern int insn_is_noop(struct insn *insn);
 
-
-// TODO: unsigned int insn_register_usage_mask().
+/* Returns register usage mask for a given instruction. For each register
+ * used by the instruction the corresponding bit (mask & insn_uses_reg(reg))
+ * will be set. The remaining bits are 0, including the higher 16 bits. 
+ * Note that this function cannot determine which registers 'call' and 'jmp'
+ * instructions and the corresponding function calls use, except SP. This 
+ * depends on whether an instruction actually leads outside of the caller 
+ * function or it is a trick like 'call 0x05, pop %reg' or the like. */
+extern unsigned int insn_register_usage_mask(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */
