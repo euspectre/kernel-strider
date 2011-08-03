@@ -41,6 +41,31 @@ inat_copy_insn_attr(insn_attr_t *dest, const insn_attr_t *src)
 	memmove(dest, src, sizeof(insn_attr_t));
 }
 
+/* Merge attributes in '*dest' and '*src', the result will be in '*dest'. 
+ * A kind of "*dest |= *src", by the meaning. '*dest' is expected to contain 
+ * more common data on entry while '*src' - more specific data. */
+static void 
+inat_merge_insn_attr(insn_attr_t *dest, const insn_attr_t *src)
+{
+	dest->attributes |= src->attributes;
+	
+	/* If both '*dest' and '*src' already define operand information 
+	 * (addressing method and operand type), the data from '*src' is 
+	 * used. If the data is defined in only one of the instances, that
+	 * data is used. */
+	if ((dest->addr_method1 != 0 && src->addr_method1 != 0) ||
+	    (dest->addr_method1 == 0)) {
+		dest->addr_method1 = src->addr_method1;
+		dest->opnd_type1 = src->opnd_type1;
+	}
+	
+	if ((dest->addr_method2 != 0 && src->addr_method2 != 0) ||
+	    (dest->addr_method2 == 0)) {
+		dest->addr_method2 = src->addr_method2;
+		dest->opnd_type2 = src->opnd_type2;
+	}
+}
+
 /* Attribute search APIs */
 void 
 inat_get_opcode_attribute(insn_attr_t *attr, insn_byte_t opcode)
@@ -110,7 +135,7 @@ inat_get_group_attribute(insn_attr_t *attr, insn_byte_t modrm,
 	}
 	
 	inat_group_copy_common_attribute(attr, grp_attr);
-	attr->attributes |= table[X86_MODRM_REG(modrm)].attributes;
+	inat_merge_insn_attr(attr, &table[X86_MODRM_REG(modrm)]);
 	return;
 }
 

@@ -490,6 +490,12 @@ kedr_init_function_subsystem(void)
 		kernel_insn_init(&insn, (void *)&insn_buffer[0]);
 		pr_info("[DBG] reg usage mask: %08x\n",
 			insn_register_usage_mask(&insn));
+		pr_info("[DBG] op1: am=%d, ot=%d; op2: am=%d, ot=%d",
+			insn.attr.addr_method1,
+			insn.attr.opnd_type1,
+			insn.attr.addr_method2,
+			insn.attr.opnd_type2
+		);
 	}
 	//<>
 	

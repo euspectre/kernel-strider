@@ -148,6 +148,53 @@
 #define INAT_MAKE_GROUP(grp)	((grp << INAT_GRP_OFFS) | INAT_MODRM)
 #define INAT_MAKE_IMM(imm)	(imm << INAT_IMM_OFFS)
 
+/* Codes for addressing method and for operand types. Their meaning is 
+ * described in Intel Software Developer's Manual Vol. 2B, Appendix A 
+ * "Opcode Map".
+ * The actual numeric values do not matter as long as they are unique in the
+ * group. */
+#define INAT_AMETHOD_NONE	0
+#define INAT_AMETHOD_A		1
+#define INAT_AMETHOD_C		2
+#define INAT_AMETHOD_D		3
+#define INAT_AMETHOD_E		4
+#define INAT_AMETHOD_F		5
+#define INAT_AMETHOD_G		6
+#define INAT_AMETHOD_I		7
+#define INAT_AMETHOD_J		8
+#define INAT_AMETHOD_M		9
+#define INAT_AMETHOD_N		10
+#define INAT_AMETHOD_O		11
+#define INAT_AMETHOD_P		12
+#define INAT_AMETHOD_Q		13
+#define INAT_AMETHOD_R		14
+#define INAT_AMETHOD_S		15
+#define INAT_AMETHOD_U		16
+#define INAT_AMETHOD_V		17
+#define INAT_AMETHOD_W		18
+#define INAT_AMETHOD_X		19
+#define INAT_AMETHOD_Y		20
+
+#define INAT_OPTYPE_NONE	0
+#define INAT_OPTYPE_A		1
+#define INAT_OPTYPE_B		2
+#define INAT_OPTYPE_C		3
+#define INAT_OPTYPE_D		4
+#define INAT_OPTYPE_DQ		5
+#define INAT_OPTYPE_P		6
+#define INAT_OPTYPE_PD		7
+#define INAT_OPTYPE_PI		8
+#define INAT_OPTYPE_PS		9
+#define INAT_OPTYPE_Q		10
+#define INAT_OPTYPE_S		11
+#define INAT_OPTYPE_SD		12
+#define INAT_OPTYPE_SS		13
+#define INAT_OPTYPE_SI		14
+#define INAT_OPTYPE_V		15
+#define INAT_OPTYPE_W		16
+#define INAT_OPTYPE_Y		17
+#define INAT_OPTYPE_Z		18
+
 /* Attribute search APIs.
  * The functions will store the attributes in '*attr'. The caller must 
  * ensure 'attr' points to a insn_attr_t instance. */
