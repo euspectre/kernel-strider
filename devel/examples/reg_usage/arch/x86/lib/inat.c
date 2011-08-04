@@ -49,18 +49,15 @@ inat_merge_insn_attr(insn_attr_t *dest, const insn_attr_t *src)
 {
 	dest->attributes |= src->attributes;
 	
-	/* If both '*dest' and '*src' already define operand information 
-	 * (addressing method and operand type), the data from '*src' is 
-	 * used. If the data is defined in only one of the instances, that
-	 * data is used. */
-	if ((dest->addr_method1 != 0 && src->addr_method1 != 0) ||
-	    (dest->addr_method1 == 0)) {
+	/* If at least some operand information is defined in '*src', the
+	 * data from '*src' (including zero fields) should override the data
+	 * from '*dest'. Note that if the operand type is defined, the 
+	 * addressing method must be defined too but not vice versa, so it 
+	 * is enough to check just the addressing method. */
+	if (src->addr_method1 != 0 || src->addr_method2 != 0) 
+	{
 		dest->addr_method1 = src->addr_method1;
 		dest->opnd_type1 = src->opnd_type1;
-	}
-	
-	if ((dest->addr_method2 != 0 && src->addr_method2 != 0) ||
-	    (dest->addr_method2 == 0)) {
 		dest->addr_method2 = src->addr_method2;
 		dest->opnd_type2 = src->opnd_type2;
 	}
