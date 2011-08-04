@@ -268,7 +268,7 @@ int insn_rip_relative(struct insn *insn)
 		insn_get_modrm(insn);
 	/*
 	 * For rip-relative instructions, the mod field (top 2 bits)
-	 * is zero and the r/m field (bottom 3 bits) is 0x5.
+	 * is zero and the r/m field (bottom 3 bits) is 0x5 (101(b)).
 	 */
 	return (modrm->nbytes && (modrm->value & 0xc7) == 0x5);
 }
@@ -681,10 +681,17 @@ int insn_is_noop(struct insn *insn)
 			X86_REX_R_EQ_B(rex) && 
 			X86_MODRM_REG(modRM) == X86_MODRM_RM(modRM));
 		
-	case 0x0f:	/* Group: "0f 1f <...>, multi-byte nop" */
+	case 0x0f:	/* Group: "0f 1f /0, multi-byte nop" */
+		modRM = insn->modrm.bytes[0];
 		/* struct insn is filled with all 0s during initialization,
 		 * so we don't need to check insn->opcode.nbytes == 2. */
-		return (insn->opcode.bytes[1] == 0x1f);
+		return (insn->opcode.bytes[1] == 0x1f &&
+			X86_MODRM_REG(modRM) == 0);
+		
+		/* Note that we do not consider 0f 0d /[0|1] as a nop. Intel 
+		 * manuals mention it as "NOP Ev" only in the opcode table 
+		 * but not in the description of NOP instructions. AMD uses
+		 * this opcode for prefetch instructions rather than nop. */
 		
 	case 0x8d:	/* Group: "lea" */
 		return (!insn_has_size_override_prefix(insn) &&
