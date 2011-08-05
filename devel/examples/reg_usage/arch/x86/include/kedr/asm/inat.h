@@ -94,6 +94,16 @@
 #define INAT_VEXONLY	(1 << (INAT_FLAG_OFFS + 6))
 #define INAT_FLAG_BITS	7
 
+/* The flags specifying memory access type, i.e. whether a given instruction
+ * can read data from memory or not, whether it can write data to memory or 
+ * not. Note that analysis of some other parts of the instruction 
+ * (ModRM.Mod, for example) may be necessary to determine if it actually 
+ * accesses memory. */
+#define INAT_MEM_OFFS  (INAT_FLAG_OFFS + INAT_FLAG_BITS)
+#define INAT_MEM_CAN_READ	(1 << (INAT_MEM_OFFS))
+#define INAT_MEM_CAN_WRITE	(1 << (INAT_MEM_OFFS + 1))
+#define INAT_MEM_BITS		2
+
 /* Register usage info that can be deduced from the opcode. 
  * To obtain the complete information, other parts of instruction may be 
  * necessary to investigate (REX prefix, Mod R/M and SIB bytes) .
@@ -121,12 +131,7 @@
 #define INAT_REG_CODE_14	14 /* 1110(b) */
 #define INAT_REG_CODE_15	15 /* 1111(b) */
 
-/* Whether the instruction uses byte registers or not - it is needed to 
- * determine which register exactly is used, AH or RSP/ESP/SP/SPL, etc. */
-/* ??? */ #define INAT_BYTE_REG_OFFS  (INAT_FLAG_OFFS + INAT_FLAG_BITS)
-/* ??? */ #define INAT_BYTE_REG       (1 << (INAT_BYTE_REG_OFFS))
-
-/* ??? */ #define INAT_USES_REG_OFFS  (INAT_BYTE_REG_OFFS + 1)
+#define INAT_USES_REG_OFFS  (INAT_MEM_OFFS + INAT_MEM_BITS)
 #define INAT_USES_REG_AX    (1 << (INAT_USES_REG_OFFS + INAT_REG_CODE_AX))
 #define INAT_USES_REG_CX    (1 << (INAT_USES_REG_OFFS + INAT_REG_CODE_CX))
 #define INAT_USES_REG_DX    (1 << (INAT_USES_REG_OFFS + INAT_REG_CODE_DX))

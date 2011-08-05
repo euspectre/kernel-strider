@@ -33,75 +33,92 @@
 # separated by a comma.
 # Note that register usage data is not complete here for some instructions
 # like PUSH reg, INC reg, etc. The complete data can be provided separately.
+#
+# Type of Memory Access
+# If the instruction can access memory, it can be marked with 
+# "Mem: (R|W|RW)". 
+#   "R"  - the instruction can read data from memory, 
+#   "W"  - the instruction can write data to memory,
+#   "RW" - the instruction can both read data from memory and write data 
+#          to memory.
+# Note that analysis of other parts of an instruction may be necessary 
+# to determine if it actually reads from or writes to memory. For example,
+# one may need to check that ModRM.Mod field is not 3 (if it is, the data
+# are expected to be in a register rather than in memory).
 # 
+# [NB] Memory accesses by call an jmp-like instructions are not considered
+# here. Same for some other instructions like those dealing with 
+# segment descriptors and machine status parameters as well as  VMX, 
+# SMX, 3DNow!, SSEn, AVX, etc.
+#######################################################################
 
 Table: one byte opcode
 Referrer:
 AVXcode:
 # 0x00 - 0x0f
-00: ADD Eb,Gb
-01: ADD Ev,Gv
-02: ADD Gb,Eb
-03: ADD Gv,Ev
+00: ADD Eb,Gb           Mem: RW
+01: ADD Ev,Gv           Mem: RW
+02: ADD Gb,Eb           Mem: R
+03: ADD Gv,Ev           Mem: R
 04: ADD AL,Ib       Regs: AX
 05: ADD rAX,Iz      Regs: AX
-06: PUSH ES (i64)   Regs: SP
-07: POP ES (i64)    Regs: SP
-08: OR Eb,Gb
-09: OR Ev,Gv
-0a: OR Gb,Eb
-0b: OR Gv,Ev
+06: PUSH ES (i64)   Regs: SP    Mem: W
+07: POP ES (i64)    Regs: SP    Mem: R
+08: OR Eb,Gb            Mem: RW
+09: OR Ev,Gv            Mem: RW
+0a: OR Gb,Eb            Mem: R
+0b: OR Gv,Ev            Mem: R
 0c: OR AL,Ib        Regs: AX
 0d: OR rAX,Iz       Regs: AX
-0e: PUSH CS (i64)   Regs: SP
+0e: PUSH CS (i64)   Regs: SP    Mem: W
 0f: escape # 2-byte escape
 # 0x10 - 0x1f
-10: ADC Eb,Gb
-11: ADC Ev,Gv
-12: ADC Gb,Eb
-13: ADC Gv,Ev
+10: ADC Eb,Gb           Mem: RW
+11: ADC Ev,Gv           Mem: RW
+12: ADC Gb,Eb           Mem: R
+13: ADC Gv,Ev           Mem: R
 14: ADC AL,Ib       Regs: AX
 15: ADC rAX,Iz      Regs: AX
-16: PUSH SS (i64)   Regs: SP
-17: POP SS (i64)    Regs: SP
-18: SBB Eb,Gb
-19: SBB Ev,Gv
-1a: SBB Gb,Eb
-1b: SBB Gv,Ev
+16: PUSH SS (i64)   Regs: SP    Mem: W
+17: POP SS (i64)    Regs: SP    Mem: R
+18: SBB Eb,Gb           Mem: RW
+19: SBB Ev,Gv           Mem: RW
+1a: SBB Gb,Eb           Mem: R
+1b: SBB Gv,Ev           Mem: R
 1c: SBB AL,Ib       Regs: AX
 1d: SBB rAX,Iz      Regs: AX
-1e: PUSH DS (i64)   Regs: SP
-1f: POP DS (i64)    Regs: SP
+1e: PUSH DS (i64)   Regs: SP    Mem: W
+1f: POP DS (i64)    Regs: SP    Mem: R
 # 0x20 - 0x2f
-20: AND Eb,Gb
-21: AND Ev,Gv
-22: AND Gb,Eb
-23: AND Gv,Ev
+20: AND Eb,Gb           Mem: RW
+21: AND Ev,Gv           Mem: RW
+22: AND Gb,Eb           Mem: R
+23: AND Gv,Ev           Mem: R
 24: AND AL,Ib       Regs: AX
 25: AND rAx,Iz      Regs: AX
 26: SEG=ES (Prefix)
 27: DAA (i64)       Regs: AX
-28: SUB Eb,Gb
-29: SUB Ev,Gv
-2a: SUB Gb,Eb
-2b: SUB Gv,Ev
+28: SUB Eb,Gb           Mem: RW
+29: SUB Ev,Gv           Mem: RW
+2a: SUB Gb,Eb           Mem: R
+2b: SUB Gv,Ev           Mem: R
 2c: SUB AL,Ib       Regs: AX
 2d: SUB rAX,Iz      Regs: AX
 2e: SEG=CS (Prefix)
 2f: DAS (i64)       Regs: AX
 # 0x30 - 0x3f
-30: XOR Eb,Gb
-31: XOR Ev,Gv
-32: XOR Gb,Eb
-33: XOR Gv,Ev
+30: XOR Eb,Gb           Mem: RW
+31: XOR Ev,Gv           Mem: RW
+32: XOR Gb,Eb           Mem: R
+33: XOR Gv,Ev           Mem: R
 34: XOR AL,Ib       Regs: AX
 35: XOR rAX,Iz      Regs: AX
 36: SEG=SS (Prefix)
 37: AAA (i64)       Regs: AX
-38: CMP Eb,Gb
-39: CMP Ev,Gv
-3a: CMP Gb,Eb
-3b: CMP Gv,Ev
+38: CMP Eb,Gb           Mem: R
+39: CMP Ev,Gv           Mem: R
+3a: CMP Gb,Eb           Mem: R
+3b: CMP Gv,Ev           Mem: R
 3c: CMP AL,Ib       Regs: AX
 3d: CMP rAX,Iz      Regs: AX
 3e: SEG=DS (Prefix)
@@ -126,39 +143,43 @@ AVXcode:
 4f: DEC eDI (i64) | REX.WRXB (o64)
 # 0x50 - 0x5f
 # Register usage data for PUSH and POP should be handled separately.
-50: PUSH rAX/r8 (d64)   Regs: SP
-51: PUSH rCX/r9 (d64)   Regs: SP
-52: PUSH rDX/r10 (d64)  Regs: SP
-53: PUSH rBX/r11 (d64)  Regs: SP
-54: PUSH rSP/r12 (d64)  Regs: SP
-55: PUSH rBP/r13 (d64)  Regs: SP
-56: PUSH rSI/r14 (d64)  Regs: SP
-57: PUSH rDI/r15 (d64)  Regs: SP
-58: POP rAX/r8 (d64)    Regs: SP
-59: POP rCX/r9 (d64)    Regs: SP
-5a: POP rDX/r10 (d64)   Regs: SP
-5b: POP rBX/r11 (d64)   Regs: SP
-5c: POP rSP/r12 (d64)   Regs: SP
-5d: POP rBP/r13 (d64)   Regs: SP
-5e: POP rSI/r14 (d64)   Regs: SP
-5f: POP rDI/r15 (d64)   Regs: SP
+50: PUSH rAX/r8 (d64)   Regs: SP    Mem: W
+51: PUSH rCX/r9 (d64)   Regs: SP    Mem: W
+52: PUSH rDX/r10 (d64)  Regs: SP    Mem: W
+53: PUSH rBX/r11 (d64)  Regs: SP    Mem: W
+54: PUSH rSP/r12 (d64)  Regs: SP    Mem: W
+55: PUSH rBP/r13 (d64)  Regs: SP    Mem: W
+56: PUSH rSI/r14 (d64)  Regs: SP    Mem: W
+57: PUSH rDI/r15 (d64)  Regs: SP    Mem: W
+58: POP rAX/r8 (d64)    Regs: SP    Mem: R
+59: POP rCX/r9 (d64)    Regs: SP    Mem: R
+5a: POP rDX/r10 (d64)   Regs: SP    Mem: R
+5b: POP rBX/r11 (d64)   Regs: SP    Mem: R
+5c: POP rSP/r12 (d64)   Regs: SP    Mem: R
+5d: POP rBP/r13 (d64)   Regs: SP    Mem: R
+5e: POP rSI/r14 (d64)   Regs: SP    Mem: R
+5f: POP rDI/r15 (d64)   Regs: SP    Mem: R
 # 0x60 - 0x6f
-60: PUSHA/PUSHAD (i64)  Regs: AX,CX,DX,BX,SP,BP,SI,DI
-61: POPA/POPAD (i64)    Regs: AX,CX,DX,BX,SP,BP,SI,DI
-62: BOUND Gv,Ma (i64)   
-63: ARPL Ew,Gw (i64) | MOVSXD Gv,Ev (o64)
+60: PUSHA/PUSHAD (i64)  Regs: AX,CX,DX,BX,SP,BP,SI,DI   Mem: W
+61: POPA/POPAD (i64)    Regs: AX,CX,DX,BX,SP,BP,SI,DI   Mem: R
+62: BOUND Gv,Ma (i64)       Mem: R
+# Tracking memory accesses made by ARPL is not really critical.
+# As its attributes are to be stored in the same table entry as those 
+# for MOVSXD, it is more valuable to set memory access attribute for
+# the latter.
+63: ARPL Ew,Gw (i64) | MOVSXD Gv,Ev (o64)   Mem: R
 64: SEG=FS (Prefix)
 65: SEG=GS (Prefix)
 66: Operand-Size (Prefix)
 67: Address-Size (Prefix)
-68: PUSH Iz (d64)       Regs: SP
-69: IMUL Gv,Ev,Iz       
-6a: PUSH Ib (d64)       Regs: SP
-6b: IMUL Gv,Ev,Ib
-6c: INS/INSB Yb,DX          Regs: DX,DI
-6d: INS/INSW/INSD Yz,DX     Regs: DX,DI
-6e: OUTS/OUTSB DX,Xb        Regs: DX,SI
-6f: OUTS/OUTSW/OUTSD DX,Xz  Regs: DX,SI
+68: PUSH Iz (d64)       Regs: SP    Mem: W
+69: IMUL Gv,Ev,Iz               Mem: R
+6a: PUSH Ib (d64)       Regs: SP    Mem: W
+6b: IMUL Gv,Ev,Ib               Mem: R
+6c: INS/INSB Yb,DX          Regs: DX,DI     Mem: W
+6d: INS/INSW/INSD Yz,DX     Regs: DX,DI     Mem: W
+6e: OUTS/OUTSB DX,Xb        Regs: DX,SI     Mem: R
+6f: OUTS/OUTSW/OUTSD DX,Xz  Regs: DX,SI     Mem: R
 # 0x70 - 0x7f
 70: JO Jb
 71: JNO Jb
@@ -177,22 +198,24 @@ AVXcode:
 7e: JLE/JNG Jb
 7f: JNLE/JG Jb
 # 0x80 - 0x8f
+# The memory access types are different for the members of Grp1, they are
+# set for each member in the corresponding table below rather than here.
 80: Grp1 Eb,Ib (1A)
 81: Grp1 Ev,Iz (1A)
 82: Grp1 Eb,Ib (1A),(i64)
 83: Grp1 Ev,Ib (1A)
-84: TEST Eb,Gb
-85: TEST Ev,Gv
-86: XCHG Eb,Gb
-87: XCHG Ev,Gv
-88: MOV Eb,Gb
-89: MOV Ev,Gv
-8a: MOV Gb,Eb
-8b: MOV Gv,Ev
-8c: MOV Ev,Sw
+84: TEST Eb,Gb      Mem: R
+85: TEST Ev,Gv      Mem: R
+86: XCHG Eb,Gb      Mem: RW
+87: XCHG Ev,Gv      Mem: RW
+88: MOV Eb,Gb       Mem: W
+89: MOV Ev,Gv       Mem: W
+8a: MOV Gb,Eb       Mem: R
+8b: MOV Gv,Ev       Mem: R
+8c: MOV Ev,Sw       Mem: W
 8d: LEA Gv,M
-8e: MOV Sw,Ew
-8f: Grp1A (1A) | POP Ev (d64)   Regs: SP
+8e: MOV Sw,Ew       Mem: R
+8f: Grp1A (1A) | POP Ev (d64)   Regs: SP    Mem: RW
 # 0x90 - 0x9f
 # Register usage data for XCHG r8,rAX should be handled separately.
 90: NOP | PAUSE (F3) | XCHG r8,rAX
@@ -209,27 +232,27 @@ AVXcode:
 # Register usage data for CALL should be handled separately.
 9a: CALLF Ap (i64)      Regs: SP
 9b: FWAIT/WAIT          
-9c: PUSHF/D/Q Fv (d64)  Regs: SP
-9d: POPF/D/Q Fv (d64)   Regs: SP
+9c: PUSHF/D/Q Fv (d64)  Regs: SP    Mem: W
+9d: POPF/D/Q Fv (d64)   Regs: SP    Mem: R
 9e: SAHF    Regs: AX
 9f: LAHF    Regs: AX
 # 0xa0 - 0xaf
-a0: MOV AL,Ob           Regs: AX
-a1: MOV rAX,Ov          Regs: AX
-a2: MOV Ob,AL           Regs: AX
-a3: MOV Ov,rAX          Regs: AX
-a4: MOVS/B Xb,Yb        Regs: SI,DI
-a5: MOVS/W/D/Q Xv,Yv    Regs: SI,DI
-a6: CMPS/B Xb,Yb        Regs: SI,DI
-a7: CMPS/W/D Xv,Yv      Regs: SI,DI
+a0: MOV AL,Ob           Regs: AX    Mem: R
+a1: MOV rAX,Ov          Regs: AX    Mem: R
+a2: MOV Ob,AL           Regs: AX    Mem: W
+a3: MOV Ov,rAX          Regs: AX    Mem: W
+a4: MOVS/B Xb,Yb        Regs: SI,DI     Mem: RW
+a5: MOVS/W/D/Q Xv,Yv    Regs: SI,DI     Mem: RW
+a6: CMPS/B Xb,Yb        Regs: SI,DI     Mem: R
+a7: CMPS/W/D Xv,Yv      Regs: SI,DI     Mem: R
 a8: TEST AL,Ib          Regs: AX
 a9: TEST rAX,Iz         Regs: AX
-aa: STOS/B Yb,AL        Regs: AX,DI
-ab: STOS/W/D/Q Yv,rAX   Regs: AX,DI
-ac: LODS/B AL,Xb        Regs: AX,SI
-ad: LODS/W/D/Q rAX,Xv   Regs: AX,SI
-ae: SCAS/B AL,Yb        Regs: AX,DI
-af: SCAS/W/D/Q rAX,Xv   Regs: AX,DI
+aa: STOS/B Yb,AL        Regs: AX,DI     Mem: W
+ab: STOS/W/D/Q Yv,rAX   Regs: AX,DI     Mem: W
+ac: LODS/B AL,Xb        Regs: AX,SI     Mem: R
+ad: LODS/W/D/Q rAX,Xv   Regs: AX,SI     Mem: R
+ae: SCAS/B AL,Yb        Regs: AX,DI     Mem: R
+af: SCAS/W/D/Q rAX,Xv   Regs: AX,DI     Mem: R
 # 0xb0 - 0xbf
 # Register usage data for these MOV instructions should be handled 
 # separately.
@@ -250,16 +273,16 @@ bd: MOV rBP/r13,Iv
 be: MOV rSI/r14,Iv
 bf: MOV rDI/r15,Iv
 # 0xc0 - 0xcf
-c0: Grp2 Eb,Ib (1A)
-c1: Grp2 Ev,Ib (1A)
+c0: Grp2 Eb,Ib (1A)         Mem: RW
+c1: Grp2 Ev,Ib (1A)         Mem: RW
 c2: RETN Iw (f64)       Regs: SP
 c3: RETN                Regs: SP
-c4: LES Gz,Mp (i64) | 3bytes-VEX (Prefix)
-c5: LDS Gz,Mp (i64) | 2bytes-VEX (Prefix)
-c6: Grp11 Eb,Ib (1A)
-c7: Grp11 Ev,Iz (1A)
-c8: ENTER Iw,Ib         Regs: SP,BP
-c9: LEAVE (d64)         Regs: SP,BP
+c4: LES Gz,Mp (i64)   Mem: R  | 3bytes-VEX (Prefix)
+c5: LDS Gz,Mp (i64)   Mem: R  | 2bytes-VEX (Prefix)
+c6: Grp11 Eb,Ib (1A)        Mem: W
+c7: Grp11 Ev,Iz (1A)        Mem: W
+c8: ENTER Iw,Ib         Regs: SP,BP     Mem: W
+c9: LEAVE (d64)         Regs: SP,BP     Mem: R
 ca: RETF Iw             Regs: SP
 cb: RETF                Regs: SP
 cc: INT3                Regs: SP
@@ -267,14 +290,14 @@ cd: INT Ib              Regs: SP
 ce: INTO (i64)          Regs: SP
 cf: IRET/D/Q            Regs: SP
 # 0xd0 - 0xdf
-d0: Grp2 Eb,1 (1A)
-d1: Grp2 Ev,1 (1A)
-d2: Grp2 Eb,CL (1A)
-d3: Grp2 Ev,CL (1A)
+d0: Grp2 Eb,1 (1A)          Mem: RW
+d1: Grp2 Ev,1 (1A)          Mem: RW
+d2: Grp2 Eb,CL (1A)         Mem: RW
+d3: Grp2 Ev,CL (1A)         Mem: RW
 d4: AAM Ib (i64)        Regs: AX
 d5: AAD Ib (i64)        Regs: AX
 d6:
-d7: XLAT/XLATB          Regs: AX,BX
+d7: XLAT/XLATB          Regs: AX,BX     Mem: R
 d8: ESC
 d9: ESC
 da: ESC
@@ -395,22 +418,22 @@ AVXcode: 1
 3e:
 3f:
 # 0x0f 0x40-0x4f
-40: CMOVO Gv,Ev
-41: CMOVNO Gv,Ev
-42: CMOVB/C/NAE Gv,Ev
-43: CMOVAE/NB/NC Gv,Ev
-44: CMOVE/Z Gv,Ev
-45: CMOVNE/NZ Gv,Ev
-46: CMOVBE/NA Gv,Ev
-47: CMOVA/NBE Gv,Ev
-48: CMOVS Gv,Ev
-49: CMOVNS Gv,Ev
-4a: CMOVP/PE Gv,Ev
-4b: CMOVNP/PO Gv,Ev
-4c: CMOVL/NGE Gv,Ev
-4d: CMOVNL/GE Gv,Ev
-4e: CMOVLE/NG Gv,Ev
-4f: CMOVNLE/G Gv,Ev
+40: CMOVO Gv,Ev         Mem: R
+41: CMOVNO Gv,Ev        Mem: R
+42: CMOVB/C/NAE Gv,Ev   Mem: R
+43: CMOVAE/NB/NC Gv,Ev  Mem: R
+44: CMOVE/Z Gv,Ev       Mem: R
+45: CMOVNE/NZ Gv,Ev     Mem: R
+46: CMOVBE/NA Gv,Ev     Mem: R
+47: CMOVA/NBE Gv,Ev     Mem: R
+48: CMOVS Gv,Ev         Mem: R
+49: CMOVNS Gv,Ev        Mem: R
+4a: CMOVP/PE Gv,Ev      Mem: R
+4b: CMOVNP/PO Gv,Ev     Mem: R
+4c: CMOVL/NGE Gv,Ev     Mem: R
+4d: CMOVNL/GE Gv,Ev     Mem: R
+4e: CMOVLE/NG Gv,Ev     Mem: R
+4f: CMOVNLE/G Gv,Ev     Mem: R
 # 0x0f 0x50-0x5f
 50: movmskps Gd/q,Ups (VEX) | movmskpd Gd/q,Upd (66),(VEX)
 51: sqrtps Vps,Wps (VEX) | sqrtss Vss,Wss (F3),(VEX),(o128) | sqrtpd Vpd,Wpd (66),(VEX) | sqrtsd Vsd,Wsd (F2),(VEX),(o128)
@@ -480,59 +503,59 @@ AVXcode: 1
 8e: JLE/JNG Jz (f64)
 8f: JNLE/JG Jz (f64)
 # 0x0f 0x90-0x9f
-90: SETO Eb
-91: SETNO Eb
-92: SETB/C/NAE Eb
-93: SETAE/NB/NC Eb
-94: SETE/Z Eb
-95: SETNE/NZ Eb
-96: SETBE/NA Eb
-97: SETA/NBE Eb
-98: SETS Eb
-99: SETNS Eb
-9a: SETP/PE Eb
-9b: SETNP/PO Eb
-9c: SETL/NGE Eb
-9d: SETNL/GE Eb
-9e: SETLE/NG Eb
-9f: SETNLE/G Eb
+90: SETO Eb             Mem: W
+91: SETNO Eb            Mem: W
+92: SETB/C/NAE Eb       Mem: W
+93: SETAE/NB/NC Eb      Mem: W
+94: SETE/Z Eb           Mem: W
+95: SETNE/NZ Eb         Mem: W
+96: SETBE/NA Eb         Mem: W
+97: SETA/NBE Eb         Mem: W
+98: SETS Eb             Mem: W
+99: SETNS Eb            Mem: W
+9a: SETP/PE Eb          Mem: W
+9b: SETNP/PO Eb         Mem: W
+9c: SETL/NGE Eb         Mem: W
+9d: SETNL/GE Eb         Mem: W
+9e: SETLE/NG Eb         Mem: W
+9f: SETNLE/G Eb         Mem: W
 # 0x0f 0xa0-0xaf
-a0: PUSH FS (d64)   Regs: SP
-a1: POP FS (d64)    Regs: SP
+a0: PUSH FS (d64)   Regs: SP    Mem: W
+a1: POP FS (d64)    Regs: SP    Mem: R
 a2: CPUID           Regs: AX,CX,DX,BX
-a3: BT Ev,Gv
-a4: SHLD Ev,Gv,Ib
-a5: SHLD Ev,Gv,CL   Regs: CX
+a3: BT Ev,Gv            Mem: R
+a4: SHLD Ev,Gv,Ib       Mem: RW
+a5: SHLD Ev,Gv,CL   Regs: CX    Mem: RW
 a6: GrpPDLK
 a7: GrpRNG
-a8: PUSH GS (d64)   Regs: SP
-a9: POP GS (d64)    Regs: SP
+a8: PUSH GS (d64)   Regs: SP    Mem: W
+a9: POP GS (d64)    Regs: SP    Mem: R
 aa: RSM
-ab: BTS Ev,Gv
-ac: SHRD Ev,Gv,Ib
-ad: SHRD Ev,Gv,CL   Regs: CX
+ab: BTS Ev,Gv           Mem: RW
+ac: SHRD Ev,Gv,Ib       Mem: RW
+ad: SHRD Ev,Gv,CL   Regs: CX    Mem: RW
 ae: Grp15 (1A),(1C)
-af: IMUL Gv,Ev      
+af: IMUL Gv,Ev          Mem: R
 # 0x0f 0xb0-0xbf
-b0: CMPXCHG Eb,Gb   Regs: AX
-b1: CMPXCHG Ev,Gv   Regs: AX
+b0: CMPXCHG Eb,Gb   Regs: AX    Mem: RW
+b1: CMPXCHG Ev,Gv   Regs: AX    Mem: RW
 b2: LSS Gv,Mp
-b3: BTR Ev,Gv
+b3: BTR Ev,Gv           Mem: RW
 b4: LFS Gv,Mp
 b5: LGS Gv,Mp
-b6: MOVZX Gv,Eb
-b7: MOVZX Gv,Ew
-b8: JMPE | POPCNT Gv,Ev (F3)
+b6: MOVZX Gv,Eb         Mem: R
+b7: MOVZX Gv,Ew         Mem: R
+b8: JMPE | POPCNT Gv,Ev (F3)    Mem: R
 b9: Grp10 (1A)
 ba: Grp8 Ev,Ib (1A)
-bb: BTC Ev,Gv
-bc: BSF Gv,Ev
-bd: BSR Gv,Ev
-be: MOVSX Gv,Eb
-bf: MOVSX Gv,Ew
+bb: BTC Ev,Gv           Mem: RW
+bc: BSF Gv,Ev           Mem: R
+bd: BSR Gv,Ev           Mem: R
+be: MOVSX Gv,Eb         Mem: R
+bf: MOVSX Gv,Ew         Mem: R
 # 0x0f 0xc0-0xcf
-c0: XADD Eb,Gb
-c1: XADD Ev,Gv
+c0: XADD Eb,Gb          Mem: RW
+c1: XADD Ev,Gv          Mem: RW
 c2: cmpps Vps,Wps,Ib (VEX) | cmpss Vss,Wss,Ib (F3),(VEX),(o128) | cmppd Vpd,Wpd,Ib (66),(VEX) | cmpsd Vsd,Wsd,Ib (F2),(VEX)
 c3: movnti Md/q,Gd/q
 c4: pinsrw Pq,Rd/q/Mw,Ib | pinsrw Vdq,Rd/q/Mw,Ib (66),(VEX),(o128)
@@ -590,7 +613,7 @@ f3: psllq Pq,Qq | psllq Vdq,Wdq (66),(VEX),(o128)
 f4: pmuludq Pq,Qq | pmuludq Vdq,Wdq (66),(VEX),(o128)
 f5: pmaddwd Pq,Qq | pmaddwd Vdq,Wdq (66),(VEX),(o128)
 f6: psadbw Pq,Qq | psadbw Vdq,Wdq (66),(VEX),(o128)
-f7: maskmovq Pq,Nq | maskmovdqu Vdq,Udq (66),(VEX),(o128)
+f7: maskmovq Pq,Nq      Regs: DI    | maskmovdqu Vdq,Udq (66),(VEX),(o128)   Regs: DI
 f8: psubb Pq,Qq | psubb Vdq,Wdq (66),(VEX),(o128)
 f9: psubw Pq,Qq | psubw Vdq,Wdq (66),(VEX),(o128)
 fa: psubd Pq,Qq | psubd Vdq,Wdq (66),(VEX),(o128)
@@ -750,25 +773,25 @@ AVXcode: 3
 4b: vblendvpd /r,Ib (66),(oVEX)
 4c: vpblendvb /r,Ib (66),(oVEX),(o128)
 60: pcmpestrm Vdq,Wdq,Ib (66),(VEX),(o128)
-61: pcmpestri Vdq,Wdq,Ib (66),(VEX),(o128)
+61: pcmpestri Vdq,Wdq,Ib (66),(VEX),(o128)  Regs: CX
 62: pcmpistrm Vdq,Wdq,Ib (66),(VEX),(o128)
-63: pcmpistri Vdq,Wdq,Ib (66),(VEX),(o128)
+63: pcmpistri Vdq,Wdq,Ib (66),(VEX),(o128)  Regs: CX
 df: aeskeygenassist Vdq,Wdq,Ib (66),(VEX),(o128)
 EndTable
 
 GrpTable: Grp1
-0: ADD
-1: OR
-2: ADC
-3: SBB
-4: AND
-5: SUB
-6: XOR
-7: CMP
+0: ADD      Mem: RW
+1: OR       Mem: RW
+2: ADC      Mem: RW
+3: SBB      Mem: RW
+4: AND      Mem: RW
+5: SUB      Mem: RW
+6: XOR      Mem: RW
+7: CMP      Mem: R
 EndTable
 
 GrpTable: Grp1A
-0: POP      Regs: SP
+0: POP      Regs: SP    Mem: RW
 EndTable
 
 GrpTable: Grp2
@@ -783,41 +806,41 @@ GrpTable: Grp2
 EndTable
 
 GrpTable: Grp3_1
-0: TEST Eb,Ib
+0: TEST Eb,Ib           Mem: R
 1:
-2: NOT Eb
-3: NEG Eb
-4: MUL AL,Eb        Regs: DX,AX
-5: IMUL AL,Eb       Regs: DX,AX
-6: DIV AL,Eb        Regs: DX,AX
-7: IDIV AL,Eb       Regs: DX,AX
+2: NOT Eb               Mem: RW
+3: NEG Eb               Mem: RW
+4: MUL AL,Eb        Regs: DX,AX     Mem: R
+5: IMUL AL,Eb       Regs: DX,AX     Mem: R
+6: DIV AL,Eb        Regs: DX,AX     Mem: R
+7: IDIV AL,Eb       Regs: DX,AX     Mem: R
 EndTable
 
 GrpTable: Grp3_2
-0: TEST Ev,Iz
+0: TEST Ev,Iz           Mem: R
 1:
-2: NOT Ev
-3: NEG Ev
-4: MUL rAX,Ev       Regs: DX,AX
-5: IMUL rAX,Ev      Regs: DX,AX
-6: DIV rAX,Ev       Regs: DX,AX
-7: IDIV rAX,Ev      Regs: DX,AX
+2: NOT Ev               Mem: RW
+3: NEG Ev               Mem: RW
+4: MUL rAX,Ev       Regs: DX,AX     Mem: R
+5: IMUL rAX,Ev      Regs: DX,AX     Mem: R
+6: DIV rAX,Ev       Regs: DX,AX     Mem: R
+7: IDIV rAX,Ev      Regs: DX,AX     Mem: R
 EndTable
 
 GrpTable: Grp4
-0: INC Eb
-1: DEC Eb
+0: INC Eb       Mem: RW
+1: DEC Eb       Mem: RW
 EndTable
 
 GrpTable: Grp5
-0: INC Ev
-1: DEC Ev
+0: INC Ev       Mem: RW
+1: DEC Ev       Mem: RW
 # Register usage data for CALL should be handled separately.
 2: CALLN Ev (f64)   Regs: SP
 3: CALLF Ep         Regs: SP
 4: JMPN Ev (f64)
 5: JMPF Ep
-6: PUSH Ev (d64)    Regs: SP
+6: PUSH Ev (d64)    Regs: SP    Mem: RW
 7:
 EndTable
 
@@ -842,14 +865,14 @@ GrpTable: Grp7
 EndTable
 
 GrpTable: Grp8
-4: BT
-5: BTS
-6: BTR
-7: BTC
+4: BT       Mem: R
+5: BTS      Mem: RW
+6: BTR      Mem: RW
+7: BTC      Mem: RW
 EndTable
 
 GrpTable: Grp9
-1: CMPXCHG8B/16B Mq/Mdq     Regs: AX,CX,DX,BX
+1: CMPXCHG8B/16B Mq/Mdq     Regs: AX,CX,DX,BX       Mem: RW
 6: VMPTRLD Mq | VMCLEAR Mq (66) | VMXON Mq (F3)
 7: VMPTRST Mq
 EndTable

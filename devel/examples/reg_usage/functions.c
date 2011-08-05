@@ -483,19 +483,25 @@ kedr_init_function_subsystem(void)
 			/*0x3e, 0x48, 0x8d, 0x74, 0x26, 0x00 */
 			
 			/*0x0f, 0xa2*/ /* cpuid */
-			0x0f, 0xb0, 0x0a /* cmpxchg %cl, (%rdx) */
+			/*0x0f, 0xb0, 0x0a*/ /* cmpxchg %cl, (%rdx) */
+			0x83, 0x00, 0x00 /*addl $0x0, (%rax)*/
+			/*0x83, 0x38, 0x00*/ /*cmpl $0x0, (%rax)*/
 		};
 		struct insn insn;
 		
 		kernel_insn_init(&insn, (void *)&insn_buffer[0]);
 		pr_info("[DBG] reg usage mask: %08x\n",
 			insn_register_usage_mask(&insn));
-		pr_info("[DBG] op1: am=%d, ot=%d; op2: am=%d, ot=%d",
+		pr_info("[DBG] op1: {am=%d, ot=%d}; op2: {am=%d, ot=%d}",
 			insn.attr.addr_method1,
 			insn.attr.opnd_type1,
 			insn.attr.addr_method2,
 			insn.attr.opnd_type2
 		);
+		
+		pr_info("[DBG] reads from memory: %d, writes to memory: %d",
+			insn_is_mem_read(&insn),
+			insn_is_mem_write(&insn));
 	}
 	//<>
 	

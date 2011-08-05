@@ -782,3 +782,43 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 	return usage_mask;
 }
 
+int 
+insn_is_mem_read(struct insn *insn)
+{
+	struct insn_field *modrm = &insn->modrm;
+	int modrm_mem = 1;
+	unsigned int attr;
+	
+	/* Besides decoding Mod R/M field, this will make all the attributes
+	 * of the instruction available for querying (if they are not yet
+	 * available). */
+	if (!modrm->got)
+		insn_get_modrm(insn);
+	
+	if (inat_has_modrm(&insn->attr))
+		modrm_mem = (X86_MODRM_MOD(modrm->value) != 3);
+	
+	attr = insn->attr.attributes;
+	return ((attr & INAT_MEM_CAN_READ) && modrm_mem);
+}
+
+int 
+insn_is_mem_write(struct insn *insn)
+{
+	struct insn_field *modrm = &insn->modrm;
+	int modrm_mem = 1;
+	unsigned int attr;
+	
+	/* Besides decoding Mod R/M field, this will make all the attributes
+	 * of the instruction available for querying (if they are not yet
+	 * available). */
+	if (!modrm->got)
+		insn_get_modrm(insn);
+	
+	if (inat_has_modrm(&insn->attr))
+		modrm_mem = (X86_MODRM_MOD(modrm->value) != 3);
+	
+	attr = insn->attr.attributes;
+	return ((attr & INAT_MEM_CAN_WRITE) && modrm_mem);
+}
+

@@ -115,6 +115,12 @@ BEGIN {
     regs_flag["SI"] = "INAT_USES_REG_SI"
     regs_flag["DI"] = "INAT_USES_REG_DI"
     
+    # Types of memory access 
+    mem_expr = "Mem:"
+    mem_flag["R"]  = "INAT_MEM_CAN_READ"
+    mem_flag["W"]  = "INAT_MEM_CAN_WRITE"
+    mem_flag["RW"] = "INAT_MEM_CAN_READ | INAT_MEM_CAN_WRITE"
+    
     # For now, operand attributes are processed only for the operands
     # specified in Mod R/M byte.
     opnd_attr_expr = "^[CDEGMNPQRSUVW][a-z]*"
@@ -339,7 +345,8 @@ function print_table(tbl,name,fmt,n,    s)
     clear_vars()
 }
 
-function add_flags(old,new) {
+function add_flags(old,new) 
+{
     if (old && new)
         return old " | " new
     else if (old)
@@ -348,7 +355,8 @@ function add_flags(old,new) {
         return new
 }
 
-function add_reg_usage_flags(current_flags, regs_string) {
+function add_reg_usage_flags(current_flags, regs_string) 
+{
     if (!regs_string)
         return current_flags
     
@@ -359,6 +367,18 @@ function add_reg_usage_flags(current_flags, regs_string) {
             semantic_error("Unknown register: " r_name)
         current_flags = add_flags(current_flags, regs_flag[r_name])
     }
+    return current_flags
+}
+
+function add_mem_access_flags(current_flags, mem_string)
+{
+    if (!mem_string)
+        return current_flags
+    
+    if (!(mem_string in mem_flag))
+        semantic_error("Unknown memory access code: " mem_string)
+    
+    current_flags = add_flags(current_flags, mem_flag[mem_string])
     return current_flags
 }
 
@@ -456,20 +476,31 @@ function convert_operands(count,opnd,      i,j,imm,mod,s)
         opnd = null
         regs = null
         attrs = null
+        mem_access = null
                 
         # parse one opcode
-        if (!match($i, regs_expr) && match($i, opnd_expr)) {
+        if (match($i, opnd_expr) && 
+            !match($i, regs_expr) && !match($i, mem_expr)) 
+        {
             opnd = $i
             count = split($(i++), opnds, ",")
             flags = convert_operands(count, opnds)
             attrs = operand_attributes()
         }
         
-        if (!match($i, regs_expr) && match($i, ext_expr))
+        if (match($i, ext_expr) && 
+            !match($i, regs_expr) && !match($i, mem_expr))
+        {
             ext = $(i++)
+        }
         
         if (match($i, regs_expr)){
             regs = $(++i)
+            i++
+        }
+        
+        if (match($i, mem_expr)){
+            mem_access = $(++i)
             i++
         }
         
@@ -514,8 +545,12 @@ function convert_operands(count,opnd,      i,j,imm,mod,s)
         }
         
         # process register usage information
-        if (length(regs) != 0)
+        if (regs)
             flags = add_reg_usage_flags(flags, regs)
+            
+        # process memory access information
+        if (mem_access)
+            flags = add_mem_access_flags(flags, mem_access)
 
         if (length(flags) != 0 || attrs) {
             # check the last prefix

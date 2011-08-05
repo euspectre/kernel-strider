@@ -204,4 +204,13 @@ extern int insn_is_noop(struct insn *insn);
  * function or it is a trick like 'call 0x05, pop %reg' or the like. */
 extern unsigned int insn_register_usage_mask(struct insn *insn);
 
+/* Query memory access type */
+/* Nonzero if the instruction reads data from memory, 0 otherwise. 
+ * The function decodes the relevant parts of the instruction if needed. */
+extern int insn_is_mem_read(struct insn *insn);
+
+/* Nonzero if the instruction writes data to memory, 0 otherwise. 
+ * The function decodes the relevant parts of the instruction if needed. */
+extern int insn_is_mem_write(struct insn *insn);
+
 #endif /* _ASM_X86_INSN_H */
