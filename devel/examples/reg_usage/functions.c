@@ -28,58 +28,12 @@ extern char* target_function; /* name of the function to debug */
 /* ====================================================================== */
 
 /* ====================================================================== */
-/* Maximum size of a machine instruction on x86, in bytes. Actually, 15
- * would be enough. From Intel Software Developer's Manual Vol2A, section 
- * 2.2.1: "The instruction-size limit of 15 bytes still applies <...>".
- * We just follow the implementation of kernel probes in this case. */
-/*#define KEDR_MAX_INSN_SIZE 16*/
-
 /* Some opcodes. */
 #define KEDR_OP_JMP_REL32	0xe9
 #define KEDR_OP_CALL_REL32	0xe8
 
 /* Size of 'call near rel 32' instruction, in bytes. */
 #define KEDR_SIZE_CALL_REL32	5
-
-/* KEDR_ADDR_FROM_OFFSET()
- * 
- * Calculate the memory address being the operand of a given instruction 
- * that uses IP-relative addressing ('call near', 'jmp near', ...). 
- *   'insn_addr' is the address of the instruction itself,
- *   'insn_len' is length of the instruction in bytes,
- *   'offset' is the offset of the destination address from the first byte
- *   past the instruction.
- * 
- * For x86-64 architecture, the offset value is sign-extended here first.
- * 
- * "Intel x86 Instruction Set Reference" states the following 
- * concerning 'call rel32':
- * 
- * "Call near, relative, displacement relative to next instruction.
- * 32-bit displacement sign extended to 64 bits in 64-bit mode." */
-#ifdef CONFIG_X86_64
-# define KEDR_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
-	(void*)((s64)(insn_addr) + (s64)(insn_len) + (s64)(s32)(offset))
-
-#else /* CONFIG_X86_32 */
-# define KEDR_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
-	(void*)((u32)(insn_addr) + (u32)(insn_len) + (u32)(offset))
-#endif
-
-/* KEDR_OFFSET_FROM_ADDR()
- * 
- * The reverse of KEDR_ADDR_FROM_OFFSET: calculates the offset value
- * to be used in an instruction given the address and length of the
- * instruction and the destination address it must refer to. */
-#define KEDR_OFFSET_FROM_ADDR(insn_addr, insn_len, dest_addr) \
-	(u32)(dest_addr - (insn_addr + (u32)insn_len))
-
-/* KEDR_SIGN_EXTEND_V32_TO_ULONG()
- *
- * Just a cast to unsigned long on x86-32. 
- * On x86-64, sign-extends a 32-bit value to and casts the result to 
- * unsigned long */
-#define KEDR_SIGN_EXTEND_V32_TO_ULONG(val) ((unsigned long)(long)(s32)(val))
 
 /* entry_call_size - 
  * the size in bytes of the instruction sequence that performs a call on 
@@ -290,7 +244,7 @@ add_insn_size(struct kedr_tmod_function *func, struct insn *insn,
 	
 	if (opcode >= 0x70 && opcode <= 0x7f)  { /* jcc short */
 		offset = (s32)(s8)insn->immediate.bytes[0];
-		dest_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+		dest_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 		if (dest_addr < start_addr || dest_addr >= end_addr) {
@@ -302,7 +256,7 @@ add_insn_size(struct kedr_tmod_function *func, struct insn *insn,
 	} 
 	else if (opcode == 0xeb) { /* jmp short */
 		offset = (s32)(s8)insn->immediate.bytes[0];
-		dest_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+		dest_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 		if (dest_addr < start_addr || dest_addr >= end_addr) {
@@ -314,7 +268,7 @@ add_insn_size(struct kedr_tmod_function *func, struct insn *insn,
 	} 
 	else if (opcode == 0xe3) { /* j*cxz */
 		offset = (s32)(s8)insn->immediate.bytes[0];
-		dest_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+		dest_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 		if (dest_addr < start_addr || dest_addr >= end_addr) {
@@ -471,38 +425,68 @@ prepare_funcs_for_detour(void)
 }
 
 /* ====================================================================== */
+/* Similar to insn_register_usage_mask() but also takes function calls into
+ * account. If 'insn' transfers control outside of the function
+ * 'func', the register_usage_mask() considers all the scratch general
+ * purpose registers used and updates the mask accordingly. 
+ * 
+ * It is possible that the instruction does not actually use this many
+ * registers ('ret', for instance, does not use scratch registers at all).
+ * For now, we take a safer, simpler but less optimal route and mark scratch
+ * registers as used. */
+static unsigned int 
+register_usage_mask(struct insn *insn, struct kedr_tmod_function *func)
+{
+	unsigned int reg_mask;
+	unsigned long dest;
+	unsigned long start_addr = (unsigned long)func->addr;
+	
+	BUG_ON(insn == NULL);
+	BUG_ON(func == NULL);
+	
+	reg_mask = insn_register_usage_mask(insn);
+	dest = insn_jumps_to(insn);
+	
+	if (dest != 0 && 
+	    (dest < start_addr || dest >= start_addr + func->size))
+	    	reg_mask |= X86_REG_MASK_SCRATCH;
+		
+	return reg_mask;
+}
+
+/* ====================================================================== */
 int
 kedr_init_function_subsystem(void)
 {
 	num_funcs = 0;
 	
 	//<>
-	{
-		static unsigned char insn_buffer[16] = {
-			/* ds:lea 0x00(%rsi,%riz,1), %rsi */
-			/*0x3e, 0x48, 0x8d, 0x74, 0x26, 0x00 */
-			
-			/*0x0f, 0xa2*/ /* cpuid */
-			/*0x0f, 0xb0, 0x0a*/ /* cmpxchg %cl, (%rdx) */
-			0x83, 0x00, 0x00 /*addl $0x0, (%rax)*/
-			/*0x83, 0x38, 0x00*/ /*cmpl $0x0, (%rax)*/
-		};
-		struct insn insn;
-		
-		kernel_insn_init(&insn, (void *)&insn_buffer[0]);
-		pr_info("[DBG] reg usage mask: %08x\n",
-			insn_register_usage_mask(&insn));
-		pr_info("[DBG] op1: {am=%d, ot=%d}; op2: {am=%d, ot=%d}",
-			insn.attr.addr_method1,
-			insn.attr.opnd_type1,
-			insn.attr.addr_method2,
-			insn.attr.opnd_type2
-		);
-		
-		pr_info("[DBG] reads from memory: %d, writes to memory: %d",
-			insn_is_mem_read(&insn),
-			insn_is_mem_write(&insn));
-	}
+//	{
+//		static unsigned char insn_buffer[16] = {
+//			/* ds:lea 0x00(%rsi,%riz,1), %rsi */
+//			/*0x3e, 0x48, 0x8d, 0x74, 0x26, 0x00 */
+//			
+//			/*0x0f, 0xa2*/ /* cpuid */
+//			0x0f, 0xb0, 0x0a /* cmpxchg %cl, (%rdx) */
+//			/*0x83, 0x00, 0x00*/ /*addl $0x0, (%rax)*/
+//			/*0x83, 0x38, 0x00*/ /*cmpl $0x0, (%rax)*/
+//		};
+//		struct insn insn;
+//		
+//		kernel_insn_init(&insn, (void *)&insn_buffer[0]);
+//		pr_info("[DBG] reg usage mask: %08x\n",
+//			insn_register_usage_mask(&insn));
+//		pr_info("[DBG] op1: {am=%d, ot=%d}; op2: {am=%d, ot=%d}",
+//			insn.attr.addr_method1,
+//			insn.attr.opnd_type1,
+//			insn.attr.addr_method2,
+//			insn.attr.opnd_type2
+//		);
+//		
+//		pr_info("[DBG] reads from memory: %d, writes to memory: %d",
+//			insn_is_mem_read(&insn),
+//			insn_is_mem_write(&insn));
+//	}
 	//<>
 	
 	// TODO: more initialization tasks here if necessary
@@ -740,7 +724,7 @@ copy_and_fixup_insn(struct insn *src_insn, void *dest,
 		 * in 'immediate' field rather than in 'displacement'.
 		 * [NB] When dealing with RIP-relative addressing on x86-64,
 		 * it uses 'displacement' field as it should. */
-		addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+		addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			src_insn->kaddr,
 			src_insn->length, 
 			src_insn->immediate.value);
@@ -752,7 +736,7 @@ copy_and_fixup_insn(struct insn *src_insn, void *dest,
 		/* Call or jump outside of the function, fix it up. */
 		to_fixup = (u32 *)((unsigned long)dest + 
 			insn_offset_immediate(src_insn));
-		*to_fixup = KEDR_OFFSET_FROM_ADDR(dest, src_insn->length,
+		*to_fixup = X86_OFFSET_FROM_ADDR(dest, src_insn->length,
 			(void *)addr);
 		return;
 	}
@@ -762,7 +746,7 @@ copy_and_fixup_insn(struct insn *src_insn, void *dest,
 		return;
 		
 	/* Handle RIP-relative addressing */
-	addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+	addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 		src_insn->kaddr,
 		src_insn->length, 
 		src_insn->displacement.value);
@@ -775,7 +759,7 @@ copy_and_fixup_insn(struct insn *src_insn, void *dest,
 	
 	to_fixup = (u32 *)((unsigned long)dest + 
 		insn_offset_displacement(src_insn));
-	*to_fixup = KEDR_OFFSET_FROM_ADDR(dest, src_insn->length,
+	*to_fixup = X86_OFFSET_FROM_ADDR(dest, src_insn->length,
 		(void *)addr);
 #endif
 	return;
@@ -996,7 +980,7 @@ process_jmp_short(struct kedr_tmod_function *func, struct insn *insn,
 	unsigned long end_addr = (unsigned long)func->addr + func->size;
 	unsigned long jump_addr;
 	
-	jump_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+	jump_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 	if (jump_addr < start_addr || jump_addr >= end_addr) {
@@ -1008,7 +992,7 @@ process_jmp_short(struct kedr_tmod_function *func, struct insn *insn,
 			(void *)jump_addr, (void *)jump_addr);
 		//<>
 		*(u8 *)(*pdest_addr) = KEDR_OP_JMP_REL32;
-		*(u32 *)(*pdest_addr + 1) = (u32)KEDR_OFFSET_FROM_ADDR(
+		*(u32 *)(*pdest_addr + 1) = (u32)X86_OFFSET_FROM_ADDR(
 			*pdest_addr, KEDR_REL_JMP_SIZE, jump_addr);
 		*pdest_addr += KEDR_REL_JMP_SIZE;
 	}
@@ -1030,7 +1014,7 @@ process_jcc_short(struct kedr_tmod_function *func, struct insn *insn,
 	unsigned long end_addr = (unsigned long)func->addr + func->size;
 	unsigned long jump_addr;
 	
-	jump_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+	jump_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 	if (jump_addr < start_addr || jump_addr >= end_addr) {
@@ -1050,7 +1034,7 @@ process_jcc_short(struct kedr_tmod_function *func, struct insn *insn,
 		 *   78 (js rel8) => 0F 88 (js rel32), etc. */
 		*(u8 *)(*pdest_addr) = 0x0F;
 		*(u8 *)(*pdest_addr + 1) = (u8)insn->opcode.bytes[0] + 0x10;
-		*(u32 *)(*pdest_addr + 2) = (u32)KEDR_OFFSET_FROM_ADDR(
+		*(u32 *)(*pdest_addr + 2) = (u32)X86_OFFSET_FROM_ADDR(
 			*pdest_addr, 6, jump_addr);
 		*pdest_addr += 6;
 		/* Length of 'jcc rel32' is 6 bytes. */
@@ -1074,7 +1058,7 @@ process_jcxz_short(struct kedr_tmod_function *func, struct insn *insn,
 	unsigned long end_addr = (unsigned long)func->addr + func->size;
 	unsigned long jump_addr;
 	
-	jump_addr = (unsigned long)KEDR_ADDR_FROM_OFFSET(
+	jump_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			insn->kaddr, insn->length, offset); 
 		
 	if (jump_addr < start_addr || jump_addr >= end_addr) {
@@ -1103,7 +1087,7 @@ process_jcxz_short(struct kedr_tmod_function *func, struct insn *insn,
 		
 		/* jmp near <where j*cxz would jump> */
 		*(u8 *)(*pdest_addr + 4) = KEDR_OP_JMP_REL32;
-		*(u32 *)(*pdest_addr + 5) = (u32)KEDR_OFFSET_FROM_ADDR(
+		*(u32 *)(*pdest_addr + 5) = (u32)X86_OFFSET_FROM_ADDR(
 			*pdest_addr, KEDR_REL_JMP_SIZE, jump_addr);
 		
 		*pdest_addr += 9;
@@ -1163,13 +1147,46 @@ do_process_insn(struct kedr_tmod_function *func, struct insn *insn,
 	return 0;
 }
 
-/*static int 
-dbg_proc(struct kedr_tmod_function *func, struct insn *insn, void *data) {
+#ifdef CONFIG_X86_64
+#define NUM_REGS 16 /* Number of general-purpose registers */
+static const char *reg_name[NUM_REGS] = {
+	"RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
+	"R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
+};
+
+#else /* CONFIG_X86_32 */
+#define NUM_REGS 8 /* Number of general-purpose registers */
+static const char *reg_name[NUM_REGS] = {
+	"EAX", "ECX", "EDX", "EBX", "ESP", "EBP", "ESI", "EDI"
+};
+	
+#endif
+
+static unsigned int reg_usage[NUM_REGS]; /* Usage count for each register */
+
+static int 
+process_reg_usage_proc(struct kedr_tmod_function *func, struct insn *insn, 
+	void *data) 
+{
+	unsigned int mask;
+	int i;
+	char str[NUM_REGS * 4 + 1]; /* for the strings like "EAX EBP ESI" */
+	
+	str[0] = '\0';
+	mask = register_usage_mask(insn, func);
+	for (i = 0; i < NUM_REGS; ++i) {
+		if (mask & X86_REG_MASK(i)) {
+			reg_usage[i] += 1;
+			strcat(str, reg_name[i]);
+			strcat(str, " ");
+		}
+	}
+	
 	pr_info("[DBG] %3lx: %s\n", 
 		(unsigned long)insn->kaddr - (unsigned long)func->addr,
-		(insn_is_noop(insn) ? "no-op" : ""));	
+		(mask != X86_REG_MASK_ALL ? str : "All registers are used"));	
 	return 0;
-}*/
+}
 
 /* Create an instrumented variant of function specified by 'func'. 
  * The function returns 0 if successful, an error code otherwise. 
@@ -1207,7 +1224,7 @@ instrument_function(struct kedr_tmod_function *func, struct module *mod)
 	*(u32 *)(dest_addr + entry_call_pos_val) = 
 		(u32)((unsigned long)(func->addr));
 	*(u32 *)(dest_addr + entry_call_pos_func) = 
-		KEDR_OFFSET_FROM_ADDR(
+		X86_OFFSET_FROM_ADDR(
 				/* -1 byte for opcode */
 			(dest_addr + entry_call_pos_func - 1), 
 			KEDR_SIZE_CALL_REL32, 
@@ -1232,15 +1249,29 @@ instrument_function(struct kedr_tmod_function *func, struct module *mod)
 		" %llx\n");
 	//<>
 	
-	//<>
-	/*if (0 == strcmp(func->name, "cfake_open")) {
+	/* Output register usage information for each instruction in this 
+	 * function to the system log along with a summary. */
+	if (0 == strcmp(func->name, target_function)) {
 		int result;
-		pr_info("[DBG] Calling for_each_insn_in_function()\n");
-		result = for_each_insn_in_function(func, dbg_proc, NULL);
+		int i;
+		pr_info("[DBG] Gathering register usage info for %s()\n",
+			func->name);
+			
+		/* just in case */
+		memset(&reg_usage[0], 0, sizeof(reg_usage)); 
+		
+		result = for_each_insn_in_function(
+			func, process_reg_usage_proc, NULL);
 		pr_info("[DBG] for_each_insn_in_function() returned %d\n", 
 			result);
-	}*/
-	//<>
+		
+		pr_info ("[DBG] Register usage totals:\n");
+		for (i = 0; i < NUM_REGS; ++i) {
+			pr_info ("[DBG]   %s: %u\n", 
+				reg_name[i], 
+				reg_usage[i]);
+		}
+	}
 	
 	/* Save the bytes to be overwritten by the jump instruction and
 	 * place the jump to the instrumented function at the beginning 
@@ -1252,7 +1283,7 @@ instrument_function(struct kedr_tmod_function *func, struct module *mod)
 	 * module resides. A near relative jump is enough in this case. */
 	*(u8 *)func->addr = KEDR_OP_JMP_REL32;
 	poffset = (u32 *)((unsigned long)func->addr + 1);
-	*poffset = KEDR_OFFSET_FROM_ADDR((unsigned long)func->addr, 
+	*poffset = X86_OFFSET_FROM_ADDR((unsigned long)func->addr, 
 		KEDR_REL_JMP_SIZE, (unsigned long)func->instrumented_addr);
 	
 	return 0; /* success */

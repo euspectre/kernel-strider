@@ -26,16 +26,16 @@ MODULE_LICENSE("GPL");
 
 /* ====================================================================== */
 /* Name of the module to analyze, an empty name will match no module */
-static char* target_name = "";
+static char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
 
 /* Name of the function to process. */
-char* target_function = "";
+char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
 
 /* ====================================================================== */
 /* The module being analyzed. NULL if the module is not currently loaded. */
-struct module* target_module = NULL;
+struct module *target_module = NULL;
 
 /* If nonzero, module load and unload notifications will be handled,
  * if 0, they will not.

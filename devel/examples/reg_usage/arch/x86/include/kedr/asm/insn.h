@@ -186,10 +186,88 @@ static inline int insn_offset_immediate(struct insn *insn)
 	return insn_offset_displacement(insn) + insn->displacement.nbytes;
 }
 
+/* ====================================================================== */
 /* To check if a register <N> is used, just test the corresponding bit in 
  * the register usage mask: if (mask & X86_REG_MASK(INAT_REG_CODE_<N>) ...*/
 #define X86_REG_MASK(reg_code)	(1 << (reg_code))
 
+/* This mask means that no general-purpose registers are used. 
+ * Note that it is 0, so m |= X86_REG_MASK_NONE does not change the value of
+ * 'm', which can be convenient. */
+#define X86_REG_MASK_NONE	0x0
+
+/* X86_REG_MASK_ALL indicates all general-purpose registers (GPRs).
+ * 
+ * X86_REG_MASK_SCRATCH - all "scratch" general purpose registers, those 
+ * that a called function does not have to preserve. 
+ * On 32-bit systems, the scratch GPRs are: EAX, ECX, EDX.
+ * On 64-bit systems, the scratch GPRs are: RAX, RCX, RDX, RSI, RDI, R8-R11.
+ */
+#ifdef CONFIG_X86_64
+# define X86_REG_MASK_ALL	0x0000ffff
+# define X86_REG_MASK_SCRATCH	(X86_REG_MASK(INAT_REG_CODE_AX) | \
+				 X86_REG_MASK(INAT_REG_CODE_CX) | \
+				 X86_REG_MASK(INAT_REG_CODE_DX) | \
+				 X86_REG_MASK(INAT_REG_CODE_SI) | \
+				 X86_REG_MASK(INAT_REG_CODE_DI) | \
+				 X86_REG_MASK(INAT_REG_CODE_8)  | \
+				 X86_REG_MASK(INAT_REG_CODE_9)  | \
+				 X86_REG_MASK(INAT_REG_CODE_10) | \
+				 X86_REG_MASK(INAT_REG_CODE_11))
+#else /* CONFIG_X86_32 */
+# define X86_REG_MASK_ALL	0x000000ff
+# define X86_REG_MASK_SCRATCH	(X86_REG_MASK(INAT_REG_CODE_AX) | \
+				 X86_REG_MASK(INAT_REG_CODE_CX) | \
+				 X86_REG_MASK(INAT_REG_CODE_DX))
+#endif
+
+/* Maximum size of a machine instruction on x86, in bytes. Actually, 15
+ * would be enough. From Intel Software Developer's Manual Vol2A, section 
+ * 2.2.1: "The instruction-size limit of 15 bytes still applies <...>".
+ * We just follow the implementation of kernel probes in this case. */
+#define X86_MAX_INSN_SIZE 	16
+
+/* X86_ADDR_FROM_OFFSET()
+ * 
+ * Calculate the memory address being the operand of a given instruction 
+ * that uses IP-relative addressing ('call near', 'jmp near', ...). 
+ *   'insn_addr' is the address of the instruction itself,
+ *   'insn_len' is length of the instruction in bytes,
+ *   'offset' is the offset of the destination address from the first byte
+ *   past the instruction.
+ * 
+ * For x86-64 architecture, the offset value is sign-extended here first.
+ * 
+ * "Intel x86 Instruction Set Reference" states the following 
+ * concerning 'call rel32':
+ * 
+ * "Call near, relative, displacement relative to next instruction.
+ * 32-bit displacement sign extended to 64 bits in 64-bit mode." */
+#ifdef CONFIG_X86_64
+# define X86_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
+	(void*)((s64)(insn_addr) + (s64)(insn_len) + (s64)(s32)(offset))
+
+#else /* CONFIG_X86_32 */
+# define X86_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
+	(void*)((u32)(insn_addr) + (u32)(insn_len) + (u32)(offset))
+#endif
+
+/* X86_OFFSET_FROM_ADDR()
+ * 
+ * The reverse of X86_ADDR_FROM_OFFSET: calculates the offset value
+ * to be used in an instruction given the address and length of the
+ * instruction and the destination address it must refer to. */
+#define X86_OFFSET_FROM_ADDR(insn_addr, insn_len, dest_addr) \
+	(u32)(dest_addr - (insn_addr + (u32)insn_len))
+
+/* X86_SIGN_EXTEND_V32_TO_ULONG()
+ *
+ * Just a cast to unsigned long on x86-32. 
+ * On x86-64, sign-extends a 32-bit value to and casts the result to 
+ * unsigned long. */
+#define X86_SIGN_EXTEND_V32_TO_ULONG(val) ((unsigned long)(long)(s32)(val))
+
+/* ====================================================================== */
 /* Returns nonzero if 'insn' is a no-op instruction of one of the commonly 
  * used kinds. If the function returns nonzero, 'insn' is a no-op. If it 
  * returns 0, 'insn' may or may not be a no-op. */ 
@@ -212,5 +290,8 @@ extern int insn_is_mem_read(struct insn *insn);
 /* Nonzero if the instruction writes data to memory, 0 otherwise. 
  * The function decodes the relevant parts of the instruction if needed. */
 extern int insn_is_mem_write(struct insn *insn);
+
+/* Return the destination of control transfer. */
+extern unsigned long insn_jumps_to(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */

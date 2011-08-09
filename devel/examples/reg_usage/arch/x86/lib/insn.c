@@ -644,15 +644,16 @@ int insn_is_noop(struct insn *insn)
 	 * where applicable. */ 
 	u8 rex;
 	u8 modRM;
+
+	/* Decode the instruction if it is not already decoded. */
+	insn_get_length(insn); 
+	
 #ifdef CONFIG_X86_64
 	rex = insn->rex_prefix.bytes[0];
 #else /* CONFIG_X86_32 */
 	rex = 0x48; /* 01001000(b) */
 #endif
 
-	/* Decode the instruction if it is not already decoded. */
-	insn_get_length(insn); 
-	
 	switch (insn->opcode.bytes[0]) {
 	case 0x90:	/* Group: "nop" */
 		/* Require REX.R==REX.X==REX.B==0, for simplicity. */
@@ -702,21 +703,265 @@ int insn_is_noop(struct insn *insn)
 	return 0; /* unknown or not a no-op */
 }
 
+/* If ModRM.reg encodes a general purpose register (GPR), interpret that
+ * field and return the mask for the register. REX prefix is also taken into
+ * account here.
+ *
+ * If the field does not encode a GPR, the function returns 
+ * X86_REG_MASK_NONE. */
+static unsigned int 
+insn_reg_mask_reg(struct insn *insn)
+{
+	unsigned int reg;
+	int is_byte = 0;
+	insn_attr_t *attr = &insn->attr;
+	
+	insn_get_modrm(insn);
+	if (!inat_has_modrm(attr))
+		return X86_REG_MASK_NONE;
+	
+	if (attr->addr_method1 == INAT_AMETHOD_G) {
+		is_byte = (attr->opnd_type1 == INAT_OPTYPE_B);
+	}
+	else if (attr->addr_method2 == INAT_AMETHOD_G) {
+		is_byte = (attr->opnd_type2 == INAT_OPTYPE_B);
+	}
+	else {
+		return X86_REG_MASK_NONE;
+	}
+
+	reg = X86_MODRM_REG(insn->modrm.value);
+	if (is_byte && reg >= 4 && insn->rex_prefix.value == 0)
+		return X86_REG_MASK(reg - 4); /* AH, CH, DH or BH */
+	
+	if (X86_REX_R(insn->rex_prefix.value))
+		reg += 8;
+	
+	return X86_REG_MASK(reg);
+}
+
+
+static unsigned int
+insn_reg_mask_rm_mem(unsigned int modrm, unsigned int rex)
+{
+	/* Memory only */
+	unsigned int mod = X86_MODRM_MOD(modrm);
+	unsigned int reg = X86_MODRM_RM(modrm);
+	
+	/* REX prefix does not affect the ModRM.RM codes that mean that no
+	 * register is used. See Intel Software Developer's Manual Vol. 2A, 
+	 * section 2.2.1.2 "More on REX Prefix Fields". */
+	if ((mod == 0 && reg == 5 /* 101(b), disp32/RIP+disp32 */) || 
+	    reg == 4 /* 100(b), SIB byte present */ )
+		return X86_REG_MASK_NONE;
+	
+	/* (%reg), disp8(%reg) or disp32(%reg) */
+	if (X86_REX_B(rex))
+		reg += 8;
+	
+	return X86_REG_MASK(reg);
+}
+
+static unsigned int
+insn_reg_mask_rm_amethod_E(unsigned int modrm, unsigned int rex, int is_byte)
+{
+	/* reg/mem */
+	unsigned int mod = X86_MODRM_MOD(modrm);
+	unsigned int reg = X86_MODRM_RM(modrm);
+	
+	if (mod == 3) { /* reg */
+		if (is_byte && reg >= 4 && rex == 0)
+			return X86_REG_MASK(reg - 4); /* AH, CH, DH or BH */
+		
+		if (X86_REX_B(rex))
+			reg += 8;
+		
+		return X86_REG_MASK(reg);
+	}
+	
+	return insn_reg_mask_rm_mem(modrm, rex);
+}
+
+static unsigned int
+insn_reg_mask_rm_amethod_R(unsigned int modrm, unsigned int rex)
+{
+	/* Register only.
+	 * Cannot be a byte register. Addressing method "R" is used only for
+	 * moving data to and from control and debug register. The other 
+	 * register can only be r32/r64. */
+	unsigned int reg = X86_MODRM_RM(modrm);
+	if (X86_REX_B(rex))
+		reg += 8;
+	
+	return X86_REG_MASK(reg);
+}
+
+static unsigned int
+insn_reg_mask_rm_amethod_QW(unsigned int modrm, unsigned int rex)
+{
+	/* MMX/mem or XMM/mem. 
+	 * Here, we are interested only in "mem" case. */
+	unsigned int mod = X86_MODRM_MOD(modrm);
+	
+	if (mod == 3) /* reg (XMM or MMX) */
+		return X86_REG_MASK_NONE;
+	
+	return insn_reg_mask_rm_mem(modrm, rex);
+}
+
+/* If ModRM.RM encodes a general purpose register (GPR), interpret that
+ * field and return the mask for the register. REX prefix is also taken into
+ * account here.
+ *
+ * If the field does not encode a GPR, the function returns 
+ * X86_REG_MASK_NONE. */
+static unsigned int 
+insn_reg_mask_rm(struct insn *insn)
+{
+	insn_attr_t *attr = &insn->attr;
+	unsigned int addr_method[2];
+	unsigned int opnd_type[2];
+	int i;
+	
+	insn_get_modrm(insn);
+	if (!inat_has_modrm(attr))
+		return X86_REG_MASK_NONE;
+	
+	addr_method[0] = attr->addr_method1;
+	addr_method[1] = attr->addr_method2;
+	opnd_type[0] = attr->opnd_type1;
+	opnd_type[1] = attr->opnd_type2;
+	
+	for (i = 0; i < 2; ++i) {
+		switch (addr_method[i]) {
+		case INAT_AMETHOD_E:
+			return insn_reg_mask_rm_amethod_E(
+				insn->modrm.value,
+				insn->rex_prefix.value,
+				(opnd_type[i] == INAT_OPTYPE_B));
+		case INAT_AMETHOD_M:
+			return insn_reg_mask_rm_mem(
+				insn->modrm.value,
+				insn->rex_prefix.value);
+		case INAT_AMETHOD_R:
+			return insn_reg_mask_rm_amethod_R(
+				insn->modrm.value,
+				insn->rex_prefix.value);
+		case INAT_AMETHOD_Q:
+		case INAT_AMETHOD_W:
+			return insn_reg_mask_rm_amethod_QW(
+				insn->modrm.value,
+				insn->rex_prefix.value);
+		default: break;
+		}
+	}
+	return X86_REG_MASK_NONE;
+}
+
+/* Checks if the instruction has SIB byte, returns nonzero if it does, 0
+ * otherwise. Decodes the instruction up to SIB inclusive if this has not 
+ * been done yet. */
+static int 
+insn_has_sib(struct insn *insn)
+{
+	insn_attr_t *attr = &insn->attr;
+	unsigned int modrm;
+	
+	/* insn_get_sib() decodes all parts of the instruction up to SIB,
+	 * including the latter (if they are not yet decoded). Among other 
+	 * things, it decodes the prefixes and the opcode and populates the
+	 * attributes properly. That is why inat_has_modrm() should be 
+	 * called after insn_get_[sib|modrm|opcode](). Same for other 
+	 * functions that query the attributes of the instruction. */
+	insn_get_sib(insn);
+	if (!inat_has_modrm(attr))
+		return 0;
+	
+	modrm = insn->modrm.value;
+	if (X86_MODRM_MOD(modrm) == 3 ||  /* 11(b), register => no SIB */
+	    X86_MODRM_RM(modrm) != 4)	  /* R/M != 100(b) => no SIB */
+		return 0;
+	
+	if (attr->addr_method1 != INAT_AMETHOD_E &&
+	    attr->addr_method1 != INAT_AMETHOD_M &&
+	    attr->addr_method1 != INAT_AMETHOD_Q &&
+	    attr->addr_method1 != INAT_AMETHOD_W &&
+	    attr->addr_method2 != INAT_AMETHOD_E &&
+	    attr->addr_method2 != INAT_AMETHOD_M &&
+	    attr->addr_method2 != INAT_AMETHOD_Q &&
+	    attr->addr_method2 != INAT_AMETHOD_W)
+		return 0;
+	
+	return 1;
+}
+
+/* If ModRM indicates that SIB byte is present, find out, which registers 
+ * SIB encodes and return appropriate mask. REX prefix is also taken into
+ * account here.
+ *
+ * If SIB is absent or does not indicate using registers (e.g. index=100(b),
+ * base = 101(b) and ModRM.mod = 00(b)), the function returns 
+ * X86_REG_MASK_NONE. */
+static unsigned int 
+insn_reg_mask_sib(struct insn *insn)
+{
+	unsigned int index;
+	unsigned int base;
+	unsigned int rex;
+	unsigned int mod;
+	unsigned int reg_mask = 0;
+	
+	if (!insn_has_sib(insn))
+		return X86_REG_MASK_NONE;
+	
+	rex = insn->rex_prefix.value;
+	mod = X86_MODRM_MOD(insn->modrm.value);
+	index = X86_SIB_INDEX(insn->sib.value);
+	base = X86_SIB_BASE(insn->sib.value);
+	
+	/* REX.X should be applied BEFORE checking if index is 4 (100(b),
+	 * no index). That is, R12 can be used as an index, unlike RSP. */
+	if (X86_REX_X(rex))
+		index += 8;
+	if (index != 4) /* 100(b) */
+		reg_mask |= X86_REG_MASK(index);
+	
+	/* REX.B should be applied AFTER checking if base is 101(b) or not,
+	 * in both cases: R13 can be used as a base only in the same 
+	 * conditions as RBP (but with REX.B set). */
+	if (base != 5) { /* != 101(b), common case */
+		if (X86_REX_B(rex))
+			base += 8;
+		reg_mask |= X86_REG_MASK(base);
+	}
+	else {	/* base == 101(b), no base / RBP / R13 */
+		if (X86_REX_B(rex))
+			base += 8;
+		if (mod == 1 || mod == 2) 
+			reg_mask |= X86_REG_MASK(base);
+	/* RBP/R13 is only used as a base if mod is 01(b) or 10(b). */
+	}
+
+	return (reg_mask == 0) ? X86_REG_MASK_NONE : reg_mask;
+}
+
 /**
  * insn_register_usage_mask() - Get information about the general-purpose 
- * registers the instruction uses/
+ * registers the instruction uses
  * @insn:	&struct insn containing instruction
  *
  * If necessary, decodes the instruction first.
  * 
  * The function returns register usage mask for a given instruction. For 
- * each register used by the instruction the corresponding bit 
- * (mask & insn_uses_reg(reg)) will be set. The remaining bits will be 0, 
- * including the higher 16 bits. 
+ * each register (reg_code) used by the instruction the corresponding bit 
+ * (mask & X86_REG_MASK(reg_code)) will be set. The remaining bits will be
+ * 0, including the higher 16 bits. 
  * Note that this function cannot determine which registers 'call' and 'jmp'
  * instructions and the corresponding function calls use, except SP. This 
  * depends on whether an instruction actually leads outside of the caller 
  * function or it is a trick like 'call 0x05, pop %reg' or the like. 
+ *
+ * 16-bit stuff is not taken into account here.
  */
 unsigned int insn_register_usage_mask(struct insn *insn)
 {
@@ -751,14 +996,16 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 	/* 1.2. push r32/r64, pop r32/r64 */
 	if (opcode[0] >= 0x50 && opcode[0] <= 0x57) {
 		reg_code = opcode[0] - 0x50;
-		reg_code |= X86_REX_B(rex);
+		if (X86_REX_B(rex))
+			reg_code += 8;
 		usage_mask |= X86_REG_MASK(reg_code);
 		return usage_mask;
 	}
 	
 	if (opcode[0] >= 0x58 && opcode[0] <= 0x5f) {
 		reg_code = opcode[0] - 0x58;
-		reg_code |= X86_REX_B(rex);
+		if (X86_REX_B(rex))
+			reg_code += 8;
 		usage_mask |= X86_REG_MASK(reg_code);
 		return usage_mask;
 	}
@@ -771,14 +1018,56 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 	
 	if (opcode[0] > 0x90 && opcode[0] <= 0x97) {
 		reg_code = opcode[0] - 0x90;
-		reg_code |= X86_REX_B(rex);
+		if (X86_REX_B(rex))
+			reg_code += 8;
 		usage_mask |= X86_REG_MASK(reg_code);
 		return usage_mask;
 	}
 	
-	/* 1.4.  */
+	/* 1.4. mov imm8, %reg (b0h-b7h) */
+	if (opcode[0] >= 0xb0 && opcode[0] <= 0xb7) {
+		reg_code = opcode[0] - 0xb0;
+		if (reg_code >= 4 && rex == 0) /* AH, CH, DH or BH */
+			return X86_REG_MASK(reg_code - 4); 
+		if (X86_REX_B(rex))
+			reg_code += 8;
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
 	
-	// TODO
+	/* 1.5. mov imm32, %reg (b8h-bfh) */
+	if (opcode[0] >= 0xb8 && opcode[0] <= 0xbf) {
+		reg_code = opcode[0] - 0xb8;
+		if (X86_REX_B(rex))
+			reg_code += 8;
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
+	
+	/* 1.6. bswap %reg (0fc8h - 0fcfh) */
+	if (opcode[0] == 0x0f && opcode[1] >= 0xc8 && opcode[1] <= 0xcf) {
+		reg_code = opcode[1] - 0xc8;
+		if (X86_REX_B(rex))
+			reg_code += 8;
+		usage_mask |= X86_REG_MASK(reg_code);
+		return usage_mask;
+	}
+		
+	/* 2. Some very special cases: int $0x80, syscall, sysenter
+	 * Pretend that these instructions use all the registers. 
+	 * The instructions should not occur in kernel mode code, anyway. */
+	if ((opcode[0] == 0xcd && insn->immediate.bytes[0] == 0x80) ||
+	    (opcode[0] == 0x0f && opcode[1] == 0x05) ||
+	    (opcode[0] == 0x0f && opcode[1] == 0x34))
+	    	return X86_REG_MASK_ALL;
+	
+	/* 3. Instructions with ModRM and SIB. 
+	 * insn_reg_mask_*() function return 0 if the appropriate fields of 
+	 * the instruction are absent or have other meaning. So 'usage_mask'
+	 * will not change here unnecessarily. */
+	usage_mask |= insn_reg_mask_reg(insn);
+	usage_mask |= insn_reg_mask_rm(insn);
+	usage_mask |= insn_reg_mask_sib(insn);
 	return usage_mask;
 }
 
@@ -820,5 +1109,75 @@ insn_is_mem_write(struct insn *insn)
 	
 	attr = insn->attr.attributes;
 	return ((attr & INAT_MEM_CAN_WRITE) && modrm_mem);
+}
+
+/** 
+ * insn_jumps_to() - Return the destination of control transfer
+ * @insn:	&struct insn containing the instruction
+ *
+ * If necessary, decodes the instruction first.
+ *
+ * Returns 0 for the instructions that do not alter control flow (that is,
+ * do not jump). 
+ * For near relative calls as well as short and near relative jumps, the 
+ * function returns the destination address. 
+ * For other kinds of calls and jumps as well as for 'int' and 'ret' 
+ * instruction families, the function returns (unsigned long)(-1).
+ * 
+ * The value returned by this function can be used to determine whether an
+ * instruction transfers control inside or outside of a given function
+ * (except for indirect jumps that should be handled separately; the 
+ * function returns (unsigned long)(-1) for them). */
+unsigned long
+insn_jumps_to(struct insn *insn)
+{
+	u8 opcode; 
+	
+	/* decode the instruction if it is not decoded yet */
+	insn_get_length(insn); 
+	
+	opcode = insn->opcode.bytes[0];
+	
+	/* jcc short, jmp short */
+	if ((opcode >= 0x70 && opcode <= 0x7f) || (opcode == 0xe3) || 
+	    opcode == 0xeb) {
+		s32 offset = (s32)(s8)insn->immediate.bytes[0];
+		return (unsigned long)X86_ADDR_FROM_OFFSET(insn->kaddr, 
+			insn->length, offset); 
+	}
+	
+	/* call/jmp/jcc near relative */
+	if (opcode == 0xe8 || opcode == 0xe9 || 
+	    (opcode == 0x0f && (insn->opcode.bytes[1] & 0xf0) == 0x80)) {
+		return (unsigned long)X86_ADDR_FROM_OFFSET(insn->kaddr, 
+			insn->length, insn->immediate.value); 
+	}
+	
+	/* int*, ret* */
+	if ((opcode >= 0xca && opcode <= 0xce) || 
+	    opcode == 0xc2 || opcode == 0xc3)
+		return (unsigned long)(-1); 
+	
+	/* loop* */
+	if (opcode >= 0xe0 && opcode <= 0xe2) {
+		s32 offset = (s32)(s8)insn->immediate.bytes[0];
+		return (unsigned long)X86_ADDR_FROM_OFFSET(insn->kaddr, 
+			insn->length, offset); 
+	}
+	
+	/* indirect calls and jumps, near and far */
+	if (opcode == 0xff) {
+		int aux_code = X86_MODRM_REG(insn->modrm.value);
+		if (aux_code >= 2 && aux_code <= 5)
+			return (unsigned long)(-1); 
+		else /* flavours of inc, dec and push */
+			return 0;
+	}
+	
+	/* call/jump far absolute ptr16:32;  */
+	if (opcode == 0x9a || opcode == 0xea)
+		return (unsigned long)(-1); 
+	
+	return 0; /* no jump */
 }
 

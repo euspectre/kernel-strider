@@ -316,7 +316,7 @@ e5: IN eAX,Ib               Regs: AX
 e6: OUT Ib,AL               Regs: AX
 e7: OUT Ib,eAX              Regs: AX
 # Register usage data for CALL should be handled separately.
-e8: CALL Jz (f64)
+e8: CALL Jz (f64)       Regs: SP
 e9: JMP-near Jz (f64)
 ea: JMP-far Ap (i64)
 eb: JMP-short Jb (f64)
@@ -352,10 +352,11 @@ AVXcode: 1
 02: LAR Gv,Ew   
 03: LSL Gv,Ew   
 04:
-# SYSCALL, SYSRET, SYSENTER, SYSEXIT should be handled separately
+# SYSCALL and SYSENTER should be handled separately (they should not be 
+# used in the kernel anyway).
 05: SYSCALL (o64)   
 06: CLTS
-07: SYSRET (o64)    
+07: SYSRET (o64)    Regs: CX
 08: INVD
 09: WBINVD
 0a:
@@ -404,9 +405,10 @@ AVXcode: 1
 31: RDTSC   Regs: DX,AX
 32: RDMSR   Regs: DX,AX,CX
 33: RDPMC   Regs: DX,AX,CX
-# SYSCALL, SYSRET, SYSENTER, SYSEXIT should be handled separately
+# SYSCALL and SYSENTER should be handled separately (they should not be 
+# used in the kernel anyway).
 34: SYSENTER
-35: SYSEXIT
+35: SYSEXIT     Regs: CX,DX
 36:
 37: GETSEC  Regs: AX,BX,CX,DX,BP
 38: escape # 3-byte escape 1

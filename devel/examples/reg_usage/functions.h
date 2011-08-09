@@ -58,6 +58,10 @@ struct kedr_tmod_function
 	// TODO: add other necessary fields here.
 };
 
+/* Parameter of the module: name of the function in the target module to
+ * process in a special way. */
+extern char *target_function;
+
 /* Initialize the function processing subsystem. 
  * This function should be called from 'on_module_load' handler for the 
  * target.
