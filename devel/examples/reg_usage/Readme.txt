@@ -20,43 +20,43 @@ Example (OpenSUSE 11.4 x86-64):
 
 From the system log:
 ---------------------------
-[71320.711583] [sample] module: "btrfs", processing function 
-  "btrfs_test_super" (address is ffffffffa029e000, size is 64)
-[71320.711588] [DBG] Gathering register usage info for btrfs_test_super()
-[71320.711591] [DBG]   0: RDX RDI 
-[71320.711593] [DBG]   6: RSP RBP 
-[71320.711594] [DBG]   7: RAX 
-[71320.711596] [DBG]   9: RCX RDI 
-[71320.711597] [DBG]  10: RSP RBP 
-[71320.711599] [DBG]  13: RDX 
-[71320.711600] [DBG]  15: 
-[71320.711602] [DBG]  17: RCX RDX 
-[71320.711604] [DBG]  1e: RAX RSI 
-[71320.711605] [DBG]  25: RAX RCX 
-[71320.711606] [DBG]  2c: RAX 
-[71320.711608] [DBG]  2e: RCX RDX 
-[71320.711609] [DBG]  35: RAX 
-[71320.711611] [DBG]  38: RSP RBP 
-[71320.711613] [DBG]  39: RAX RCX RDX RSP RSI RDI R8 R9 R10 R11 
-[71320.711615] [DBG]  3a: 
-[71320.711616] [DBG] for_each_insn_in_function() returned 0
-[71320.711617] [DBG] Register usage totals:
-[71320.711619] [DBG]   RAX: 6
-[71320.711620] [DBG]   RCX: 5
-[71320.711621] [DBG]   RDX: 5
-[71320.711623] [DBG]   RBX: 0
-[71320.711624] [DBG]   RSP: 4
-[71320.711625] [DBG]   RBP: 3
-[71320.711626] [DBG]   RSI: 2
-[71320.711627] [DBG]   RDI: 3
-[71320.711628] [DBG]   R8: 1
-[71320.711630] [DBG]   R9: 1
-[71320.711631] [DBG]   R10: 1
-[71320.711632] [DBG]   R11: 1
-[71320.711633] [DBG]   R12: 0
-[71320.711634] [DBG]   R13: 0
-[71320.711636] [DBG]   R14: 0
-[71320.711637] [DBG]   R15: 0
+[21690.345382] [sample] module: "btrfs", processing function 
+  "btrfs_test_super" (address is ffffffffa028b000, size is 64)
+[21690.345386] [DBG] Gathering register usage info for btrfs_test_super()
+[21690.345389] [DBG]   0: RDX RDI 
+[21690.345390] [DBG]   6: RSP RBP 
+[21690.345392] [DBG]   7: RAX 
+[21690.345393] [DBG]   9: RCX RDI 
+[21690.345394] [DBG]  10: RSP RBP 
+[21690.345395] [DBG]  13: RDX 
+[21690.345397] [DBG]  15: 
+[21690.345398] [DBG]  17: RCX RDX 
+[21690.345399] [DBG]  1e: RAX RSI 
+[21690.345400] [DBG]  25: RAX RCX 
+[21690.345401] [DBG]  2c: RAX 
+[21690.345402] [DBG]  2e: RCX RDX 
+[21690.345404] [DBG]  35: RAX 
+[21690.345405] [DBG]  38: RSP RBP 
+[21690.345406] [DBG]  39: RSP 
+[21690.345407] [DBG]  3a: 
+[21690.345408] [DBG] for_each_insn_in_function() returned 0
+[21690.345409] [DBG] Register usage totals:
+[21690.345410] [DBG]   RAX: 5
+[21690.345411] [DBG]   RCX: 4
+[21690.345412] [DBG]   RDX: 4
+[21690.345413] [DBG]   RBX: 0
+[21690.345414] [DBG]   RSP: 4
+[21690.345415] [DBG]   RBP: 3
+[21690.345416] [DBG]   RSI: 1
+[21690.345417] [DBG]   RDI: 2
+[21690.345418] [DBG]   R8: 0
+[21690.345419] [DBG]   R9: 0
+[21690.345419] [DBG]   R10: 0
+[21690.345420] [DBG]   R11: 0
+[21690.345421] [DBG]   R12: 0
+[21690.345422] [DBG]   R13: 0
+[21690.345423] [DBG]   R14: 0
+[21690.345424] [DBG]   R15: 0
 ---------------------------
 
 The code of that function looks as follows:

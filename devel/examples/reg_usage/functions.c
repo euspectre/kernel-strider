@@ -431,18 +431,29 @@ prepare_funcs_for_detour(void)
  * purpose registers used and updates the mask accordingly. 
  * 
  * It is possible that the instruction does not actually use this many
- * registers ('ret', for instance, does not use scratch registers at all).
- * For now, we take a safer, simpler but less optimal route and mark scratch
- * registers as used. */
+ * registers. For now, we take a safer, simpler but less optimal route 
+ * in such cases. */
 static unsigned int 
 register_usage_mask(struct insn *insn, struct kedr_tmod_function *func)
 {
 	unsigned int reg_mask;
 	unsigned long dest;
 	unsigned long start_addr = (unsigned long)func->addr;
+	u8 opcode;
 	
 	BUG_ON(insn == NULL);
 	BUG_ON(func == NULL);
+	
+	/* Decode at least the opcode because we need to handle some 
+	 * instructions separately ('ret' group). */
+	insn_get_opcode(insn);
+	opcode = insn->opcode.bytes[0];
+	
+	/* Handle 'ret' group to avoid marking scratch registers used for 
+	 * these instructions. */
+	if (opcode == 0xc3 || opcode == 0xc2 || 
+	    opcode == 0xca || opcode == 0xcb)
+		return X86_REG_MASK(INAT_REG_CODE_SP);
 	
 	reg_mask = insn_register_usage_mask(insn);
 	dest = insn_jumps_to(insn);
