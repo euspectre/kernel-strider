@@ -252,7 +252,7 @@ ab: STOS/W/D/Q Yv,rAX   Regs: AX,DI     Mem: W
 ac: LODS/B AL,Xb        Regs: AX,SI     Mem: R
 ad: LODS/W/D/Q rAX,Xv   Regs: AX,SI     Mem: R
 ae: SCAS/B AL,Yb        Regs: AX,DI     Mem: R
-af: SCAS/W/D/Q rAX,Xv   Regs: AX,DI     Mem: R
+af: SCAS/W/D/Q rAX,Yv   Regs: AX,DI     Mem: R
 # 0xb0 - 0xbf
 # Register usage data for these MOV instructions should be handled 
 # separately.
