@@ -290,6 +290,10 @@ extern int insn_is_noop(struct insn *insn);
  * function or it is a trick like 'call 0x05, pop %reg' or the like. */
 extern unsigned int insn_register_usage_mask(struct insn *insn);
 
+/* Similar to the above but only the registers used in memory addressing
+ * expression (ModRM.RM, SIB) are considered. */
+extern unsigned int insn_reg_mask_for_expr(struct insn *insn);
+
 /* Query memory access type */
 /* Nonzero if the instruction reads data from memory, 0 otherwise. 
  * The function decodes the relevant parts of the instruction if needed. */

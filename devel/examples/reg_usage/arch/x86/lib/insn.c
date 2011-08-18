@@ -965,8 +965,27 @@ insn_has_rep_prefix(struct insn *insn)
 }
 
 /**
+ * insn_reg_mask_for_expr() - Get information about the general-purpose 
+ * registers the instruction uses to address memory.
+ * @insn:	&struct insn containing instruction
+ *
+ * If necessary, decodes the instruction first. 
+ * 
+ * The function considers only ModRM.RM and SIB fields (if they are present;
+ * if not - the function returns an empty mask). 
+ * 
+ * Note that unlike insn_register_usage_mask(), the function does not check 
+ * if the instruction is a no-op. */
+unsigned int insn_reg_mask_for_expr(struct insn *insn)
+{
+	/* Decode the instruction up to SIB inclusive - just in case. */
+	insn_get_sib(insn); 
+	return insn_reg_mask_rm(insn) | insn_reg_mask_sib(insn);
+}
+
+/**
  * insn_register_usage_mask() - Get information about the general-purpose 
- * registers the instruction uses
+ * registers the instruction uses.
  * @insn:	&struct insn containing instruction
  *
  * If necessary, decodes the instruction first.
@@ -1092,8 +1111,8 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 	 * the instruction are absent or have other meaning. So 'usage_mask'
 	 * will not change here unnecessarily. */
 	usage_mask |= insn_reg_mask_reg(insn);
-	usage_mask |= insn_reg_mask_rm(insn);
-	usage_mask |= insn_reg_mask_sib(insn);
+	usage_mask |= insn_reg_mask_for_expr(insn);
+
 	return usage_mask;
 }
 
