@@ -82,7 +82,7 @@ void insn_get_prefixes(struct insn *insn)
 		for (i = 0; i < nb; i++)
 			if (prefixes->bytes[i] == b)
 				goto found;
-		if (nb == 4)
+		if (nb == X86_NUM_LEGACY_PREFIXES)
 			/* Invalid instruction */
 			break;
 		prefixes->bytes[nb++] = b;
@@ -945,6 +945,25 @@ insn_reg_mask_sib(struct insn *insn)
 	return (reg_mask == 0) ? X86_REG_MASK_NONE : reg_mask;
 }
 
+/* Nonzero if the instruction has REP* prefix, 0 otherwize.
+ * Use with string instrictions only to avoid confusion with mandatory 
+ * prefixes 0xf2 and 0xf3 that actually extend the opcode. */
+static int
+insn_has_rep_prefix(struct insn *insn)
+{
+	insn_byte_t *prefixes = insn->prefixes.bytes;
+	unsigned int i;
+	
+	/* Decode the opcode and the prefixes */
+	insn_get_prefixes(insn);
+	
+	for (i = 0; i < X86_NUM_LEGACY_PREFIXES; ++i) {
+		if (prefixes[i] == 0xf2 || prefixes[i] == 0xf3)
+			return 1;
+	}
+	return 0;
+}
+
 /**
  * insn_register_usage_mask() - Get information about the general-purpose 
  * registers the instruction uses
@@ -1052,8 +1071,15 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 		usage_mask |= X86_REG_MASK(reg_code);
 		return usage_mask;
 	}
-		
-	/* 2. Some very special cases: int $0x80, syscall, sysenter
+	
+	/* 2. String operations */
+	if (insn_is_string_op(insn)) { 
+		if (insn_has_rep_prefix(insn))
+			usage_mask |= X86_REG_MASK(INAT_REG_CODE_CX);
+		return usage_mask;
+	}
+	
+	/* 3. Some very special cases: int $0x80, syscall, sysenter
 	 * Pretend that these instructions use all the registers. 
 	 * The instructions should not occur in kernel mode code, anyway. */
 	if ((opcode[0] == 0xcd && insn->immediate.bytes[0] == 0x80) ||
@@ -1061,7 +1087,7 @@ unsigned int insn_register_usage_mask(struct insn *insn)
 	    (opcode[0] == 0x0f && opcode[1] == 0x34))
 	    	return X86_REG_MASK_ALL;
 	
-	/* 3. Instructions with ModRM and SIB. 
+	/* 4. Instructions with ModRM and SIB 
 	 * insn_reg_mask_*() function return 0 if the appropriate fields of 
 	 * the instruction are absent or have other meaning. So 'usage_mask'
 	 * will not change here unnecessarily. */
@@ -1180,4 +1206,26 @@ insn_jumps_to(struct insn *insn)
 	
 	return 0; /* no jump */
 }
+
+/** 
+ * insn_is_string_op() - Check if the instruction is a string operation.
+ * @insn:	&struct insn containing the instruction
+ *
+ * The function returns nonzero if the instruction is OUTS, LODS, INS, STOS,
+ * SCAS, MOVS or CMPS, 0 otherwise.
+ *
+ * If necessary, decodes the opcode first. */
+int 
+insn_is_string_op(struct insn *insn)
+{
+	u8 opcode; 
+
+	insn_get_opcode(insn); 
+	opcode = insn->opcode.bytes[0];
+	
+	return ((opcode >= 0x6c && opcode <= 0x6f) /* INS, OUTS */ || 
+		(opcode >= 0xa4 && opcode <= 0xa7) /* MOVS, CMPS */ || 
+		(opcode >= 0xaa && opcode <= 0xaf) /* LODS, STOS, SCAS */ );
+}
+
 

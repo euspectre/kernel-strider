@@ -28,10 +28,18 @@
 /* insn_attr_t is defined in inat.h */
 #include "inat.h"
 
+/* Total number of meaningful legacy prefixes. At most one prefix from each
+ * of the following groups is meaningful for an instruction:
+ * - lock and repeat prefixes;
+ * - segment override prefixes and branch hints;
+ * - operand-size override;
+ * - address-size override. */
+#define X86_NUM_LEGACY_PREFIXES	 4
+
 struct insn_field {
 	union {
 		insn_value_t value;
-		insn_byte_t bytes[4];
+		insn_byte_t bytes[X86_NUM_LEGACY_PREFIXES];
 	};
 	/* !0 if we've run insn_get_xxx() for this field */
 	unsigned char got;
@@ -291,7 +299,10 @@ extern int insn_is_mem_read(struct insn *insn);
  * The function decodes the relevant parts of the instruction if needed. */
 extern int insn_is_mem_write(struct insn *insn);
 
-/* Return the destination of control transfer. */
+/* Returns the destination of control transfer. */
 extern unsigned long insn_jumps_to(struct insn *insn);
+
+/* Nonzero if the instruction is a string operation. */
+extern int insn_is_string_op(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */
