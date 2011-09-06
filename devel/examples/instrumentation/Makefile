@@ -1,7 +1,8 @@
 MODULE_NAME := kedr_sample
 
-# This subdirectory contains necessary files for both x86 and x86-64.
+# ARCH_DIR subdirectory contains necessary files for both x86 and x86-64.
 ARCH_DIR := arch/x86
+ARCH_INCLUDE_DIR := $(ARCH_DIR)/include/kedr/asm
 
 # This auxiliary file will be generated during the build (x86 instruction 
 # tables as C code).
@@ -11,17 +12,38 @@ ifeq ($(KERNELRELEASE),)
 # 'Out-of-kernel' part
 
 MODULE_SOURCES := \
-	module.c \
-	functions.c \
-	debug_util.c \
-	detour_buffer.c
+	module.c 	\
+	functions.c 	\
+	debug_util.c 	\
+	detour_buffer.c \
+	util.c 		\
+	instrument.c
+
+# This is only to specify build dependencies
+MODULE_HEADERS := \
+	ifunc.h	\
+	functions.h	\
+	debug_util.h	\
+	detour_buffer.h	\
+	util.h		\
+	instrument.h
+
+# This is only to specify build dependencies
+INSN_ANALYZER_FILES := \
+	$(ARCH_DIR)/lib/x86-opcode-map.txt	\
+	$(ARCH_DIR)/lib/inat.c			\
+	$(ARCH_DIR)/lib/insn.c			\
+	$(ARCH_DIR)/tools/gen-insn-attr-x86.awk	\
+	$(ARCH_INCLUDE_DIR)/inat.h		\
+	$(ARCH_INCLUDE_DIR)/inat_types.h	\
+	$(ARCH_INCLUDE_DIR)/insn.h
 
 KBUILD_DIR ?= /lib/modules/$(shell uname -r)/build 
 PWD := $(shell pwd)
 
 all: $(MODULE_NAME).ko
 
-$(MODULE_NAME).ko: $(MODULE_SOURCES)
+$(MODULE_NAME).ko: $(MODULE_SOURCES) $(MODULE_HEADERS) $(INSN_ANALYZER_FILES)
 	$(MAKE) -C $(KBUILD_DIR) M=$(PWD) modules
 	
 install:
@@ -39,11 +61,13 @@ else
 ccflags-y :=  -I$(src) -I$(src)/$(ARCH_DIR)/include -I$(obj)/$(ARCH_DIR)/lib
 
 obj-m := $(MODULE_NAME).o
-$(MODULE_NAME)-y := \
-	module.o \
-	functions.o \
-	debug_util.o \
-	detour_buffer.o \
+$(MODULE_NAME)-y :=	\
+	module.o	\
+	functions.o	\
+	debug_util.o	\
+	detour_buffer.o	\
+	util.o		\
+	instrument.o	\
 	$(ARCH_DIR)/lib/inat.o \
 	$(ARCH_DIR)/lib/insn.o
 

@@ -67,109 +67,10 @@
 #include "functions.h"
 #include "debug_util.h"
 #include "detour_buffer.h"
+#include "ifunc.h"
+#include "instrument.h"
+#include "util.h"
 /* ====================================================================== */
-
-/* Opcodes for 'jmp rel32' and 'call rel32'. */
-#define KEDR_OP_JMP_REL32	0xe9
-#define KEDR_OP_CALL_REL32	0xe8
-
-/* Size of 'call near rel 32' instruction, in bytes. */
-#define KEDR_SIZE_CALL_REL32	5
-
-/* Size of 'jmp rel32' machine instruction on x86 (both 32- and 64-bit).
- * This number of bytes at the beginning of each function of the target
- * module will be overwritten during the instrumentation. */
-#define KEDR_SIZE_JMP_REL32 	5
-
-/* This structure represents a function in the code of the loaded target
- * module. 
- * Such structures are needed only during instrumentation and can be dropped
- * after that. */
-struct kedr_ifunc
-{
-	struct list_head list; 
-	
-	/* Start address */
-	void *addr; 
-	
-	/* Size of the code. Note that it is determined as the difference 
-	 * between the start addresses of the next function and of this one.
-	 * So the trailing bytes may actually be padding area rather than 
-	 * belong to the function's body. */
-	unsigned long size;
-	
-	/* Name of the function */
-	/* [NB] Is it safe to keep only a pointer? The string itself is in
-	 * the string table of the module and that table is unlikely to go 
-	 * away before the module is unloaded. 
-	 * See module_kallsyms_on_each_symbol().*/ 
-	const char *name;
-	
-	/* The start address of the instrumented version of the function 
-	 * in a detour buffer. */
-	void *i_addr;
-	
-	/* The start address of a temporary buffer for the instrumented 
-	 * instance of a function. */
-	void *tbuf_addr;
-	
-	/* Size of the instrumented version of the function. */
-	unsigned long i_size;
-	
-	/* The list of code blocks in the function */
-	//struct list_head blocks;
-	
-	/* The list of jump tables for the original function (one element 
-	 * per each indirect near jump of the appropriate kind). Some jump
-	 * tables may have 0 elements, this can happen if the elements are 
-	 * not the addresses within the function or if two jumps use the 
-	 * same jump table. */
-	struct list_head jump_tables;
-	
-	/* The number of elements in 'jump_tables' list. */
-	unsigned int num_jump_tables; 
-	
-	/* The array of pointers to the jump tables for the instrumented
-	 * function instance. 
-	 * Number of tables: 'num_jump_tables'. */
-	unsigned long **i_jump_tables;
-	
-	/* The start address of the fallback instance of the original 
-	 * function. That instance should be used if the instrumented code 
-	 * detects in runtime that something bad has happened. 
-	 * [NB] The fallback instance uses the fixed up jump tables for the
-	 * original function (if the latter uses jump tables). */
-	void *fallback;
-};
-
-/* Jump tables used for near relative jumps within the function 
- * (optimized 'switch' constructs, etc.) */
-struct kedr_jtable
-{
-	/* The list of tables for a given function */
-	struct list_head list; 
-	
-	/* Start address; the elements will be treated as unsigned long
-	 * values. */
-	unsigned long *addr; 
-	
-	/* Number of elements */
-	unsigned int num;
-};
-/* ====================================================================== */
-
-/* Alignment of the start addresses of the instrumented functions (in 
- * bytes). The start address of the detour buffer will usually be 
- * page-aligned but it may also be desirable to align the start address of
- * each function. 
- *
- * KEDR_FUNC_ALIGN must be a power of 2. */
-#define KEDR_FUNC_ALIGN 0x10UL
-
-/* Align the value '_val', that is, round it up to the multiple of 
- * KEDR_FUNC_ALIGN. */
-#define KEDR_ALIGN_VALUE(_val) \
-  (((unsigned long)(_val) + KEDR_FUNC_ALIGN - 1) & ~(KEDR_FUNC_ALIGN - 1))
 
 /* Detour buffer for the target module. The instrumented code of the 
  * functions will be copied there. It is that code that will actually be
@@ -187,94 +88,6 @@ LIST_HEAD(ifuncs);
 
 /* Number of functions in the target module */
 unsigned int num_funcs = 0;
-/* ====================================================================== */
-
-/* For each instruction in [start_addr; end_addr), the function decodes it
- * and calls proc() callback for it. 'data' is passed to proc() as the 
- * last argument, it can be a pointer to the custom data needed by the 
- * particular callback. 
- *
- * [NB] The address of the instruction can be obtained in proc() via
- * insn->kaddr field.
- *
- * proc() is expected to return 0 on success and a negative error code on 
- * failure. for_each_insn() continues as long as there are instructions 
- * left and proc() returns 0. If proc() returns nonzero, for_each_insn()
- * stops and returns this value.
- * 
- * Use this function instead of explicit walking, decoding and processing 
- * the areas of code (you remember C++ and STL best practices, right?). */
-static int 
-for_each_insn(unsigned long start_addr, unsigned long end_addr,
-	int (*proc)(struct insn *, void *), void *data) 
-{
-	struct insn insn;
-	int ret;
-	
-	while (start_addr < end_addr) {
-		kernel_insn_init(&insn, (void *)start_addr);
-		insn_get_length(&insn);  /* Decode the instruction */
-		if (insn.length == 0) {
-			pr_err("[sample] "
-		"Failed to decode instruction at %p\n",
-				(const void *)start_addr);
-			return -EILSEQ;
-		}
-		
-		ret = proc(&insn, data); /* Process the instruction */
-		if (ret != 0)
-			return ret;
-		
-		start_addr += insn.length;
-	}
-	return 0;
-}
-
-/* for_each_insn_in_function() - similar to for_each_insn() but operates 
- * only on the given function 'func' (on its original code). 
- * 
- * Note that 'proc' callback must have a different prototype here:
- *   int <name>(struct kedr_ifunc *, struct insn *, void *)
- * That is, it will also get access to 'func' without the need for any
- * special wrapper structures (for_each_insn_in_function() handles wrapping
- * stuff itself). */
-
-struct data_for_each_insn_in_function
-{
-	struct kedr_ifunc *func;
-	void *data;
-	int (*proc)(struct kedr_ifunc *, struct insn *, void *);
-};
-
-static int
-proc_for_each_insn_in_function(struct insn *insn, void *data)
-{
-	struct data_for_each_insn_in_function *data_container = 
-		(struct data_for_each_insn_in_function *)data;
-	
-	return data_container->proc(
-		data_container->func, 
-		insn, 
-		data_container->data);
-}
-
-static int
-for_each_insn_in_function(struct kedr_ifunc *func, 
-	int (*proc)(struct kedr_ifunc *, struct insn *, void *), 
-	void *data)
-{
-	unsigned long start_addr = (unsigned long)func->addr;
-	struct data_for_each_insn_in_function data_container;
-	
-	data_container.func = func;
-	data_container.data = data;
-	data_container.proc = proc;
-	
-	return for_each_insn(start_addr, 
-		start_addr + func->size, 
-		proc_for_each_insn_in_function,
-		&data_container);
-}
 /* ====================================================================== */
 
 /* For a given function, free the structures related to the jump tables for
@@ -361,47 +174,6 @@ ifuncs_remove_aliases(void)
 }
 /* ====================================================================== */
 
-/* Similar to insn_register_usage_mask() but also takes function calls into
- * account. If 'insn' transfers control outside of the function
- * 'func', the register_usage_mask() considers all the scratch general
- * purpose registers used and updates the mask accordingly. 
- * 
- * It is possible that the instruction does not actually use this many
- * registers. For now, we take a safer, simpler but less optimal route 
- * in such cases. */
-static unsigned int 
-register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
-{
-	unsigned int reg_mask;
-	unsigned long dest;
-	unsigned long start_addr = (unsigned long)func->addr;
-	u8 opcode;
-	
-	BUG_ON(insn == NULL);
-	BUG_ON(func == NULL);
-	
-	/* Decode at least the opcode because we need to handle some 
-	 * instructions separately ('ret' group). */
-	insn_get_opcode(insn);
-	opcode = insn->opcode.bytes[0];
-	
-	/* Handle 'ret' group to avoid marking scratch registers used for 
-	 * these instructions. */
-	if (opcode == 0xc3 || opcode == 0xc2 || 
-	    opcode == 0xca || opcode == 0xcb)
-		return X86_REG_MASK(INAT_REG_CODE_SP);
-	
-	reg_mask = insn_register_usage_mask(insn);
-	dest = insn_jumps_to(insn);
-	
-	if (dest != 0 && 
-	    (dest < start_addr || dest >= start_addr + func->size))
-	    	reg_mask |= X86_REG_MASK_SCRATCH;
-		
-	return reg_mask;
-}
-/* ====================================================================== */
-
 static void
 cleanup_fallback_areas(void)
 {
@@ -483,35 +255,6 @@ kedr_cleanup_function_subsystem(void)
 }
 /* ====================================================================== */
 
-/* Nonzero if 'addr' is the address of some location in the "init" area of 
- * the module (may be code or data), 0 otherwise. */
-static int
-is_init_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-	if ((mod->module_init != NULL) &&
-	    (addr >= (unsigned long)(mod->module_init)) &&
-	    (addr < (unsigned long)(mod->module_init) + mod->init_size))
-		return 1;
-	
-	return 0;
-}
-
-/* Nonzero if 'addr' is the address of some location in the "core" area of 
- * the module (may be code or data), 0 otherwise. */
-static int
-is_core_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-
-	if ((mod->module_core != NULL) &&
-	    (addr >= (unsigned long)(mod->module_core)) &&
-	    (addr < (unsigned long)(mod->module_core) + mod->core_size))
-		return 1;
-	
-	return 0;
-}
-
 /* Nonzero if 'addr' is the address of some location in the code of the 
  * given module in the "init" area, 0 otherwise. */
 static int
@@ -550,16 +293,7 @@ is_text_address(unsigned long addr, struct module *mod)
 		is_init_text_address(addr, mod));
 }
 
-/* Nonzero if 'addr' is an address of some location within the given 
- * function, 0 otherwise. */
-static int
-is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
-{
-	return (addr >= (unsigned long)func->addr && 
-		addr < (unsigned long)func->addr + func->size);
-}
-
-/* Prepares the structires needed to instrument the given function.
+/* Prepares the structures needed to instrument the given function.
  * Called for each function found in the target module.
  * 
  * Returns 0 if the processing succeeds, error otherwise.
@@ -753,397 +487,6 @@ find_functions(struct module *target_module)
 }
 /* ====================================================================== */
 
-/* The structure used to pass the required data to the instruction 
- * processing facilities (invoked by for_each_insn_in_function() in 
- * instrument_function() - hence "if_" in the name). 
- * The structure should be kept reasonably small in size so that it could be 
- * placed on the stack. */
-struct kedr_if_data
-{
-	struct module *mod; /* target module */
-	// TODO: add more fields here if necessary.
-};
-
-static int
-skip_trailing_zeros(struct kedr_ifunc *func)
-{
-	/* Skip trailing zeros. If these are a part of an instruction,
-	 * it will be handled automatically. If it just a padding sequence,
-	 * we will avoid reading past the end of the function.
-	 * Anyway, it is unlikely that a function ends with something like
-	 * 'add %al, %(eax)', that is, 0x0000. */
-	while (func->size != 0 && 
-		*(u8 *)((unsigned long)func->addr + func->size - 1) == '\0')
-		--func->size;
-	
-	if (func->size == 0) { /* Very unlikely. Broken module? */
-		pr_err("[sample] "
-"A spurious symbol \"%s\" (address: %p) seems to contain only zeros\n",
-			func->name,
-			func->addr);
-		return -EILSEQ;
-	}
-	return 0;
-}
-
-/* Return nonzero if the given tables overlap, 0 otherwise. */
-static int 
-jtables_overlap(struct kedr_jtable *jtable1, struct kedr_jtable *jtable2)
-{
-	if (jtable2->addr <= jtable1->addr) {
-		unsigned long jtable2_end = (unsigned long)jtable2->addr + 
-			jtable2->num * sizeof(unsigned long);
-		return (jtable2_end > (unsigned long)jtable1->addr);
-	} 
-	else { /* jtable2->addr > jtable1->addr */
-		unsigned long jtable1_end = (unsigned long)jtable1->addr + 
-			jtable1->num * sizeof(unsigned long);
-		return (jtable1_end > (unsigned long)jtable2->addr);
-	}
-}
-
-/* Check if this jump table and some jump tables processed earlier overlap,
- * and if so, adjust numbers of elements as necessary to eliminate this. 
- * 
- * Call this function before adding jtable to the list of jump tables 
- * in 'func'. */
-static void
-resolve_jtables_overlaps(struct kedr_jtable *jtable, 
-	struct kedr_ifunc *func)
-{
-	struct kedr_jtable *pos;
-	list_for_each_entry(pos, &func->jump_tables, list) {
-		if (!jtables_overlap(jtable, pos))
-			continue;
-		
-		/* Due to the way the tables are searched for, they must end
-		 * at the same address if they overlap. 
-		 * 
-		 * [NB] When adding, we take into account that *->addr is 
-		 * a pointer to unsigned long. */
-		WARN_ON(jtable->addr + jtable->num != pos->addr + pos->num);
-		
-		if (jtable->addr == pos->addr) {
-			jtable->num = 0;
-		} 
-		else if (pos->addr < jtable->addr) {
-			pos->num = (unsigned int)((int)pos->num - 
-				(int)jtable->num);
-		}
-		else { /* jtable->addr < pos->addr */
-			jtable->num = (unsigned int)((int)jtable->num - 
-				(int)pos->num);
-		}
-	}
-}
-
-static int 
-handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn, 
-	struct kedr_if_data *if_data)
-{
-	unsigned long jtable_addr;
-	unsigned long end_addr = 0;
-	int in_init = 0;
-	int in_core = 0;
-	struct module *mod = if_data->mod;
-	unsigned long pos;
-	unsigned int num_elems;
-	/*unsigned int i;*/
-	struct kedr_jtable *jtable;
-	/*int ret = 0;*/
-	
-	jtable_addr = 
-		X86_SIGN_EXTEND_V32(insn->displacement.value);
-	
-	/* [NB] Do not use is_*_text_address() here, because the jump tables
-	 * are usually stored in one of the data sections rather than code
-	 * sections. */
-	if (is_core_address(jtable_addr, mod)) {
-		in_core = 1;
-		end_addr = (unsigned long)mod->module_core + 
-			(unsigned long)mod->core_size - 
-			sizeof(unsigned long);
-	}
-	else if (is_init_address(jtable_addr, mod)) {
-		in_init = 1;
-		end_addr = (unsigned long)mod->module_init + 
-			(unsigned long)mod->init_size - 
-			sizeof(unsigned long);
-	}
-	
-	/* Sanity check: jtable_addr should point to some location within
-	 * the module. */
-	if (!in_core && !in_init) {
-		pr_warning("[sample] Spurious jump table (?) at %p "
-			"referred to by jmp at %pS, leaving it as is.\n",
-			(void *)jtable_addr,
-			insn->kaddr);
-		WARN_ON_ONCE(1);
-		return 0;
-	}
-	
-	/* A rather crude (and probably not always reliable) way to find
-	 * the number of elements in the jump table. */
-	num_elems = 0;
-	for (pos = jtable_addr; pos <= end_addr; 
-		pos += sizeof(unsigned long)) {
-		unsigned long jaddr = *(unsigned long *)pos;
-		if (!is_address_in_function(jaddr, func))
-			break;
-		++num_elems;
-	}
-	
-	/* Local near indirect jumps may only jump to the beginning of a 
-	 * block, so we need to add the contents of the jump table to the 
-	 * array of block boundaries. */
-	/*ret = block_offsets_reserve(if_data, num_elems);
-	if (ret != 0)
-		return ret;
-	
-	for (i = 0; i < num_elems; ++i) {
-		unsigned long jaddr = *((unsigned long *)jtable_addr + i);
-		if_data->block_offsets[if_data->num++] = 
-			(u32)(jaddr - func_start);
-	}*/
-	
-	/* Store the information about this jump table in 'func'. It may be
-	 * needed during instrumentation to properly fixup the contents of
-	 * the table. */
-	jtable = (struct kedr_jtable *)kzalloc(
-		sizeof(struct kedr_jtable), GFP_KERNEL);
-	if (jtable == NULL)
-		return -ENOMEM;
-	
-	jtable->addr = (unsigned long *)jtable_addr;
-	jtable->num  = num_elems;
-	
-	resolve_jtables_overlaps(jtable, func);
-	
-	/* We add the new item at the tail of the list to make sure the 
-	 * order of the items is the same as the order of the corresponding
-	 * indirect jumps. This simplifies creation of the jump tables for 
-	 * the instrumented instance of the function. */
-	list_add_tail(&jtable->list, &func->jump_tables);
-	++func->num_jump_tables;
-	
-	//<>
-	pr_info("[DBG] Found jump table with %u entries at %p "
-		"referred to by a jmp at %pS\n",
-		jtable->num,
-		(void *)jtable->addr, 
-		(void *)insn->kaddr);
-	//<>
-	return 0;
-}
-
-static int
-do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
-{
-	int ret = 0;
-	struct kedr_if_data *if_data = (struct kedr_if_data *)data;
-	unsigned long start_addr;
-	unsigned long offset_after_insn;
-	u8 opcode;
-	
-	BUG_ON(if_data == NULL);
-	
-	start_addr = (unsigned long)func->addr;
-	offset_after_insn = (unsigned long)insn->kaddr + 
-		(unsigned long)insn->length - start_addr;
-		
-	/* If we've got too far, probably there is a bug in our system. It 
-	 * is impossible for an instruction to be located at 64M distance
-	 * or further from the beginning of the corresponding function. */
-	BUG_ON(offset_after_insn >= 0x04000000UL);
-	
-	/* If we have skipped too many zeros at the end of the function, 
-	 * that is, if we have cut off a part of the last instruction, fix
-	 * it now. */
-	if (offset_after_insn > func->size)
-		func->size = offset_after_insn;
-	
-	//<>
-	// For now, just process indirect near jumps that can use jump 
-	// tables. In the future - build the IR.
-	opcode = insn->opcode.bytes[0];
-	/* Some indirect near jumps need additional processing, namely those 
-	 * that have the following form: 
-	 * jmp near [<jump_table> + reg * <scale>]. 
-	 * [NB] We don't need to do anything about other kinds of indirect 
-	 * jumps, like jmp near [reg]. 
-	 * 
-	 * jmp near indirect has code FF/4. 'mod' and 'R/M' fields are used 
-	 * here to determine if SIB byte is present. */
-	if (opcode == 0xff && 
-		X86_MODRM_REG(insn->modrm.value) == 4 && 
-		X86_MODRM_MOD(insn->modrm.value) != 3 &&
-		X86_MODRM_RM(insn->modrm.value) == 4) {
-		ret = handle_jmp_near_indirect(func, insn, if_data);
-		if (ret != 0)
-			return ret;
-	}
-	//<>
-	
-	// TODO: record in IR which instruction each element in each
-	// jump table refers to.
-	
-	// TODO
-	return 0; 
-}
-
-/* Fix up the jump tables for the given function so that the fallback 
- * instance could use them. */
-static void
-fixup_fallback_jump_tables(struct kedr_ifunc *func)
-{
-	struct kedr_jtable *jtable;
-	unsigned long func_start = (unsigned long)func->addr;
-	unsigned long fallback_start = (unsigned long)func->fallback;
-	
-	list_for_each_entry(jtable, &func->jump_tables, list) {
-		unsigned long *table = jtable->addr;
-		unsigned int i;
-		/* If the code refers to a "table" without elements (e.g. a 
-		 * table filled with the addresses of other functons, etc.),
-		 * nothing will be done. */
-		for (i = 0; i < jtable->num; ++i)
-			table[i] = table[i] - func_start + fallback_start;
-	}
-}
-
-/* Creates the jump tables for the instrumented instance of the function 
- * 'func' based on the jump tables for the original function. The jump 
- * tables will be filled with meaningful data during the instrumentation. 
- * For now, they will be just allocated, and the pointers to them will be 
- * stored in func->i_jump_tables[]. If an item of jump_table list has 0 
- * elements, the corresponding item in func->i_jump_tables[] will be NULL.
- *
- * [NB] The order of the corresponding indirect jumps and the order of the 
- * elements in func->jump_tables list must be the same. 
- *
- * [NB] In case of error, func->i_jump_tables will be freed in 
- * ifunc_destroy(), so it is not necessary to free it here. */
-static int 
-create_jump_tables(struct kedr_ifunc *func)
-{
-	struct kedr_jtable *jtable;
-	unsigned int total = 0;
-	unsigned int i = 0;
-	void *buf;
-	
-	if (func->num_jump_tables == 0)
-		return 0;
-		
-	func->i_jump_tables = kzalloc(
-		func->num_jump_tables * sizeof(unsigned long *),
-		GFP_KERNEL);
-	if (func->i_jump_tables == NULL)
-		return -ENOMEM;
-	
-	/* Find the total number of elements in all jump tables for this 
-	 * function. */
-	list_for_each_entry(jtable, &func->jump_tables, list) {
-		total += jtable->num;
-	}
-	
-	/* If there are jump tables but each of these jump tables has no
-	 * elements (i.e. the jumps are not within the function), nothing to
-	 * do. */
-	if (total == 0)
-		return 0;
-	
-	buf = kedr_alloc_detour_buffer(total * sizeof(unsigned long));
-	if (buf == NULL)
-		return -ENOMEM;
-	
-	list_for_each_entry(jtable, &func->jump_tables, list) {
-		if (jtable->num == 0) {
-			func->i_jump_tables[i] = NULL;
-		} 
-		else {
-			func->i_jump_tables[i] = (unsigned long *)buf;
-			buf = (void *)((unsigned long)buf + 
-				jtable->num * sizeof(unsigned long));
-		}
-		++i;
-	}
-	BUG_ON(i != func->num_jump_tables);
-	return 0;
-}
-
-/* Creates the instrumented instance in a temporary buffer. The resulting 
- * code will only need relocation before it can be used. 'tbuf_addr' and 
- * 'i_size' become defined, 'tbuf_addr' pointing to that buffer. 
- * [NB] The value of 'i_addr' will be defined later, when the function is 
- * copied to its final location. 
- *
- * [NB] Here, we can assume that the size of the function is not less than
- * the size of 'jmp near rel32'.
- * 
- * The data offsets (used with RIP-relative addressing) and call/jump 
- * offsets will be relocated here as if each corresponding instruction was
- * at address 0. */
-static int
-instrument_function(struct kedr_ifunc *func, struct module *mod)
-{
-	int ret = 0;
-	
-	//<>
-	u32 *poffset;
-	//<>
-	struct kedr_if_data if_data;
-	
-	ret = skip_trailing_zeros(func);
-	if (ret != 0)
-		return ret;
-	
-	/* First, decode and process the machine instructions one by one and
-	 * build the IR (TODO: IR). 
-	 * 
-	 * do_process_insn() will also adjust the length of the function if
-	 * we have skipped too many zeros. */
-	if_data.mod = mod;
-	ret = for_each_insn_in_function(func, do_process_insn, 
-		(void *)&if_data);
-	if (ret != 0)
-		return ret;
-	
-	/* Allocate and partially initialize the jump tables for the 
-	 * instrumented instance. */
-	ret = create_jump_tables(func);
-	if (ret != 0)
-		return ret;
-	
-	// TODO: do_instrumentation() - perform the instrumentation.
-	// Among other things, fill the jump tables (if any) with the 
-	// "pointers" to the appropriate positions in the instrumented 
-	// function. The quotation marks are here to imply that these values
-	// are not actually pointers at this stage. They are computed as if
-	// the instrumented function had the start address of 0. They will
-	// be fixed up during the deployment phase.
-	
-	fixup_fallback_jump_tables(func);
-	
-	//<>
-	// For now, the instrumented instance will contain only a jump to 
-	// the fallback function (relocated to the instruction address of 0)
-	// to check the mechanism.
-	func->tbuf_addr = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
-	if (func->tbuf_addr == NULL)
-		return -ENOMEM;
-	
-	func->i_size = KEDR_SIZE_JMP_REL32;
-	
-	*(u8 *)func->tbuf_addr = KEDR_OP_JMP_REL32;
-	poffset = (u32 *)((unsigned long)func->tbuf_addr + 1);
-	*poffset = X86_OFFSET_FROM_ADDR(0, 
-		KEDR_SIZE_JMP_REL32, 
-		(unsigned long)func->fallback);
-	//<>
-	
-	return 0;
-}
-
 /* Relocate the given instruction in the fallback function in place. The 
  * code was "moved" from base address func->addr to func->fallback. 
  * [NB] No need to process short jumps outside of the function, they are 
@@ -1232,6 +575,27 @@ relocate_fallback_function(struct kedr_ifunc *func)
 		(void *)func); 
 }
 
+
+/* Fix up the jump tables for the given function so that the fallback 
+ * instance could use them. */
+static void
+fixup_fallback_jump_tables(struct kedr_ifunc *func)
+{
+	struct kedr_jtable *jtable;
+	unsigned long func_start = (unsigned long)func->addr;
+	unsigned long fallback_start = (unsigned long)func->fallback;
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		unsigned long *table = jtable->addr;
+		unsigned int i;
+		/* If the code refers to a "table" without elements (e.g. a 
+		 * table filled with the addresses of other functons, etc.),
+		 * nothing will be done. */
+		for (i = 0; i < jtable->num; ++i)
+			table[i] = table[i] - func_start + fallback_start;
+	}
+}
+
 /* Creates an instrumented instance of function specified by 'func' and 
  * prepares the corresponding fallback function for later usage. */
 static int
@@ -1259,6 +623,7 @@ do_process_function(struct kedr_ifunc *func, struct module *mod)
 	/* The buffer must have been allocated. */
 	BUG_ON(func->tbuf_addr == NULL); 
 	
+	fixup_fallback_jump_tables(func);
 	ret = relocate_fallback_function(func);
 	if (ret != 0)
 		return ret;
