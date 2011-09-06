@@ -288,7 +288,7 @@ extern int insn_is_noop(struct insn *insn);
  * instructions and the corresponding function calls use, except SP. This 
  * depends on whether an instruction actually leads outside of the caller 
  * function or it is a trick like 'call 0x05, pop %reg' or the like. */
-extern unsigned int insn_register_usage_mask(struct insn *insn);
+extern unsigned int insn_reg_mask(struct insn *insn);
 
 /* Similar to the above but only the registers used in memory addressing
  * expression (ModRM.RM, SIB) are considered. */
@@ -308,5 +308,8 @@ extern unsigned long insn_jumps_to(struct insn *insn);
 
 /* Nonzero if the instruction is a string operation. */
 extern int insn_is_string_op(struct insn *insn);
+
+/* Nonzero if the instruction has LOCK prefix, 0 otherwise. */
+extern int insn_is_locked_op(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */

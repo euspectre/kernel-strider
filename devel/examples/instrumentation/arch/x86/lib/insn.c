@@ -965,6 +965,29 @@ insn_has_rep_prefix(struct insn *insn)
 }
 
 /**
+ * insn_is_locked_op() - Determine if the instruction performs a "locked" 
+ * operation, i.e. if it has LOCK prefix.
+ * @insn:	&struct insn containing instruction
+ *
+ * If necessary, decodes the prefixes first. */
+int 
+insn_is_locked_op(struct insn *insn)
+{
+	insn_byte_t *prefixes = insn->prefixes.bytes;
+	unsigned int i;
+	
+	/* Decode the opcode and the prefixes */
+	insn_get_prefixes(insn);
+	
+	for (i = 0; i < X86_NUM_LEGACY_PREFIXES; ++i) {
+		if (prefixes[i] == 0xf0)
+			return 1;
+	}
+	return 0;
+}
+
+
+/**
  * insn_reg_mask_for_expr() - Get information about the general-purpose 
  * registers the instruction uses to address memory.
  * @insn:	&struct insn containing instruction
@@ -974,7 +997,7 @@ insn_has_rep_prefix(struct insn *insn)
  * The function considers only ModRM.RM and SIB fields (if they are present;
  * if not - the function returns an empty mask). 
  * 
- * Note that unlike insn_register_usage_mask(), the function does not check 
+ * Note that unlike insn_reg_mask(), the function does not check 
  * if the instruction is a no-op. */
 unsigned int insn_reg_mask_for_expr(struct insn *insn)
 {
@@ -984,7 +1007,7 @@ unsigned int insn_reg_mask_for_expr(struct insn *insn)
 }
 
 /**
- * insn_register_usage_mask() - Get information about the general-purpose 
+ * insn_reg_mask() - Get information about the general-purpose 
  * registers the instruction uses.
  * @insn:	&struct insn containing instruction
  *
@@ -1001,7 +1024,7 @@ unsigned int insn_reg_mask_for_expr(struct insn *insn)
  *
  * 16-bit stuff is not taken into account here.
  */
-unsigned int insn_register_usage_mask(struct insn *insn)
+unsigned int insn_reg_mask(struct insn *insn)
 {
 	unsigned int usage_mask;
 	unsigned int reg_code;
