@@ -42,7 +42,7 @@ is_core_address(unsigned long addr, struct module *mod)
 }
 /* ====================================================================== */
 
-/* Similar to insn_register_usage_mask() but also takes function calls into
+/* Similar to insn_reg_mask() but also takes function calls into
  * account. If 'insn' transfers control outside of the function
  * 'func', the register_usage_mask() considers all the scratch general
  * purpose registers used and updates the mask accordingly. 
@@ -72,7 +72,7 @@ register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
 	    opcode == 0xca || opcode == 0xcb)
 		return X86_REG_MASK(INAT_REG_CODE_SP);
 	
-	reg_mask = insn_register_usage_mask(insn);
+	reg_mask = insn_reg_mask(insn);
 	dest = insn_jumps_to(insn);
 	
 	if (dest != 0 && 
@@ -81,6 +81,43 @@ register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
 		
 	return reg_mask;
 }
+
+/* Returns the code of a register which is in 'mask_choose_from' (the 
+ * corresponding bit is 1) but not in 'mask_used' (the corresponding bit is 
+ * 0). The code is 0-7 on x86-32 and 0-15 on x86-64. If there are several
+ * registers of this kind, it is unspecified which one of them is returned.
+ * If there are no such registers, 0xff is returned. 
+ *
+ * N.B. The higher bits of the masks must be cleared. */
+static u8 
+choose_register(unsigned int mask_choose_from, unsigned int mask_used)
+{
+	unsigned int mask;
+	u8 rcode = 0;
+	
+	BUG_ON((mask_choose_from & ~X86_REG_MASK_ALL) != 0);
+	BUG_ON((mask_used & ~X86_REG_MASK_ALL) != 0);
+	
+	/* N.B. Both masks have their higher bits zeroed => so will 'mask'*/
+	mask = mask_choose_from & ~mask_used;
+	if (mask == 0)
+		return 0xff; /* nothing found */
+	
+	while (mask % 2 == 0) {
+		mask >>= 1;
+		++rcode;
+	}
+	return rcode;
+}
+
+static u8 
+choose_work_register(unsigned int mask_choose_from, unsigned int mask_used, 
+	u8 base)
+{
+	return choose_register(mask_choose_from, 
+		mask_used | X86_REG_MASK(base));
+}
+    
 /* ====================================================================== */
 
 /* The structure used to pass the required data to the instruction 
@@ -448,6 +485,22 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	
 	// TODO: release memory occupied by the IR
 	
+	//<>
+	if (strcmp(func->name, "cfake_read") == 0) {
+		unsigned int mask_choose_from = X86_REG_MASK_ALL & ~X86_REG_MASK(INAT_REG_CODE_SP)
+			& ~X86_REG_MASK(INAT_REG_CODE_SI);
+		unsigned int mask_used = X86_REG_MASK_SCRATCH | X86_REG_MASK(INAT_REG_CODE_BP)
+			| X86_REG_MASK(INAT_REG_CODE_DI);
+		pr_info("[DBG] choose from: 0x%x, used: 0x%x, chosen: %u\n",
+			mask_choose_from,
+			mask_used,
+			/*choose_register(mask_choose_from, mask_used)*/
+			choose_work_register(mask_choose_from, mask_used, INAT_REG_CODE_BX)
+		);
+	}
+	//<>
 	return 0;
 }
+/* ====================================================================== */
+
 /* ====================================================================== */
