@@ -204,7 +204,9 @@ static inline int insn_offset_immediate(struct insn *insn)
  * 'm', which can be convenient. */
 #define X86_REG_MASK_NONE	0x0
 
-/* X86_REG_MASK_ALL indicates all general-purpose registers (GPRs).
+/* X86_REG_COUNT is the number of general-purpose registers in the system.
+ * 
+ * X86_REG_MASK_ALL indicates all general-purpose registers (GPRs).
  * 
  * X86_REG_MASK_SCRATCH - all "scratch" general purpose registers, those 
  * that a called function does not have to preserve. 
@@ -212,6 +214,7 @@ static inline int insn_offset_immediate(struct insn *insn)
  * On 64-bit systems, the scratch GPRs are: RAX, RCX, RDX, RSI, RDI, R8-R11.
  */
 #ifdef CONFIG_X86_64
+# define X86_REG_COUNT		16
 # define X86_REG_MASK_ALL	0x0000ffff
 # define X86_REG_MASK_SCRATCH	(X86_REG_MASK(INAT_REG_CODE_AX) | \
 				 X86_REG_MASK(INAT_REG_CODE_CX) | \
@@ -223,6 +226,7 @@ static inline int insn_offset_immediate(struct insn *insn)
 				 X86_REG_MASK(INAT_REG_CODE_10) | \
 				 X86_REG_MASK(INAT_REG_CODE_11))
 #else /* CONFIG_X86_32 */
+# define X86_REG_COUNT		8
 # define X86_REG_MASK_ALL	0x000000ff
 # define X86_REG_MASK_SCRATCH	(X86_REG_MASK(INAT_REG_CODE_AX) | \
 				 X86_REG_MASK(INAT_REG_CODE_CX) | \

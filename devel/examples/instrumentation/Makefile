@@ -17,16 +17,22 @@ MODULE_SOURCES := \
 	debug_util.c 	\
 	detour_buffer.c \
 	util.c 		\
-	instrument.c
+	instrument.c	\
+	code_gen.c	\
+	operations.c
 
 # This is only to specify build dependencies
 MODULE_HEADERS := \
-	ifunc.h	\
+	ifunc.h		\
 	functions.h	\
 	debug_util.h	\
 	detour_buffer.h	\
 	util.h		\
-	instrument.h
+	instrument.h	\
+	code_gen.h	\
+	operations.h	\
+	ir.h		\
+	primary_storage.h
 
 # This is only to specify build dependencies
 INSN_ANALYZER_FILES := \
@@ -61,13 +67,15 @@ else
 ccflags-y :=  -I$(src) -I$(src)/$(ARCH_DIR)/include -I$(obj)/$(ARCH_DIR)/lib
 
 obj-m := $(MODULE_NAME).o
-$(MODULE_NAME)-y :=	\
+$(MODULE_NAME)-y := \
 	module.o	\
 	functions.o	\
 	debug_util.o	\
 	detour_buffer.o	\
 	util.o		\
 	instrument.o	\
+	code_gen.o	\
+	operations.o	\
 	$(ARCH_DIR)/lib/inat.o \
 	$(ARCH_DIR)/lib/insn.o
 

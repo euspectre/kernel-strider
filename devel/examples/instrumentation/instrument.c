@@ -10,6 +10,10 @@
 #include "instrument.h"
 #include "util.h"
 #include "detour_buffer.h"
+#include "primary_storage.h"
+#include "ir.h"
+#include "code_gen.h"
+#include "operations.h"
 /* ====================================================================== */
 
 /* Nonzero if 'addr' is the address of some location in the "init" area of 
@@ -117,7 +121,7 @@ choose_work_register(unsigned int mask_choose_from, unsigned int mask_used,
 	return choose_register(mask_choose_from, 
 		mask_used | X86_REG_MASK(base));
 }
-    
+
 /* ====================================================================== */
 
 /* The structure used to pass the required data to the instruction 
@@ -497,10 +501,18 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			/*choose_register(mask_choose_from, mask_used)*/
 			choose_work_register(mask_choose_from, mask_used, INAT_REG_CODE_BX)
 		);
+		
+		pr_info("[DBG] size of primary storage (bytes): %zu\n",
+			sizeof(struct kedr_primary_storage));
+			
+		pr_info("[DBG] function addresses: "
+			"0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
+			(unsigned long)&kedr_process_function_entry_wrapper,
+			(unsigned long)&kedr_process_function_exit_wrapper,
+			(unsigned long)&kedr_process_block_end_wrapper,
+			(unsigned long)&kedr_lookup_replacement_wrapper);
 	}
 	//<>
 	return 0;
 }
-/* ====================================================================== */
-
 /* ====================================================================== */
