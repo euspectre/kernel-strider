@@ -38,9 +38,6 @@ struct kedr_ifunc
 	/* Size of the instrumented version of the function. */
 	unsigned long i_size;
 	
-	/* The list of code blocks in the function */
-	//struct list_head blocks;
-	
 	/* The list of jump tables for the original function (one element 
 	 * per each indirect near jump of the appropriate kind). Some jump
 	 * tables may have 0 elements, this can happen if the elements are 

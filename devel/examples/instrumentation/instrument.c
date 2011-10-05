@@ -219,9 +219,7 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 	struct module *mod = if_data->mod;
 	unsigned long pos;
 	unsigned int num_elems;
-	/*unsigned int i;*/
 	struct kedr_jtable *jtable;
-	/*int ret = 0;*/
 	
 	jtable_addr = 
 		X86_SIGN_EXTEND_V32(insn->displacement.value);
@@ -335,7 +333,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	
 	//<>
 	// For now, just process indirect near jumps that can use jump 
-	// tables. In the future - build the IR.
+	// tables. In the future - build the IR in addition to that.
 	opcode = insn->opcode.bytes[0];
 	/* Some indirect near jumps need additional processing, namely those 
 	 * that have the following form: 
@@ -460,6 +458,10 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 {
 	int ret = 0;
 	struct kedr_if_data if_data;
+	
+	BUILD_BUG_ON(KEDR_MEM_NUM_RECORDS > sizeof(unsigned long) * 8);
+	
+	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
 	
 	ret = skip_trailing_zeros(func);
 	if (ret != 0)

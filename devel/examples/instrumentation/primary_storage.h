@@ -66,8 +66,8 @@ struct kedr_primary_storage
 	 * below specify whether the corresponding memory access events have
 	 * a given property. If bit #i is 1, the event mem_record[i] has 
 	 * this property, if 0, it does not.
-	 * - read_mask  - property: a read from memory occured;
-	 * - write_mask - property: a write to memory occured;
+	 * - read_mask  - property: a read from memory occurs;
+	 * - write_mask - property: a write to memory occurs;
 	 * - lock_mask  - property: the memory access operation is locked,
 	 *        that is, no other access to the given memory area can take
          *        place during this operation. */

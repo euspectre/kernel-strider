@@ -152,23 +152,33 @@ ifuncs_destroy_all(void)
 		ifunc_destroy(pos);
 		kfree(pos);
 	}
+	
+	num_funcs = 0; /* just in case */
 }
 
-/* Remove from the list and destroy the elements with zero size. 
- * Such elements may appear if there are aliases for one or more functions,
- * that is, if there are symbols with the same start address. When doing the
- * instrumentation, we need to process only one function of each such group,
- * no matter which one exactly. */
+/* Remove from the list and destroy the elements with the size less than the
+ * size of 'jmp near rel32'.
+ * 
+ * The elements with zero size may appear if there are aliases for one or 
+ * more functions, that is, if there are symbols with the same start 
+ * address. When doing the instrumentation, we need to process only one 
+ * function of each such group, no matter which one exactly. 
+ * 
+ * The functions with the size less than the size of 'jmp near rel32' can 
+ * not be detoured anyway (not enough space to place a jump in). We remove 
+ * them from the list to avoid checking the size of the function each time 
+ * later. */
 static void
-ifuncs_remove_aliases(void)
+ifuncs_remove_aliases_and_small_funcs(void)
 {
 	struct kedr_ifunc *pos;
 	struct kedr_ifunc *tmp;
 	
 	list_for_each_entry_safe(pos, tmp, &ifuncs, list) {
-		if (pos->size == 0) {
+		if (pos->size < KEDR_SIZE_JMP_REL32) {
 			list_del(&pos->list);
 			kfree(pos);
+			--num_funcs;
 		}
 	}
 }
@@ -480,9 +490,11 @@ find_functions(struct module *target_module)
 	}
 	kfree(pfuncs);
 	
-	ifuncs_remove_aliases();
-	
-	WARN_ON(list_empty(&ifuncs));
+	ifuncs_remove_aliases_and_small_funcs();
+	if (list_empty(&ifuncs))
+		pr_info("[sample] No functions found in \"%s\" "
+			"that can be instrumented\n",
+			module_name(target_module));
 	return 0;
 }
 /* ====================================================================== */
@@ -603,14 +615,9 @@ do_process_function(struct kedr_ifunc *func, struct module *mod)
 {
 	int ret = 0;
 	BUG_ON(func == NULL || func->addr == NULL);
-		
-	/* If the function is too short (shorter than a single 'jmp rel32' 
-	 * instruction), do not instrument it. Just report success and do 
-	 * nothing more. 
-	 * func->i_size will remain 0, func->tbuf_addr and func->i_addr - 
-	 * NULL. */
-	if (func->size < KEDR_SIZE_JMP_REL32)
-		return 0;
+	
+	/* Small functions should have been removed from the list */
+	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
 	
 	ret = instrument_function(func, mod);
 	if (ret != 0)
@@ -804,10 +811,9 @@ deploy_instrumented_code(void)
 	
 	dest_addr = KEDR_ALIGN_VALUE(detour_buffer);
 	list_for_each_entry(func, &ifuncs, list) {
-		if (func->i_size == 0) 
-			/* the function was too small to be instrumented */
-			continue;
-		
+		/* Small functions should have been removed from the list */
+		BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
+
 		BUG_ON(func->tbuf_addr == NULL);
 		BUG_ON(func->i_addr != NULL);
 		
@@ -837,6 +843,10 @@ detour_original_functions(void)
 	struct kedr_ifunc *func;
 	
 	list_for_each_entry(func, &ifuncs, list) {
+		
+		/* Small functions should have been removed from the list */
+		BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
+		
 		/* Place the jump to the instrumented instance at the 
 		 * beginning of the original instance.
 		 * [NB] We allocate memory for the detour buffer in a 

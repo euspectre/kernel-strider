@@ -14,10 +14,15 @@
  *
  * Each of the wrappers should be passed a single parameter via %eax/%rax. 
  * kedr_process_function_entry() and kedr_lookup_replacement() return the
- * result in %eax/%rax too, the other functions return nothing. */
+ * result in %eax/%rax too, the other functions return nothing. 
+ *
+ * KEDR_DECLARE_WRAPPER(__func) declares a wrapper for function '__func'. */
+
+#define KEDR_DECLARE_WRAPPER(__func) void __func ## _wrapper(void)
 /* ====================================================================== */
 
-/* This function is called at the beginning of the instrumented function.
+/* kedr_process_function_entry
+ * This function is called at the beginning of the instrumented function.
  * It allocates and initializes the primary storage (see primary_storage.h,
  * struct kedr_primary_storage). 0 is returned if the allocation fails or 
  * some other error occurs.
@@ -40,12 +45,12 @@
  *   the address (unsigned long) of the allocated and properly intialized 
  *   primary storage if successful, 0 on failure. 
  */
-void 
-kedr_process_function_entry_wrapper(void);
+KEDR_DECLARE_WRAPPER(kedr_process_function_entry);
 
-/* This function is called before the instrumented function exits. If the
+/* kedr_process_function_exit
+ * This function is called before the instrumented function exits. If the
  * latter has several exit points, the calls to kedr_process_function_exit() 
- * will be placed for each of these.
+ * should be placed before each of these.
  * The function deallocates the primary storage and may also perform other 
  * tasks like calling a user-defined function, recording the function exit 
  * in the trace, etc.
@@ -55,10 +60,10 @@ kedr_process_function_entry_wrapper(void);
  * Return value:
  *   none. 
  */
-void 
-kedr_process_function_exit_wrapper(void);
+KEDR_DECLARE_WRAPPER(kedr_process_function_exit);
 
-/* This function is called after a normal code block ends. The function 
+/* kedr_process_block_end
+ * This function is called after a normal code block ends. The function 
  * extracts the collected data from the storage (the records that have 
  * nonzero 'pc' value) and passes them to the output system ("flush"). The
  * data records, masks and 'dest_addr' are then reinitialized (zeroed) in
@@ -70,10 +75,10 @@ kedr_process_function_exit_wrapper(void);
  * Return value:
  *   none. 
  */
-void 
-kedr_process_block_end_wrapper(void);
+KEDR_DECLARE_WRAPPER(kedr_process_block_end);
 
-/* This function is used in handling of function calls in the form of 
+/* kedr_lookup_replacement
+ * This function is used in handling of function calls in the form of 
  * indirect calls and jumps. The start address of the about-to-be-called
  * function is known only in runtime, so if it is necessary to replace the 
  * call to this function with a call to a user-defined function with the 
@@ -90,8 +95,7 @@ kedr_process_block_end_wrapper(void);
  *   replacement should take place, otherwise - the address of the 
  *   replacement function). 
  */
-void 
-kedr_lookup_replacement_wrapper(void);
+KEDR_DECLARE_WRAPPER(kedr_lookup_replacement);
 /* ====================================================================== */
 
 #endif // OPERATIONS_H_1810_INCLUDED

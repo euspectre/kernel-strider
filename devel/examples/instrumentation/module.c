@@ -1,7 +1,4 @@
-/* An example demonstrating how to "inject" a call to a specified function 
- * into the beginning of each function in a kernel module.
- * This example detours execution of the functions. It is based on 
- * "func_detour" example. */
+/* An example demonstrating instrumentation of memory reads and writes */
  
 /*
  * module.c: module-related definitions; loading and unloading detection.
@@ -29,7 +26,7 @@ MODULE_LICENSE("GPL");
 static char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
 
-/* Name of the function to process. */
+/* Name of the function to provide additional debug output for. */
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
 
