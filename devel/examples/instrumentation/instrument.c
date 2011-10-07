@@ -4,6 +4,7 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/hash.h>
 
 #include <kedr/asm/insn.h> /* instruction analysis support */
 
@@ -14,6 +15,71 @@
 #include "ir.h"
 #include "code_gen.h"
 #include "operations.h"
+/* ====================================================================== */
+
+/* Parameters of a hash map to be used to lookup IR nodes by the addresses 
+ * of the corresponding machine instructions in the original code.
+ * 
+ * KEDR_IF_TABLE_SIZE - number of buckets in the table. */
+#define KEDR_IF_HASH_BITS   10
+#define KEDR_IF_TABLE_SIZE  (1 << KEDR_IF_HASH_BITS)
+
+/* The hash map (original address; IR node). */
+static struct hlist_head node_map[KEDR_IF_TABLE_SIZE];
+
+/* Initialize the hash map of nodes. */
+static void
+node_map_init(void)
+{
+	unsigned int i = 0;
+	for (; i < KEDR_IF_TABLE_SIZE; ++i)
+		INIT_HLIST_HEAD(&node_map[i]);
+}
+
+/* Remove all the items from the node map. */
+static void
+node_map_clear(void)
+{
+	struct hlist_node *pos = NULL;
+	struct hlist_node *tmp = NULL;
+	unsigned int i = 0;
+	
+	for (; i < KEDR_IF_TABLE_SIZE; ++i) {
+		hlist_for_each_safe(pos, tmp, &node_map[i])
+			hlist_del(pos);
+	}
+}
+
+/* Add a given node to the hash map with the address of the corresponding 
+ * instruction in the original function ('node->orig_addr') as a key. */
+static void
+node_map_add(struct kedr_ir_node *node)
+{
+	unsigned long bucket; 
+	INIT_HLIST_NODE(&node->hlist);
+	
+	bucket = hash_ptr((void *)(node->orig_addr), KEDR_IF_HASH_BITS);
+	hlist_add_head(&node->hlist, &node_map[bucket]);
+}
+
+/* Find the IR node corresponding to the instruction at the given address
+ * in the original function. 
+ * Returns the pointer to the node if found, NULL otherwise. */
+static struct kedr_ir_node *
+node_map_lookup(unsigned long orig_addr)
+{
+	struct kedr_ir_node *node = NULL;
+	struct hlist_node *tmp = NULL;
+	
+	unsigned long bucket = 
+		hash_ptr((void *)(orig_addr), KEDR_IF_HASH_BITS);
+	hlist_for_each_entry(node, tmp, &node_map[bucket], hlist) {
+		if (node->orig_addr == orig_addr)
+			return node;
+	}
+	return NULL; 
+}
+
 /* ====================================================================== */
 
 /* Nonzero if 'addr' is the address of some location in the "init" area of 
@@ -121,6 +187,105 @@ choose_work_register(unsigned int mask_choose_from, unsigned int mask_used,
 	return choose_register(mask_choose_from, 
 		mask_used | X86_REG_MASK(base));
 }
+/* ====================================================================== */
+
+struct kedr_ir_node *
+kedr_ir_node_create(void)
+{
+	struct kedr_ir_node *node;
+	
+	node = kzalloc(sizeof(struct kedr_ir_node), GFP_KERNEL);
+	if (node == NULL)
+		return NULL;
+	
+	node->first_node = node;
+	node->last_node  = node;
+	
+	return node;
+}
+
+void
+kedr_ir_node_destroy(struct kedr_ir_node *node)
+{
+	kfree(node);
+}
+
+/* Construct an IR node from the decoded instruction '*src_insn'. 
+ * The instruction is copied to the node. The function returns the pointer 
+ * to the constructed and initialized node on success, NULL if there is not
+ * enough memory to complete the operation. 
+ * 
+ * The function sets 'orig_addr' field of the newly created node as the 
+ * value of 'src_insn->kaddr', the address of the original instruction. */
+static struct kedr_ir_node *
+ir_node_create_from_insn(const struct insn *src_insn)
+{
+	struct kedr_ir_node *node;
+	
+	BUG_ON(src_insn == NULL);
+	
+	/* If src_insn->length is 0, this means that '*src_insn' instruction
+	 * is not decoded completely, which must not happen here. */
+	BUG_ON(src_insn->length == 0);
+	BUG_ON(src_insn->length > X86_MAX_INSN_SIZE);
+	
+	node = kedr_ir_node_create();
+	if (node == NULL)
+		return NULL;
+	
+	/* Copy the instruction bytes */
+	memcpy(&node->insn_buffer[0], src_insn->kaddr, src_insn->length);
+	
+	/* Copy the decoded information, adjust the pointers */
+	memcpy(&node->insn, src_insn, sizeof(struct insn));
+	node->insn.kaddr = (insn_byte_t *)(&node->insn_buffer[0]);
+	node->insn.next_byte = 
+		(insn_byte_t *)((unsigned long)(&node->insn_buffer[0]) +
+		src_insn->length);
+	
+	node->orig_addr = (unsigned long)src_insn->kaddr;
+	return node;
+}
+
+/* Remove all the nodes from the IR and delete all of them. */
+static void
+ir_destroy(struct list_head *ir)
+{
+	struct kedr_ir_node *pos;
+	struct kedr_ir_node *tmp;
+	
+	list_for_each_entry_safe(pos, tmp, ir, list) {
+		list_del(&pos->list);
+		kedr_ir_node_destroy(pos);
+	}
+}
+
+/* For each direct jump within the function, link its node in the IR to the 
+ * node corresponding to the destination. */
+static void
+ir_make_links_for_jumps(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *pos;
+
+	WARN_ON(list_empty(ir));
+	
+	/* [NB] the 0 address is definitely outside of the function */
+	list_for_each_entry(pos, ir, list) {
+		if (!is_address_in_function(pos->dest_addr, func))
+			continue;
+		pos->dest_inner = node_map_lookup(pos->dest_addr);
+		
+		/* If the jump destination is inside of this function, we 
+		 * must have created the node for it and add this node to
+		 * the hash map. */
+		if (pos->dest_inner == NULL) {
+			pr_err("[sample] No IR element found for "
+				"the instruction at %p\n", 
+				(void *)pos->dest_addr);
+			BUG();
+		}
+	}
+}
 
 /* ====================================================================== */
 
@@ -131,7 +296,8 @@ choose_work_register(unsigned int mask_choose_from, unsigned int mask_used,
  * placed on the stack. */
 struct kedr_if_data
 {
-	struct module *mod; /* target module */
+	struct module *mod;   /* target module */
+	struct list_head *ir; /* intermediate representation of the code */
 	// TODO: add more fields here if necessary.
 };
 
@@ -305,6 +471,26 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 	return 0;
 }
 
+static void
+ir_node_set_dest_addr(struct kedr_ir_node *node, struct insn *insn)
+{
+	node->dest_addr = insn_jumps_to(insn);
+}
+
+static void
+ir_node_set_iprel_addr(struct kedr_ir_node *node, struct insn *insn)
+{
+#ifdef CONFIG_X86_64
+	if (!insn_rip_relative(insn))
+		return;
+
+	node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
+		insn->kaddr,
+		insn->length, 
+		insn->displacement.value);
+#endif
+}
+
 static int
 do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 {
@@ -313,6 +499,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	unsigned long start_addr;
 	unsigned long offset_after_insn;
 	u8 opcode;
+	struct kedr_ir_node *node = NULL;
 	
 	BUG_ON(if_data == NULL);
 	
@@ -331,15 +518,13 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	if (offset_after_insn > func->size)
 		func->size = offset_after_insn;
 	
-	//<>
-	// For now, just process indirect near jumps that can use jump 
-	// tables. In the future - build the IR in addition to that.
 	opcode = insn->opcode.bytes[0];
-	/* Some indirect near jumps need additional processing, namely those 
-	 * that have the following form: 
+
+	/* Process indirect near jumps that can use jump tables, namely
+	 * the jumps having the following form: 
 	 * jmp near [<jump_table> + reg * <scale>]. 
 	 * [NB] We don't need to do anything about other kinds of indirect 
-	 * jumps, like jmp near [reg]. 
+	 * jumps, like jmp near [reg], here. 
 	 * 
 	 * jmp near indirect has code FF/4. 'mod' and 'R/M' fields are used 
 	 * here to determine if SIB byte is present. */
@@ -351,21 +536,53 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 		if (ret != 0)
 			return ret;
 	}
-	//<>
 	
-	// TODO: record in IR which instruction each element in each
-	// jump table refers to.
+	/* Create the IR node and record the mapping (address, node) in a 
+	 * hash map. */
+	node = ir_node_create_from_insn(insn);
+	if (node == NULL)
+		return -ENOMEM;
 	
-	// TODO
+	ir_node_set_dest_addr(node, insn);
+	ir_node_set_iprel_addr(node, insn);
+	
+	list_add_tail(&node->list, if_data->ir);
+	node_map_add(node);
+	
 	return 0; 
+}
+
+/* Find the IR nodes corresponding to the elements of 'jtable', write their 
+ * addresses to the elements of 'i_jtable'. The jump tables for the 
+ * instrumented code will contain these addresses until the instrumented 
+ * code is prepared. After that, the elements of these tables should be 
+ * replaced with the appropriate values. */
+static void
+ir_prefill_jump_table(const struct kedr_jtable *jtable, 
+	unsigned long *i_jtable)
+{
+	unsigned int i;
+	for (i = 0; i < jtable->num; ++i) {
+		i_jtable[i] = 
+			(unsigned long)node_map_lookup(jtable->addr[i]);
+		if (i_jtable[i] == 0) {
+			pr_err("[sample] No IR element found for "
+				"the instruction at %p\n", 
+				(void *)(jtable->addr[i]));
+			BUG();
+		}
+	}
 }
 
 /* Creates the jump tables for the instrumented instance of the function 
  * 'func' based on the jump tables for the original function. The jump 
  * tables will be filled with meaningful data during the instrumentation. 
- * For now, they will be just allocated, and the pointers to them will be 
- * stored in func->i_jump_tables[]. If an item of jump_table list has 0 
- * elements, the corresponding item in func->i_jump_tables[] will be NULL.
+ * For now, they will be just allocated, and filled with the addresses of 
+ * the corresponding IR nodes for future processing.
+ * 
+ * The pointers to the created jump tables will be stored in 
+ * func->i_jump_tables[]. If an item of jump_table list has 0 elements, 
+ * the corresponding item in func->i_jump_tables[] will be NULL.
  *
  * [NB] The order of the corresponding indirect jumps and the order of the 
  * elements in func->jump_tables list must be the same. 
@@ -373,7 +590,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
  * [NB] In case of error, func->i_jump_tables will be freed in 
  * ifunc_destroy(), so it is not necessary to free it here. */
 static int 
-create_jump_tables(struct kedr_ifunc *func)
+create_jump_tables(struct kedr_ifunc *func, struct list_head *ir)
 {
 	struct kedr_jtable *jtable;
 	unsigned int total = 0;
@@ -413,6 +630,8 @@ create_jump_tables(struct kedr_ifunc *func)
 			func->i_jump_tables[i] = (unsigned long *)buf;
 			buf = (void *)((unsigned long)buf + 
 				jtable->num * sizeof(unsigned long));
+			ir_prefill_jump_table(jtable, 
+				func->i_jump_tables[i]);
 		}
 		++i;
 	}
@@ -423,7 +642,7 @@ create_jump_tables(struct kedr_ifunc *func)
 
 /* Using the IR created before, perform the instrumentation. */
 static int
-do_instrument(struct kedr_ifunc *func)
+do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
 	u32 *poffset;
 	
@@ -459,38 +678,59 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	int ret = 0;
 	struct kedr_if_data if_data;
 	
-	BUILD_BUG_ON(KEDR_MEM_NUM_RECORDS > sizeof(unsigned long) * 8);
+	/* The intermediate representation of a function's code. */
+	struct list_head kedr_ir;
+	INIT_LIST_HEAD(&kedr_ir);
 	
+	BUILD_BUG_ON(KEDR_MEM_NUM_RECORDS > sizeof(unsigned long) * 8);
 	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
 	
 	ret = skip_trailing_zeros(func);
 	if (ret != 0)
 		return ret;
 	
+	node_map_init();
+	
 	/* First, decode and process the machine instructions one by one and
-	 * build the IR (TODO: IR). 
+	 * build the IR, at this stage, without inter-node links. In 
+	 * addition, the mapping (address of original insn; node) will be 
+	 * prepared there.
 	 * 
 	 * do_process_insn() will also adjust the length of the function if
-	 * we have skipped too many zeros. */
+	 * we have skipped too many trailing zeros above. */
 	if_data.mod = mod;
+	if_data.ir = &kedr_ir;
 	ret = for_each_insn_in_function(func, do_process_insn, 
 		(void *)&if_data);
 	if (ret != 0)
-		return ret;
+		goto out;
+	
+	ir_make_links_for_jumps(func, &kedr_ir);
+	
+	// TODO: 'node->dest_addr' should be used when defining code blocks.		
 	
 	/* Allocate and partially initialize the jump tables for the 
-	 * instrumented instance. */
-	ret = create_jump_tables(func);
+	 * instrumented instance. 
+	 * At this stage, the jump tables will be filled with pointers
+	 * to the corresponding IR nodes rather than the instructions 
+	 * themselves. 
+	 * Later (see below), when the instrumented code has been prepared, 
+	 * these addresses will be replaced with the offsets of the 
+	 * appropriate instructions in that code (i.e. the addresses 
+	 * relocated to the start address of the instrumented instance 
+	 * being 0). */
+	ret = create_jump_tables(func, &kedr_ir);
 	if (ret != 0)
-		return ret;
+		goto out;
+	
+	// TODO: record in IR which instruction each element in each
+	// jump table refers to.
 	
 	/* Create the instrumented instance of the function. */
-	ret = do_instrument(func);
+	ret = do_instrument(func, &kedr_ir);
 	if (ret != 0)
-		return ret;
-	
-	// TODO: release memory occupied by the IR
-	
+		goto out;
+
 	//<>
 	if (strcmp(func->name, "cfake_read") == 0) {
 		unsigned int mask_choose_from = X86_REG_MASK_ALL & ~X86_REG_MASK(INAT_REG_CODE_SP)
@@ -515,6 +755,10 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			(unsigned long)&kedr_lookup_replacement_wrapper);
 	}
 	//<>
-	return 0;
+
+out:
+	node_map_clear();
+	ir_destroy(&kedr_ir);
+	return ret;
 }
 /* ====================================================================== */

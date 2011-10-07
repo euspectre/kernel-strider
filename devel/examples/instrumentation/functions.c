@@ -12,7 +12,7 @@
  * 
  * 2. Find the functions in the original code + find the addresses of the 
  * corresponding fallback functions. Create and partially initialize 'struct
- * kedr_ifunc' instances.
+ * kedr_ifunc' instances. Do not consider st
  *
  * 3. For each created 'kedr_ifunc' instance:
  *
@@ -123,7 +123,8 @@ cleanup_jump_tables(struct kedr_ifunc *func)
 	func->i_jump_tables = NULL;
 }
 
-/* Destructor for 'struct kedr_ifunc' objects. */
+/* Destroy the given 'struct kedr_ifunc' object (and release the memory it
+ * occupies, among other things). */
 static void
 ifunc_destroy(struct kedr_ifunc *func)
 {
@@ -134,9 +135,8 @@ ifunc_destroy(struct kedr_ifunc *func)
 	 * temporary buffer for the instrumented instance may have remained
 	 * unfreed. Free it now. */
 	kfree(func->tbuf_addr);
-	func->tbuf_addr = NULL;
 	
-	// TODO: release all other resources this function has acquired
+	kfree(func);	
 }
 
 /* Destroy all the structures contained in 'ifuncs' list and remove them
@@ -150,7 +150,6 @@ ifuncs_destroy_all(void)
 	list_for_each_entry_safe(pos, tmp, &ifuncs, list) {
 		list_del(&pos->list);
 		ifunc_destroy(pos);
-		kfree(pos);
 	}
 	
 	num_funcs = 0; /* just in case */
@@ -244,6 +243,8 @@ int
 kedr_init_function_subsystem(struct module *mod)
 {
 	int ret = 0;
+	
+	BUG_ON(!list_empty(&ifuncs));
 	
 	num_funcs = 0;
 	ret = init_fallback_areas(mod);
