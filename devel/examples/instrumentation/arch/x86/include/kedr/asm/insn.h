@@ -47,10 +47,10 @@ struct insn_field {
 };
 
 struct insn {
-	struct insn_field prefixes;	/*
-					 * Prefixes
-					 * prefixes.bytes[3]: last prefix
-					 */
+	/* Legacy prefixes
+	 * prefixes.bytes[X86_NUM_LEGACY_PREFIXES - 1]: last prefix */
+	struct insn_field prefixes;	
+	
 	struct insn_field rex_prefix;	/* REX prefix */
 	struct insn_field vex_prefix;	/* VEX prefix */
 	struct insn_field opcode;	/*
@@ -110,7 +110,7 @@ struct insn {
 /* The last prefix is needed for two-byte and three-byte opcodes */
 static inline insn_byte_t insn_last_prefix(struct insn *insn)
 {
-	return insn->prefixes.bytes[3];
+	return insn->prefixes.bytes[X86_NUM_LEGACY_PREFIXES - 1];
 }
 
 extern void insn_init(struct insn *insn, const void *kaddr, int x86_64);
