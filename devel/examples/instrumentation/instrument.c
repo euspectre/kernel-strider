@@ -15,6 +15,41 @@
 #include "ir.h"
 #include "code_gen.h"
 #include "operations.h"
+
+//<> For debugging only
+#include "debug_util.h"
+extern char *target_function;
+//<>
+
+/* ====================================================================== */
+
+/* [NB] A block of code in a function contains one or more machine
+ * instructions. 
+ * The rules used to split the function code into such blocks: 
+ * - if an instruction may transter control outside of the current function,
+ *    it constitutes a separate block; note that in addition to some of the 
+ *    calls and jumps, the instructions like 'ret' and 'int' fall into this 
+ *    group;
+ * - if an instruction transfers control to a location before it within the 
+ *    function (a "backward jump" in case of 'for'/'while'/'do' constructs, 
+ *    etc.), it constitutes a separate block;
+ *    note that rep-prefixed instructions do not fall into this group;
+ * - each 'jmp near r/m32' instruction constitutes a separate block, same
+ *    for 'jmp near r/m64';
+ * - near indirect jumps must always transfer control to the beginning of
+ *    a block;
+ * - if an instruction transfers control to a location before it within the 
+ *    function, it is allowed to transfer control only to the beginning of 
+ *    a block; 
+ * - it is allowed for a block to contain the instructions that transfer 
+ *    control forward within the function, not necessarily within the block
+ *    such instructions need not be placed in separate blocks;
+ * - a block may contain no more than KEDR_MEM_NUM_RECORDS instructions 
+ *    accessing memory.
+ * 
+ * Note that the destinations of forward jumps do not need to be at the 
+ * beginning of a block. Jumps into a block are allowed (so are the jumps
+ * out of a block). */
 /* ====================================================================== */
 
 /* Parameters of a hash map to be used to lookup IR nodes by the addresses 
@@ -428,19 +463,6 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 		++num_elems;
 	}
 	
-	/* Local near indirect jumps may only jump to the beginning of a 
-	 * block, so we need to add the contents of the jump table to the 
-	 * array of block boundaries. */
-	/*ret = block_offsets_reserve(if_data, num_elems);
-	if (ret != 0)
-		return ret;
-	
-	for (i = 0; i < num_elems; ++i) {
-		unsigned long jaddr = *((unsigned long *)jtable_addr + i);
-		if_data->block_offsets[if_data->num++] = 
-			(u32)(jaddr - func_start);
-	}*/
-	
 	/* Store the information about this jump table in 'func'. It may be
 	 * needed during instrumentation to properly fixup the contents of
 	 * the table. */
@@ -518,25 +540,6 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	if (offset_after_insn > func->size)
 		func->size = offset_after_insn;
 	
-	opcode = insn->opcode.bytes[0];
-
-	/* Process indirect near jumps that can use jump tables, namely
-	 * the jumps having the following form: 
-	 * jmp near [<jump_table> + reg * <scale>]. 
-	 * [NB] We don't need to do anything about other kinds of indirect 
-	 * jumps, like jmp near [reg], here. 
-	 * 
-	 * jmp near indirect has code FF/4. 'mod' and 'R/M' fields are used 
-	 * here to determine if SIB byte is present. */
-	if (opcode == 0xff && 
-		X86_MODRM_REG(insn->modrm.value) == 4 && 
-		X86_MODRM_MOD(insn->modrm.value) != 3 &&
-		X86_MODRM_RM(insn->modrm.value) == 4) {
-		ret = handle_jmp_near_indirect(func, insn, if_data);
-		if (ret != 0)
-			return ret;
-	}
-	
 	/* Create the IR node and record the mapping (address, node) in a 
 	 * hash map. */
 	node = ir_node_create_from_insn(insn);
@@ -549,6 +552,24 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	list_add_tail(&node->list, if_data->ir);
 	node_map_add(node);
 	
+	/* Process indirect near jumps that can use jump tables, namely
+	 * the jumps having the following form: 
+	 * jmp near [<jump_table> + reg * <scale>]. 
+	 * [NB] We don't need to do anything about other kinds of indirect 
+	 * jumps, like jmp near [reg], here. 
+	 * 
+	 * jmp near indirect has code FF/4. 'mod' and 'R/M' fields are used 
+	 * here to determine if SIB byte is present. */
+	opcode = insn->opcode.bytes[0];
+	if (opcode == 0xff && 
+		X86_MODRM_REG(insn->modrm.value) == 4 && 
+		X86_MODRM_MOD(insn->modrm.value) != 3 &&
+		X86_MODRM_RM(insn->modrm.value) == 4) {
+		ret = handle_jmp_near_indirect(func, insn, if_data);
+		if (ret != 0)
+			return ret;
+	}
+	
 	return 0; 
 }
 
@@ -556,21 +577,25 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
  * addresses to the elements of 'i_jtable'. The jump tables for the 
  * instrumented code will contain these addresses until the instrumented 
  * code is prepared. After that, the elements of these tables should be 
- * replaced with the appropriate values. */
+ * replaced with the appropriate values. 
+ * 
+ * This function also marks the appropriate IR nodes as the start nodes of 
+ * the blocks. */
 static void
 ir_prefill_jump_table(const struct kedr_jtable *jtable, 
 	unsigned long *i_jtable)
 {
 	unsigned int i;
 	for (i = 0; i < jtable->num; ++i) {
-		i_jtable[i] = 
-			(unsigned long)node_map_lookup(jtable->addr[i]);
+		struct kedr_ir_node *node = node_map_lookup(jtable->addr[i]);
+		i_jtable[i] = (unsigned long)node;
 		if (i_jtable[i] == 0) {
 			pr_err("[sample] No IR element found for "
 				"the instruction at %p\n", 
 				(void *)(jtable->addr[i]));
 			BUG();
 		}
+		node->block_starts = 1;
 	}
 }
 
@@ -578,7 +603,8 @@ ir_prefill_jump_table(const struct kedr_jtable *jtable,
  * 'func' based on the jump tables for the original function. The jump 
  * tables will be filled with meaningful data during the instrumentation. 
  * For now, they will be just allocated, and filled with the addresses of 
- * the corresponding IR nodes for future processing.
+ * the corresponding IR nodes for future processing. These IR nodes will be
+ * marked as the starting nodes of the code blocks among other things.
  * 
  * The pointers to the created jump tables will be stored in 
  * func->i_jump_tables[]. If an item of jump_table list has 0 elements, 
@@ -638,6 +664,95 @@ create_jump_tables(struct kedr_ifunc *func, struct list_head *ir)
 	BUG_ON(i != func->num_jump_tables);
 	return 0;
 }
+
+/* Mark the node to indicate it is a separate block. */
+static void
+ir_mark_node_separate_block(struct kedr_ir_node *node, 
+	struct list_head *ir_head)
+{
+	struct kedr_ir_node *node_after;
+	
+	node->block_starts = 1;
+	if (node->list.next == ir_head) /* no nodes follow */
+		return;
+
+	node_after = list_entry(node->list.next, struct kedr_ir_node, list);
+	node_after->block_starts = 1;
+}
+
+/* If the current instruction is a control transfer instruction, determine
+ * whether it should be reflected in the set of code blocks (i.e. whether we
+ * should mark some IR nodes as the beginnings of the blocks). 
+ *
+ * N.B. Call this function only for the nodes already added to the IR 
+ * because the information about the instruction following this one may be 
+ * needed. */
+static void
+ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir, 
+	struct kedr_ifunc *func)
+{
+	/* The node should have been added to the IR before this function is 
+	 * called. */
+	BUG_ON(node->list.next == NULL);
+	
+	if (node->dest_addr == 0) /* not a control transfer instruction */
+		return;
+	
+	if (is_address_in_function(node->dest_addr, func)) {
+		BUG_ON(node->dest_inner == NULL); 
+		if (node->dest_inner->orig_addr < node->orig_addr) {
+			/* jump backwards */
+			ir_mark_node_separate_block(node, ir);
+			node->dest_inner->block_starts = 1;
+		}
+		
+	} else	/* indirect jump or control transfer outside of the
+		 * function => this instruction is a separate block */
+		ir_mark_node_separate_block(node, ir);
+}
+
+/* Split the code into blocks (see the comment at the beginning of this 
+ * file) and mark each nodes corresponding to the start of a block 
+ * accordingly. 
+ * Note that jump tables are not processed here but rather in 
+ * create_jump_tables(). ir_find_blocks() should be called after that 
+ * function because splitting the blocks having more than 
+ * KEDR_MEM_NUM_RECORDS instructions accessing memory should be performed 
+ * last. */
+static void 
+ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *pos;
+	int num_mem_ops = 0;
+	
+	BUG_ON(list_empty(ir));
+	pos = list_first_entry(ir, struct kedr_ir_node, list);
+	pos->block_starts = 1;
+	
+	/* The first pass: process control transfer instructions */
+	list_for_each_entry(pos, ir, list)
+		ir_node_set_block_starts(pos, ir, func);
+	
+	/* The second pass: split the blocks with more than 
+	 * KEDR_MEM_NUM_RECORDS memory accessing instructions. */
+	list_for_each_entry(pos, ir, list) {
+		if (pos->block_starts)
+			num_mem_ops = 0;
+		
+		if (num_mem_ops == KEDR_MEM_NUM_RECORDS) {
+			/* Already found KEDR_MEM_NUM_RECORDS instructions 
+			 * accessing memory in the current block. Start a
+			 * new block then. */
+			pos->block_starts = 1;
+			num_mem_ops = 0;
+		}
+		
+		if (insn_is_mem_read(&pos->insn) || 
+		    insn_is_mem_write(&pos->insn))
+			++num_mem_ops;
+	}
+}
+
 /* ====================================================================== */
 
 /* Using the IR created before, perform the instrumentation. */
@@ -707,8 +822,6 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	
 	ir_make_links_for_jumps(func, &kedr_ir);
 	
-	// TODO: 'node->dest_addr' should be used when defining code blocks.		
-	
 	/* Allocate and partially initialize the jump tables for the 
 	 * instrumented instance. 
 	 * At this stage, the jump tables will be filled with pointers
@@ -723,8 +836,7 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	if (ret != 0)
 		goto out;
 	
-	// TODO: record in IR which instruction each element in each
-	// jump table refers to.
+	ir_mark_blocks(func, &kedr_ir);
 	
 	/* Create the instrumented instance of the function. */
 	ret = do_instrument(func, &kedr_ir);
@@ -753,6 +865,19 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			(unsigned long)&kedr_process_function_exit_wrapper,
 			(unsigned long)&kedr_process_block_end_wrapper,
 			(unsigned long)&kedr_lookup_replacement_wrapper);
+	}
+	//<>
+	
+	//<>
+	if (strcmp(func->name, target_function) == 0) {
+		struct kedr_ir_node *node;
+		list_for_each_entry(node, &kedr_ir, list) {
+			unsigned long offset;
+			if (!node->block_starts)
+				continue;
+			offset = node->orig_addr - (unsigned long)func->addr;
+			debug_util_print_u64((u64)offset, "0x%llx\n");
+		}
 	}
 	//<>
 

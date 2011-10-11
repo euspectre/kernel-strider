@@ -49,24 +49,26 @@ struct kedr_ir_node
 	struct kedr_ir_node *first_node;
 	struct kedr_ir_node *last_node;
 	
-	/* This field allows to place the node into a hash table for 
-	 * example. */
+	/* This field allows to place the node into a hash table when it is
+	 * needed. */
 	struct hlist_node hlist;
 	
-	// TODO: more fields if necessary
+	/* Nonzero if this IR node corresponds to a start of a code block
+	 * in the original code, 0 otherwise. Default value: 0. */
+	int block_starts;
+	
+	// TODO: add more fields if necessary
 };
 
 /* Construct an IR node with all fields initialized to their default values.
  * The function returns the pointer to the constructed and initialized node
  * on success, NULL if there is not enough memory to complete the operation.
  */
-// TODO
 struct kedr_ir_node *
 kedr_ir_node_create(void);
 
 /* Destroy the node and release memory it occupies. 
  * If 'node' is NULL, the function does nothing. */
-// TODO
 void
 kedr_ir_node_destroy(struct kedr_ir_node *node);
 
