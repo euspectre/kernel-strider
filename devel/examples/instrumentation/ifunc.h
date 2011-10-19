@@ -33,7 +33,7 @@ struct kedr_ifunc
 	
 	/* The start address of a temporary buffer for the instrumented 
 	 * instance of a function. */
-	void *tbuf_addr;
+	void *tbuf;
 	
 	/* Size of the instrumented version of the function. */
 	unsigned long i_size;
@@ -59,13 +59,17 @@ struct kedr_ifunc
 	 * [NB] The fallback instance uses the fixed up jump tables for the
 	 * original function (if the latter uses jump tables). */
 	void *fallback;
+	
+	/* The list of relocations to be made when deploying the 
+	 * instrumented instance of the function. */
+	struct list_head relocs;
 };
 
 /* Jump tables used for near relative jumps within the function 
  * (optimized 'switch' constructs, etc.) */
 struct kedr_jtable
 {
-	/* The list of tables for a given function */
+	/* The tables for a given function are stored in a list */
 	struct list_head list; 
 	
 	/* Start address; the elements will be treated as unsigned long
@@ -74,6 +78,23 @@ struct kedr_jtable
 	
 	/* Number of elements */
 	unsigned int num;
+};
+
+/* 'kedr_reloc' represents an instruction in the instrumented code that 
+ * should be relocated during deployment phase. */
+struct kedr_reloc
+{
+	/* The relocations are stored in a list. */
+	struct list_head list; 
+	
+	/* The offset of the instruction in the temporary buffer (it will be
+	 * the same in the final memory area too). */
+	unsigned long offset;
+	
+	/* The address the instruction should refer to. 'displacement' or
+	 * 'immediate' field of the instruction will be calculated based on
+	 * that (whichever is applicable). */
+	void *dest;
 };
 
 #endif // IFUNC_H_1626_INCLUDED

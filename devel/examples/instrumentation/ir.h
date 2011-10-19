@@ -31,15 +31,30 @@ struct kedr_ir_node
 	 * whether to use a short or a near jump). */
 	struct kedr_ir_node *dest_inner;
 	
+	/* If the node represents a jump past the end of the block, this 
+	 * field will be non-zero, 0 otherwise. This distinction of the 
+	 * inner jumps is necessary: for the most of these, the destination
+	 * is dest_inner->first_node while for the jumps past the end of the
+	 * block, it is <last_node_of_the_block>->last_node->(next). */
+	int jump_past_block_end;
+	
 	/* (see insn_jumps_to()) */
 	unsigned long dest_addr;
 	
-	/* If the node represents an instruction with RIP-relative 
-	 * addressing mode, 'iprel_addr' is the address it refers to. 
-	 * The address should be the same in the instrumented code but the 
-	 * offset will change. 
-	 * This field remains 0 if the node represents something else. */
-	unsigned long iprel_addr;
+	/* If the node represents a call/jmp rel32 that refers to something
+	 * outside of the original function or represents an instruction 
+	 * with RIP-relative addressing mode, 'iprel_addr' is the address it 
+	 * refers to. The address should be the same in the instrumented 
+	 * code but the offset will change. 
+	 * 
+	 * This field remains 0 if the node represents something else. 
+	 * 
+	 * [NB] Although 'dest_addr' is available, 'iprel_addr' is necessary
+	 * too. The former is 0 for the instructions with RIP-relative 
+	 * addressing and is generally used to process control transfer 
+	 * instructions when spliting the code into blocks. The latter is 
+	 * mainly used to prepare relocation of the instrumented code. */
+	unsigned long iprel_addr; 
 	
 	/* During the instrumentation, the instruction may be replaced with
 	 * a sequence of instructions. 'first_node' points to the first node

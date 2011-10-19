@@ -165,31 +165,31 @@ static inline insn_byte_t insn_vex_p_bits(struct insn *insn)
 }
 
 /* Offset of each field from kaddr */
-static inline int insn_offset_rex_prefix(struct insn *insn)
+static inline unsigned int insn_offset_rex_prefix(struct insn *insn)
 {
 	return insn->prefixes.nbytes;
 }
-static inline int insn_offset_vex_prefix(struct insn *insn)
+static inline unsigned int insn_offset_vex_prefix(struct insn *insn)
 {
 	return insn_offset_rex_prefix(insn) + insn->rex_prefix.nbytes;
 }
-static inline int insn_offset_opcode(struct insn *insn)
+static inline unsigned int insn_offset_opcode(struct insn *insn)
 {
 	return insn_offset_vex_prefix(insn) + insn->vex_prefix.nbytes;
 }
-static inline int insn_offset_modrm(struct insn *insn)
+static inline unsigned int insn_offset_modrm(struct insn *insn)
 {
 	return insn_offset_opcode(insn) + insn->opcode.nbytes;
 }
-static inline int insn_offset_sib(struct insn *insn)
+static inline unsigned int insn_offset_sib(struct insn *insn)
 {
 	return insn_offset_modrm(insn) + insn->modrm.nbytes;
 }
-static inline int insn_offset_displacement(struct insn *insn)
+static inline unsigned int insn_offset_displacement(struct insn *insn)
 {
 	return insn_offset_sib(insn) + insn->sib.nbytes;
 }
-static inline int insn_offset_immediate(struct insn *insn)
+static inline unsigned int insn_offset_immediate(struct insn *insn)
 {
 	return insn_offset_displacement(insn) + insn->displacement.nbytes;
 }
@@ -257,11 +257,11 @@ static inline int insn_offset_immediate(struct insn *insn)
  * 32-bit displacement sign extended to 64 bits in 64-bit mode." */
 #ifdef CONFIG_X86_64
 # define X86_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
-	(void*)((s64)(insn_addr) + (s64)(insn_len) + (s64)(s32)(offset))
+	(void *)((s64)(insn_addr) + (s64)(insn_len) + (s64)(s32)(offset))
 
 #else /* CONFIG_X86_32 */
 # define X86_ADDR_FROM_OFFSET(insn_addr, insn_len, offset) \
-	(void*)((u32)(insn_addr) + (u32)(insn_len) + (u32)(offset))
+	(void *)((u32)(insn_addr) + (u32)(insn_len) + (u32)(offset))
 #endif
 
 /* X86_OFFSET_FROM_ADDR()
@@ -270,7 +270,8 @@ static inline int insn_offset_immediate(struct insn *insn)
  * to be used in an instruction given the address and length of the
  * instruction and the destination address it must refer to. */
 #define X86_OFFSET_FROM_ADDR(insn_addr, insn_len, dest_addr) \
-	(u32)(dest_addr - (insn_addr + (u32)insn_len))
+	(u32)((unsigned long)(dest_addr) - \
+		((unsigned long)(insn_addr) + (u32)insn_len))
 
 /* X86_SIGN_EXTEND_V32()
  *

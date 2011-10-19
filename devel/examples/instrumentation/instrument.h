@@ -10,8 +10,8 @@
 
 /* Creates the instrumented instance of the function in the temporary memory
  * buffer. The resulting code will only need relocation before it can be 
- * used. On success, 'tbuf_addr' and 'i_size' become defined, 'tbuf_addr' 
- * pointing to that buffer. In case of failure, 'tbuf_addr' will remain NULL.
+ * used. On success, 'tbuf' and 'i_size' become defined, 'tbuf' 
+ * pointing to that buffer. In case of failure, 'tbuf' will remain NULL.
  * 
  * [NB] The value of 'i_addr' will be defined at the deployment stage, when 
  * the function is copied to its final location. 
@@ -21,9 +21,9 @@
  *
  * The function allocates memory for the instrumented instance as needed.
  * 
- * The instructions to be relocated again at the deployment phase (call/jmp 
- * rel32, instructions with RIP-relative addressing) will be created here as 
- * if the address of the instruction was 0.
+ * The instructions to be relocated at the deployment phase (call/jmp rel32 
+ * outside of the function, instructions with RIP-relative addressing) will 
+ * be listed in 'func->relocs'.
  * 
  * Among other things, the function allocates and fills the jump tables (if 
  * any) for the instrumented instance with the "pointers" to the appropriate
@@ -35,6 +35,5 @@
  * The return value is 0 on success and a negative error code on failure. */
 int
 instrument_function(struct kedr_ifunc *func, struct module *mod);
-
 
 #endif // INSTRUMENT_H_1649_INCLUDED

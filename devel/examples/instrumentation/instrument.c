@@ -20,7 +20,6 @@
 #include "debug_util.h"
 extern char *target_function;
 //<>
-
 /* ====================================================================== */
 
 /* [NB] A block of code in a function contains one or more machine
@@ -114,7 +113,24 @@ node_map_lookup(unsigned long orig_addr)
 	}
 	return NULL; 
 }
+/* ====================================================================== */
 
+//static int 
+//add_relocation(struct kedr_ifunc *func, ??? struct kedr_ir_node *node, 
+//	void *destination)
+//{
+//	struct kedr_reloc *reloc;
+//	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
+//	
+//	if (reloc == NULL)
+//		return -ENOMEM;
+//	
+//	reloc->offset = ???;
+//	reloc->dest = destination;
+//	list_add_tail(&reloc->list, &func->relocs);
+//	
+//	return 0;
+//}
 /* ====================================================================== */
 
 /* Nonzero if 'addr' is the address of some location in the "init" area of 
@@ -251,9 +267,10 @@ kedr_ir_node_destroy(struct kedr_ir_node *node)
  * enough memory to complete the operation. 
  * 
  * The function sets 'orig_addr' field of the newly created node as the 
- * value of 'src_insn->kaddr', the address of the original instruction. */
+ * value of 'src_insn->kaddr', the address of the original instruction. 
+ * 'dest_addr' is also set. */
 static struct kedr_ir_node *
-ir_node_create_from_insn(const struct insn *src_insn)
+ir_node_create_from_insn(struct insn *src_insn)
 {
 	struct kedr_ir_node *node;
 	
@@ -279,6 +296,8 @@ ir_node_create_from_insn(const struct insn *src_insn)
 		src_insn->length);
 	
 	node->orig_addr = (unsigned long)src_insn->kaddr;
+	node->dest_addr = insn_jumps_to(src_insn);
+	
 	return node;
 }
 
@@ -304,7 +323,7 @@ ir_make_links_for_jumps(struct kedr_ifunc *func, struct list_head *ir)
 
 	WARN_ON(list_empty(ir));
 	
-	/* [NB] the 0 address is definitely outside of the function */
+	/* [NB] the address 0 is definitely outside of the function */
 	list_for_each_entry(pos, ir, list) {
 		if (!is_address_in_function(pos->dest_addr, func))
 			continue;
@@ -320,6 +339,45 @@ ir_make_links_for_jumps(struct kedr_ifunc *func, struct list_head *ir)
 			BUG();
 		}
 	}
+}
+
+/* See the description of kedr_ir_node::iprel_addr */
+static void
+ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
+{
+	u8 opcode = node->insn.opcode.bytes[0];
+	struct insn *insn = &node->insn;
+	
+	if (opcode == KEDR_OP_CALL_REL32 || opcode == KEDR_OP_JMP_REL32) {
+		node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
+			node->orig_addr,
+			insn->length, 
+			insn->immediate.value);
+		if (is_address_in_function(node->iprel_addr, func))
+			node->iprel_addr = 0;
+		return;
+	}
+	
+#ifdef CONFIG_X86_64
+	/* For the instructions with IP-relative addressing, we also check
+	 * if they refer to something inside the original function. If so,
+	 * a warning is issued (such situations need more investigation). */
+	if (insn_rip_relative(insn)) {
+		node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
+			node->orig_addr,
+			insn->length, 
+			insn->displacement.value);
+
+		if (is_address_in_function(node->iprel_addr, func)) {
+			pr_info("[sample] Warning: the instruction at %pS "
+				"uses IP-relative addressing to access "
+				"the code of the original function.\n",
+				(void *)node->orig_addr);
+			WARN_ON_ONCE(1);
+		}
+	}
+#endif
+	/* node->iprel_addr remains 0 by default */
 }
 
 /* ====================================================================== */
@@ -493,26 +551,6 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 	return 0;
 }
 
-static void
-ir_node_set_dest_addr(struct kedr_ir_node *node, struct insn *insn)
-{
-	node->dest_addr = insn_jumps_to(insn);
-}
-
-static void
-ir_node_set_iprel_addr(struct kedr_ir_node *node, struct insn *insn)
-{
-#ifdef CONFIG_X86_64
-	if (!insn_rip_relative(insn))
-		return;
-
-	node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
-		insn->kaddr,
-		insn->length, 
-		insn->displacement.value);
-#endif
-}
-
 static int
 do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 {
@@ -540,14 +578,13 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	if (offset_after_insn > func->size)
 		func->size = offset_after_insn;
 	
-	/* Create the IR node and record the mapping (address, node) in a 
-	 * hash map. */
+	/* Create and initialize the IR node and record the mapping 
+	 * (address, node) in the hash map. */
 	node = ir_node_create_from_insn(insn);
 	if (node == NULL)
 		return -ENOMEM;
 	
-	ir_node_set_dest_addr(node, insn);
-	ir_node_set_iprel_addr(node, insn);
+	ir_node_set_iprel_addr(node, func);
 	
 	list_add_tail(&node->list, if_data->ir);
 	node_map_add(node);
@@ -569,7 +606,6 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 		if (ret != 0)
 			return ret;
 	}
-	
 	return 0; 
 }
 
@@ -752,7 +788,9 @@ ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
 			++num_mem_ops;
 	}
 }
+/* ====================================================================== */
 
+// TODO: implement kedr_handle_*() functions here
 /* ====================================================================== */
 
 /* Using the IR created before, perform the instrumentation. */
@@ -760,29 +798,140 @@ static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
 	u32 *poffset;
+	struct kedr_reloc *reloc;
 	
 	BUG_ON(func == NULL);
-	BUG_ON(func->tbuf_addr != NULL);
+	BUG_ON(func->tbuf != NULL);
 	BUG_ON(func->num_jump_tables > 0 && func->i_jump_tables == NULL);
 	
 	//<>
 	// For now, the instrumented instance will contain only a jump to 
-	// the fallback function (relocated to the instruction address of 0)
-	// to check the mechanism.
-	func->tbuf_addr = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
-	if (func->tbuf_addr == NULL)
+	// the fallback function to check the mechanism.
+	func->tbuf = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
+	if (func->tbuf == NULL)
 		return -ENOMEM;
+	
+	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
+	if (reloc == NULL) {
+		kfree(func->tbuf);
+		func->tbuf = NULL;
+		return -ENOMEM;
+	}
+	reloc->offset = 0; /* The insn is at the beginning of the buffer */
+	reloc->dest = func->fallback;
+	list_add_tail(&reloc->list, &func->relocs);
 	
 	func->i_size = KEDR_SIZE_JMP_REL32;
 	
-	*(u8 *)func->tbuf_addr = KEDR_OP_JMP_REL32;
-	poffset = (u32 *)((unsigned long)func->tbuf_addr + 1);
-	*poffset = X86_OFFSET_FROM_ADDR(0, 
-		KEDR_SIZE_JMP_REL32, 
-		(unsigned long)func->fallback);
+	*(u8 *)func->tbuf = KEDR_OP_JMP_REL32;
+	poffset = (u32 *)((unsigned long)func->tbuf + 1);
+	*poffset = 0; /* to be relocated during deployment */
 	//<>
 	
 	// TODO: replace this stub with a real instrumentation.
+	
+	// TODO: At the end, add relocations for the nodes with 
+	// iprel_addr != 0 to func->relocs.
+	return 0;
+}
+/* ====================================================================== */
+
+/* If the instruction is jmp short, replace it with jmp near. 
+ * The function does nothing if the node contains some other instruction. */
+static void 
+ir_node_jmp_short_to_near(struct kedr_ir_node *node)
+{
+	/* The function may be called only for the nodes corresponding
+	 * to the original instructions. */
+	BUG_ON(node->orig_addr == 0);
+	
+	// TODO
+}
+
+/* If the instruction is jcc short (conditional jump except jcxz), replace 
+ * it with jcc near. 
+ * The function does nothing if the node contains some other instruction. */
+static void 
+ir_node_jcc_short_to_near(struct kedr_ir_node *node)
+{
+	/* The function may be called only for the nodes corresponding
+	 * to the original instructions. */
+	BUG_ON(node->orig_addr == 0);
+	
+	// TODO
+}
+
+/* If the instruction is jcxz, replace it with a sequence of instructions 
+ * that uses jmp near to jump to the destination. The instruction in the 
+ * node will be replaced with that near jump. For the other instructions of 
+ * the sequence, new nodes will be created and added before and after that 
+ * 'reference' node. 
+ * 
+ * The function returns 0 on success or a negative error code on failure. 
+ * The function does nothing if the node contains some other instruction. */
+static int 
+ir_node_jcxz_to_jmp_near(struct kedr_ir_node *node)
+{
+	/* The function may be called only for the nodes corresponding
+	 * to the original instructions. */
+	BUG_ON(node->orig_addr == 0);
+	
+	// TODO
+	return 0;
+}
+
+/* If the instruction is loop*, replace it with a sequence of instructions 
+ * that uses jmp near to jump to the destination. The instruction in the 
+ * node will be replaced with that near jump. For the other instructions of 
+ * the sequence, new nodes will be created and added before and after that 
+ * 'reference' node. 
+ * 
+ * The function returns 0 on success or a negative error code on failure.
+ * The function does nothing if the node contains some other instruction. */
+static int 
+ir_node_loop_to_jmp_near(struct kedr_ir_node *node)
+{
+	/* The function may be called only for the nodes corresponding
+	 * to the original instructions. */
+	BUG_ON(node->orig_addr == 0);
+	
+	// TODO
+	return 0;
+}
+
+/* Replace short jumps (including jmp, jcc, jcxz, loop*) with the near 
+ * relative jumps to the same destination. jcxz and loop* are replaced with 
+ * the sequences of equivalent instructions that perform a near jump in the 
+ * same conditions). 
+ * 
+ * The function returns 0 on success or a negative error code on failure. */
+static int
+ir_node_process_short_jumps(struct kedr_ir_node *node, 
+	struct kedr_ifunc *func)
+{
+	int ret = 0;
+	
+	ir_node_jmp_short_to_near(node);
+	ir_node_jcc_short_to_near(node);
+	
+	ret = ir_node_jcxz_to_jmp_near(node);
+	if (ret != 0)
+		return ret;
+	
+	ret = ir_node_loop_to_jmp_near(node);
+	if (ret != 0)
+		return ret;
+	
+	/* If a formerly short jump lead outside of the function, set the 
+	 * destination address as the address the resulting near jump
+	 * jumps to. */
+	if (node->insn.opcode.bytes[0] == KEDR_OP_JMP_REL32 &&
+	    node->iprel_addr == 0) {
+		BUG_ON(node->dest_addr == 0);
+		BUG_ON(node->dest_addr == (unsigned long)(-1));
+		if (!is_address_in_function(node->dest_addr, func))
+			node->iprel_addr = node->dest_addr;
+	}
 	return 0;
 }
 /* ====================================================================== */
@@ -792,6 +941,8 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 {
 	int ret = 0;
 	struct kedr_if_data if_data;
+	struct kedr_ir_node *pos;
+	struct kedr_ir_node *tmp;
 	
 	/* The intermediate representation of a function's code. */
 	struct list_head kedr_ir;
@@ -836,6 +987,15 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	if (ret != 0)
 		goto out;
 	
+	/* [NB] list_for_each_entry_safe() should also be safe against the 
+	 * addition of the nodes, not only against removal. 
+	 * ir_node_process_short_jumps() may add new nodes before and after
+	 *  '*pos' to do its work and these new nodes must not be traversed 
+	 * in this loop. */
+	list_for_each_entry_safe(pos, tmp, &kedr_ir, list)
+		ir_node_process_short_jumps(pos, func);
+	
+	/* Split the code into blocks. */
 	ir_mark_blocks(func, &kedr_ir);
 	
 	/* Create the instrumented instance of the function. */
@@ -856,15 +1016,52 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			choose_work_register(mask_choose_from, mask_used, INAT_REG_CODE_BX)
 		);
 		
-		pr_info("[DBG] size of primary storage (bytes): %zu\n",
-			sizeof(struct kedr_primary_storage));
-			
 		pr_info("[DBG] function addresses: "
 			"0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
 			(unsigned long)&kedr_process_function_entry_wrapper,
 			(unsigned long)&kedr_process_function_exit_wrapper,
 			(unsigned long)&kedr_process_block_end_wrapper,
 			(unsigned long)&kedr_lookup_replacement_wrapper);
+		/**/
+		{
+			struct kedr_ir_node t;
+			int err = 0;
+			struct insn insn;
+			u8 buf[] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x01, 0x4D, 0x08, /**/0x90};
+			
+			kernel_insn_init(&insn, &buf[0]);
+			insn_get_length(&insn);
+			
+//			kedr_mk_mov_reg_to_reg(INAT_REG_CODE_AX, 
+//				INAT_REG_CODE_BX, &t, 1, &err);
+//			kedr_mk_store_reg_to_spill_slot(
+//				INAT_REG_CODE_CX, 
+//				INAT_REG_CODE_BP,
+//				&t,
+//				1,
+//				&err);
+//			kedr_mk_load_reg_from_spill_slot(
+//				INAT_REG_CODE_CX, 
+//				INAT_REG_CODE_BP,
+//				&t,
+//				1,
+//				&err);
+//			kedr_mk_mov_lea_expr_reg(&insn, 
+//				INAT_REG_CODE_BX,
+//				1,
+//				&t,
+//				1,
+//				&err);
+			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
+			
+			debug_util_print_string("Generated insn: ");
+			debug_util_print_hex_bytes(t.insn_buffer, 
+				t.insn.length);
+			debug_util_print_string("\n");
+			
+			pr_info("[DBG] prefix bytes: %u\n",
+				(unsigned int)insn.prefixes.nbytes);
+		}
 	}
 	//<>
 	

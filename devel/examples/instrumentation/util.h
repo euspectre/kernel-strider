@@ -74,5 +74,4 @@ is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
 	return (addr >= (unsigned long)func->addr && 
 		addr < (unsigned long)func->addr + func->size);
 }
-
 #endif // UTIL_H_1633_INCLUDED
