@@ -1143,7 +1143,7 @@ do_process_insn(struct kedr_tmod_function *func, struct insn *insn,
 	else if (opcode >= 0x70 && opcode <= 0x7f)  { /* jcc short */
 		process_jcc_short(func, insn, pdest_addr);
 	}
-	else if (opcode == 0xeb) { /* j*cxz short */
+	else if (opcode == 0xe3) { /* j*cxz */
 		process_jcxz_short(func, insn, pdest_addr);
 	} 
 	else {
