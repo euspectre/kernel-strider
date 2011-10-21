@@ -630,7 +630,6 @@ do_process_function(struct kedr_ifunc *func, struct module *mod)
 	/* The buffer must have been allocated. */
 	BUG_ON(func->tbuf == NULL); 
 	
-	fixup_fallback_jump_tables(func);
 	ret = relocate_fallback_function(func);
 	if (ret != 0)
 		return ret;
@@ -875,6 +874,13 @@ kedr_process_target(struct module *mod)
 		return ret;
 
 	deploy_instrumented_code();
+
+	/* At this point, nothing more should fail, so we can finally 
+	 * fixup the jump tables to be applicable for the fallback instances
+	 * rather than for the original one. */
+	list_for_each_entry(f, &ifuncs, list)
+		fixup_fallback_jump_tables(f);
+	
 	detour_original_functions();
 	return 0;
 }

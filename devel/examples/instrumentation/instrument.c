@@ -346,15 +346,12 @@ static void
 ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 {
 	u8 opcode = node->insn.opcode.bytes[0];
-	struct insn *insn = &node->insn;
-	
 	if (opcode == KEDR_OP_CALL_REL32 || opcode == KEDR_OP_JMP_REL32) {
-		node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
-			node->orig_addr,
-			insn->length, 
-			insn->immediate.value);
-		if (is_address_in_function(node->iprel_addr, func))
-			node->iprel_addr = 0;
+		BUG_ON(node->dest_addr == 0);
+		BUG_ON(node->dest_addr == (unsigned long)(-1));
+		
+		if (!is_address_in_function(node->dest_addr, func))
+			node->iprel_addr = node->dest_addr;
 		return;
 	}
 	
@@ -362,11 +359,11 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 	/* For the instructions with IP-relative addressing, we also check
 	 * if they refer to something inside the original function. If so,
 	 * a warning is issued (such situations need more investigation). */
-	if (insn_rip_relative(insn)) {
+	if (insn_rip_relative(&node->insn)) {
 		node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
 			node->orig_addr,
-			insn->length, 
-			insn->displacement.value);
+			node->insn.length, 
+			node->insn.displacement.value);
 
 		if (is_address_in_function(node->iprel_addr, func)) {
 			pr_info("[sample] Warning: the instruction at %pS "
@@ -841,61 +838,211 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 static void 
 ir_node_jmp_short_to_near(struct kedr_ir_node *node)
 {
+	u8 opcode = node->insn.opcode.bytes[0];
+	u8 *pos = node->insn_buffer;
+	unsigned int offset_opcode;
+	
 	/* The function may be called only for the nodes corresponding
 	 * to the original instructions. */
 	BUG_ON(node->orig_addr == 0);
 	
-	// TODO
+	if (opcode != 0xeb)
+		return;
+
+	/* Leave the prefixes intact if any are present. */	
+	offset_opcode = insn_offset_opcode(&node->insn);
+	pos += offset_opcode;
+	
+	*pos = KEDR_OP_JMP_REL32;
+	++pos;
+	
+	/* Write the offset as if the instruction was in the original 
+	 * instance of the function - just in case. */
+	*(u32 *)pos = X86_OFFSET_FROM_ADDR(node->orig_addr, 
+		offset_opcode + KEDR_SIZE_JMP_REL32,
+		node->dest_addr);
+	
+	/* Re-decode the instruction. */
+	kernel_insn_init(&node->insn, node->insn_buffer);
+	insn_get_length(&node->insn);
+	
+	BUG_ON(node->insn.length != offset_opcode + KEDR_SIZE_JMP_REL32);
 }
 
 /* If the instruction is jcc short (conditional jump except jcxz), replace 
  * it with jcc near. 
  * The function does nothing if the node contains some other instruction. */
-static void 
-ir_node_jcc_short_to_near(struct kedr_ir_node *node)
+static int
+ir_node_jcc_short_to_near(struct kedr_ir_node *node, 
+	struct kedr_ifunc *func)
 {
+	u8 opcode = node->insn.opcode.bytes[0];
+	u8 *pos = node->insn_buffer;
+	unsigned int offset_opcode;
+	static unsigned int len = 6; /* length of jcc near */
+	
 	/* The function may be called only for the nodes corresponding
 	 * to the original instructions. */
 	BUG_ON(node->orig_addr == 0);
 	
-	// TODO
+	if (opcode < 0x70 || opcode > 0x7f)
+		return 0;
+	
+	if (node->orig_addr + node->insn.length >= 
+		(unsigned long)func->addr + func->size) {
+		/* Weird. The conditional jump is at the end of the 
+		 * function. It can be possible if the compiler expected the
+		 * jump to always be performed, but still insisted on using 
+		 * a conditional jump rather than jmp short for some reason.
+		 * Or, more likely, someone meddled with label/symbol 
+		 * declarations in the inline assembly parts (.global, 
+		 * .local) and each part of the function looks like a 
+		 * separate function as a result. 
+		 * Anyway, warn and bail out, we cannot handle such split 
+		 * functions. */
+		pr_info("[sample] Warning: the conditional jump at %pS "
+			"seems to be at the end of a function.\n",
+			(void *)node->orig_addr);
+		pr_info("[sample] Unable to perform instrumentation.\n");
+		return -EILSEQ;
+	}
+	
+	/* Leave the prefixes intact if any are present. */
+	offset_opcode = insn_offset_opcode(&node->insn);
+	pos += offset_opcode;
+	
+	/* Here we take advantage of the fact that the opcodes for short and
+	 * near conditional jumps go in the same order with the last opcode 
+	 * byte being 0x10 greater for jcc rel32, e.g.:
+	 *   77 (ja rel8) => 0F 87 (ja rel32) 
+	 *   78 (js rel8) => 0F 88 (js rel32), etc. */
+	*pos = 0x0f;
+	++pos;
+	*pos = opcode + 0x10;
+	++pos;
+	
+	*(u32 *)pos = X86_OFFSET_FROM_ADDR(node->orig_addr, 
+		offset_opcode + len,
+		node->dest_addr);
+	
+	/* Re-decode the instruction. */
+	kernel_insn_init(&node->insn, node->insn_buffer);
+	insn_get_length(&node->insn);
+	
+	BUG_ON(node->insn.length != offset_opcode + len);
+	return 0;
 }
 
-/* If the instruction is jcxz, replace it with a sequence of instructions 
- * that uses jmp near to jump to the destination. The instruction in the 
- * node will be replaced with that near jump. For the other instructions of 
- * the sequence, new nodes will be created and added before and after that 
- * 'reference' node. 
+/* If the instruction is jcxz or loop*, replace it with an equivalent 
+ * sequence of instructions that uses jmp near to jump to the destination. 
+ * The instruction in the node will be replaced with that near jump. 
+ * For the other instructions of the sequence, new nodes will be created and
+ * added before that 'reference' node. 
  * 
  * The function returns 0 on success or a negative error code on failure. 
  * The function does nothing if the node contains some other instruction. */
 static int 
-ir_node_jcxz_to_jmp_near(struct kedr_ir_node *node)
+ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node, 
+	struct kedr_ifunc *func)
 {
+	u8 opcode = node->insn.opcode.bytes[0];
+	u8 *pos;
+	struct kedr_ir_node *node_orig = NULL;
+	struct kedr_ir_node *node_jump_over = NULL;
+	
 	/* The function may be called only for the nodes corresponding
 	 * to the original instructions. */
 	BUG_ON(node->orig_addr == 0);
 	
-	// TODO
-	return 0;
-}
+	if (opcode < 0xe0 || opcode > 0xe3)
+		return 0;
+	/* loop/loope/loopne: 0xe0, 0xe1, 0xe2; jcxz: 0xe3. */
+	
+	if (node->orig_addr + node->insn.length >= 
+		(unsigned long)func->addr + func->size) {
+		/* Weird. The conditional jump is at the end of the 
+		 * function. It can be possible if the compiler expected the
+		 * jump to always be performed, but still insisted on using 
+		 * a conditional jump rather than jmp short for some reason.
+		 * Or, more likely, someone meddled with label/symbol 
+		 * declarations in the inline assembly parts (.global, 
+		 * .local) and each part of the function looks like a 
+		 * separate function as a result. 
+		 * Anyway, warn and bail out, we cannot handle such split 
+		 * functions. */
+		pr_info("[sample] Warning: the conditional jump at %pS "
+			"seems to be at the end of a function.\n",
+			(void *)node->orig_addr);
+		pr_info("[sample] Unable to perform instrumentation.\n");
+		return -EILSEQ;
+	}
+	
+	/* j*cxz/loop* => 
+	 *     <prefixes> j*cxz/loop* 02 (to label_jump, 
+	 *                             length: 2 bytes + prefixes)
+	 *     jmp short 05 (to label_continue, length: 2 bytes) 
+	 * label_jump:
+	 *     jmp near <where j*cxz would jump> (length: 5 bytes)
+	 * label_continue:
+	 *     ...  */
+	node_orig = kedr_ir_node_create();
+	node_jump_over = kedr_ir_node_create();
+	if (node_orig == NULL || node_jump_over == NULL) {
+		kedr_ir_node_destroy(node_orig);
+		kedr_ir_node_destroy(node_jump_over);
+		return -ENOMEM;
+	}
+	
+	list_add(&node_orig->list, node->list.prev);
+	list_add(&node_jump_over->list, &node_orig->list);
+	node->first_node = node_orig;
+	
+	/* jcxz/loop* 02
+	 * Copy the insn along with the prefixes it might have to the first
+	 * node, set the jump offset properly. */
+	memcpy(node_orig->insn_buffer, node->insn_buffer, 
+		X86_MAX_INSN_SIZE);
+	pos = node_orig->insn_buffer + insn_offset_immediate(&node->insn);
+	*pos = 0x02;
+		
+	kernel_insn_init(&node_orig->insn, node_orig->insn_buffer);
+	insn_get_length(&node_orig->insn);
+	BUG_ON(node_orig->insn.length != 
+		2 + insn_offset_opcode(&node->insn));
+	
+	node_orig->dest_inner = node;
+	
+	/* jmp short 05 */
+	pos = node_jump_over->insn_buffer;
+	*pos = 0xeb;
+	++pos;
 
-/* If the instruction is loop*, replace it with a sequence of instructions 
- * that uses jmp near to jump to the destination. The instruction in the 
- * node will be replaced with that near jump. For the other instructions of 
- * the sequence, new nodes will be created and added before and after that 
- * 'reference' node. 
- * 
- * The function returns 0 on success or a negative error code on failure.
- * The function does nothing if the node contains some other instruction. */
-static int 
-ir_node_loop_to_jmp_near(struct kedr_ir_node *node)
-{
-	/* The function may be called only for the nodes corresponding
-	 * to the original instructions. */
-	BUG_ON(node->orig_addr == 0);
+	*pos = KEDR_SIZE_JMP_REL32;
+	node_jump_over->dest_inner = list_entry(node->list.next, 
+		struct kedr_ir_node, list);
+
+	kernel_insn_init(&node_jump_over->insn, node_jump_over->insn_buffer);
+	insn_get_length(&node_jump_over->insn);
+	BUG_ON(node_jump_over->insn.length != 2);
+
+	/* Create the near jump to the destination in the reference node */
+	pos = node->insn_buffer;
+	*pos = KEDR_OP_JMP_REL32;
+	++pos;
+	*(u32 *)pos = X86_OFFSET_FROM_ADDR(node->orig_addr, 
+		KEDR_SIZE_JMP_REL32,
+		node->dest_addr);
 	
-	// TODO
+	/* Re-decode the instruction. */
+	kernel_insn_init(&node->insn, node->insn_buffer);
+	insn_get_length(&node->insn);
+	BUG_ON(node->insn.length != KEDR_SIZE_JMP_REL32);
+	
+	if (node->block_starts) {
+		/* Include the new nodes into the block. */
+		node->first_node->block_starts = 1;
+		node->block_starts = 0;
+	}
 	return 0;
 }
 
@@ -912,13 +1059,12 @@ ir_node_process_short_jumps(struct kedr_ir_node *node,
 	int ret = 0;
 	
 	ir_node_jmp_short_to_near(node);
-	ir_node_jcc_short_to_near(node);
 	
-	ret = ir_node_jcxz_to_jmp_near(node);
+	ret = ir_node_jcc_short_to_near(node, func);
 	if (ret != 0)
 		return ret;
 	
-	ret = ir_node_loop_to_jmp_near(node);
+	ret = ir_node_jcxz_loop_to_jmp_near(node, func);
 	if (ret != 0)
 		return ret;
 	
@@ -933,6 +1079,39 @@ ir_node_process_short_jumps(struct kedr_ir_node *node,
 			node->iprel_addr = node->dest_addr;
 	}
 	return 0;
+}
+
+/* A padding byte sequence is "00 00" (looks like "add al, (%rax)"). 
+ * The instruction should be decoded before calling this function. */
+static int
+is_padding_insn(struct insn *insn)
+{
+	BUG_ON(insn->length == 0); 
+	return (insn->opcode.value == 0 && insn->modrm.value == 0);
+}
+
+/* Checks if the function could be a part of a larger function but appear 
+ * separate for some reason. 
+ * is_incomplete_function() checks if the last meaningful instruction 
+ * (non-noop and non-padding) is a control transfer instruction. If so, 
+ * it returns 0, non-zero otherwise. 
+ * 
+ * Note that if is_incomplete_function() returns 0, it does not guarantee 
+ * that the function is not incomplete. For example, it may have a jump at
+ * the end that transfers control inside of another part of that larger 
+ * function. For the present, we do not detect this. */
+static int
+is_incomplete_function(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *last = NULL;
+	
+	list_for_each_entry(node, ir, list) {
+		if (!is_padding_insn(&node->insn) && 
+		    !insn_is_noop(&node->insn))
+			last = node;
+	}
+	return (last == NULL || last->dest_addr == 0);
 }
 /* ====================================================================== */
 
@@ -971,6 +1150,20 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	if (ret != 0)
 		goto out;
 	
+	if (is_incomplete_function(&kedr_ir)) {
+		pr_info("[sample] Warning: possibly incomplete function "
+			"detected: \"%s\".\n",
+			func->name);
+		pr_info("[sample] Such functions may appear if there are "
+	"'.global' or '.local' symbol definitions in the inline assembly "
+	"within an original function.\n");
+		pr_info("[sample] Or, may be, the function is written in "
+	"some unusual way.\n");
+		pr_info("[sample] Unable to perform instrumentation.\n");
+		ret = -EILSEQ;
+		goto out;
+	}
+	
 	ir_make_links_for_jumps(func, &kedr_ir);
 	
 	/* Allocate and partially initialize the jump tables for the 
@@ -986,17 +1179,20 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	ret = create_jump_tables(func, &kedr_ir);
 	if (ret != 0)
 		goto out;
+
+	/* Split the code into blocks. */
+	ir_mark_blocks(func, &kedr_ir);
 	
-	/* [NB] list_for_each_entry_safe() should also be safe against the 
+	/* [NB] list_for_each_entry_safe() should also be safe w.r.t. the 
 	 * addition of the nodes, not only against removal. 
 	 * ir_node_process_short_jumps() may add new nodes before and after
 	 *  '*pos' to do its work and these new nodes must not be traversed 
 	 * in this loop. */
-	list_for_each_entry_safe(pos, tmp, &kedr_ir, list)
-		ir_node_process_short_jumps(pos, func);
-	
-	/* Split the code into blocks. */
-	ir_mark_blocks(func, &kedr_ir);
+	list_for_each_entry_safe(pos, tmp, &kedr_ir, list) {
+		ret = ir_node_process_short_jumps(pos, func);
+		if (ret != 0)
+			goto out;
+	}
 	
 	/* Create the instrumented instance of the function. */
 	ret = do_instrument(func, &kedr_ir);
@@ -1054,13 +1250,13 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 //				&err);
 			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
 			
-			debug_util_print_string("Generated insn: ");
+			/*debug_util_print_string("Generated insn: ");
 			debug_util_print_hex_bytes(t.insn_buffer, 
 				t.insn.length);
 			debug_util_print_string("\n");
 			
 			pr_info("[DBG] prefix bytes: %u\n",
-				(unsigned int)insn.prefixes.nbytes);
+				(unsigned int)insn.prefixes.nbytes);*/
 		}
 	}
 	//<>
@@ -1068,12 +1264,11 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	//<>
 	if (strcmp(func->name, target_function) == 0) {
 		struct kedr_ir_node *node;
+		debug_util_print_string("Code in IR:\n");
 		list_for_each_entry(node, &kedr_ir, list) {
-			unsigned long offset;
-			if (!node->block_starts)
-				continue;
-			offset = node->orig_addr - (unsigned long)func->addr;
-			debug_util_print_u64((u64)offset, "0x%llx\n");
+			debug_util_print_hex_bytes(node->insn_buffer, 
+				node->insn.length);
+			debug_util_print_string("\n");
 		}
 	}
 	//<>
