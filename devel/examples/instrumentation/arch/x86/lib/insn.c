@@ -1244,7 +1244,11 @@ insn_jumps_to(struct insn *insn)
 	
 	/* call/jump far absolute ptr16:32;  */
 	if (opcode == 0x9a || opcode == 0xea)
-		return (unsigned long)(-1); 
+		return (unsigned long)(-1);
+	
+	/* ud2 */
+	if (opcode == 0x0f && insn->opcode.bytes[1] == 0x0b)
+		return (unsigned long)(-1);
 	
 	return 0; /* no jump */
 }
