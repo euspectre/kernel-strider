@@ -306,6 +306,10 @@ parse_section_data(void)
 			return -EINVAL;
 		BUG_ON(addr_begin >= addr_end);
 		
+		num = strspn(addr_end, ws);
+		if (*addr_end != '\0' && num == 0)
+			return -EINVAL;
+		
 		/* TODO: In a production-ready system, the obtained section 
 		 * addresses should be validated. At least a sanity check 
 		 * could be added to make sure these addresses are located 
@@ -317,7 +321,7 @@ parse_section_data(void)
 			return -ENOMEM;
 		list_add_tail(&sec->list, &sections);
 		
-		pos = (addr_end - section_buffer) + strspn(addr_end, ws);
+		pos = (addr_end - section_buffer) + num;
 	}
 	return 0;
 }
