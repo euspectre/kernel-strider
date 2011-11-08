@@ -12,44 +12,53 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
+#include <linux/debugfs.h>
+#include <linux/list.h>
+#include <linux/err.h>
 
 #include "functions.h"
 #include "debug_util.h"
 #include "detour_buffer.h"
-
+#include "sections.h"
 /* ====================================================================== */
+
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL"); 
-
 /* ====================================================================== */
+
 /* Name of the module to analyze, an empty name will match no module */
 static char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
 
-/* Name of the function to provide additional debug output for. */
+/* [DBG] Name of the function to provide additional debug output for. */
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
-
 /* ====================================================================== */
+
+/* A directory for our system in debugfs. */
+static struct dentry *debugfs_dir_dentry = NULL;
+const char *debugfs_dir_name = "kedr_sample";
+/* ====================================================================== */
+
 /* The module being analyzed. NULL if the module is not currently loaded. */
-struct module *target_module = NULL;
+static struct module *target_module = NULL;
 
 /* If nonzero, module load and unload notifications will be handled,
  * if 0, they will not.
  */
-int handle_module_notifications = 0;
+static int handle_module_notifications = 0;
 
 /* A mutex to protect target_module and related variables when processing 
  * loading and unloading of the target.
  */
-DEFINE_MUTEX(target_module_mutex);
+static DEFINE_MUTEX(target_module_mutex);
 
 /* This flag indicates whether try_module_get() failed for our module in
  * on_module_load().
  */
-int module_get_failed = 0;
-
+static int module_get_failed = 0;
 /* ====================================================================== */
+
 /* Module filter.
  * Should return nonzero if detector should watch for module with this name.
  * We are interested in analyzing only the module with the given name.
@@ -70,7 +79,7 @@ static void
 on_module_load(struct module *mod)
 {
 	int ret = 0;
-	
+		
 	pr_info("[sample] "
 	"target module \"%s\" has just loaded.\n",
 		module_name(mod));
@@ -91,13 +100,24 @@ on_module_load(struct module *mod)
 	/* Clear previous debug data */
 	debug_util_clear();
 	
+	//<> [DBG]
+	/*{
+		struct kedr_section *s;
+		pr_info("[DBG] List of sections for \"%s\" module:\n", 
+			module_name(mod));
+		list_for_each_entry(s, section_list, list) {
+			pr_info("[DBG] %s at 0x%lx\n", s->name, s->addr);
+		}
+	}*/
+	//<> [/DBG]
+	
 	/* Initialize everything necessary to process the target module */
 	ret = kedr_init_function_subsystem(mod);
 	if (ret) {
 		pr_err("[sample] "
-	"Error occured in kedr_init_function_subsystem(). Code: %d\n",
+	"Failed to initialize function subsystem. Error code: %d\n",
 			ret);
-		goto fail;
+		goto out;
 	}
 	
 	ret = kedr_process_target(mod);
@@ -105,18 +125,18 @@ on_module_load(struct module *mod)
 		pr_err("[sample] "
 	"Error occured while processing \"%s\". Code: %d\n",
 			module_name(mod), ret);
-		goto cleanup_func_and_fail;
+		goto out_cleanup_func;
 	}
 	return;
 	
-cleanup_func_and_fail: 
+out_cleanup_func: 
 	kedr_cleanup_function_subsystem();
-fail:	
+out:	
 	return;
 }
 
 /*
- * on_module_unload() handles uloading of the target module 
+ * on_module_unload() handles unloading of the target module 
  * ("cleaned up and about to unload" event).
  *
  * Note that this function is called with target_module_mutex locked.
@@ -136,7 +156,7 @@ on_module_unload(struct module *mod)
 		kedr_cleanup_function_subsystem();
 		module_put(THIS_MODULE);
 	}
-	module_get_failed = 0; /* reset it - just in case */
+	module_get_failed = 0; /* reset the flag */
 }
 
 /* A callback function to handle loading and unloading of a module. 
@@ -148,7 +168,7 @@ detector_notifier_call(struct notifier_block *nb,
 	struct module* mod = (struct module *)vmod;
 	BUG_ON(mod == NULL);
     
-	if (mutex_lock_interruptible(&target_module_mutex) != 0)
+	if (mutex_lock_killable(&target_module_mutex) != 0)
 	{
 		pr_warning("[sample] "
 		"failed to lock target_module_mutex\n");
@@ -185,14 +205,14 @@ out:
 	mutex_unlock(&target_module_mutex);
 	return 0;
 }
-
 /* ================================================================ */
+
 /* A struct for watching for loading/unloading of modules.*/
 struct notifier_block detector_nb = {
 	.notifier_call = detector_notifier_call,
 	.next = NULL,
 	.priority = -1, 
-	/* Priority 0 would also do but lower priority value is safer.
+	/* Priority 0 would also do but a lower priority value is safer.
 	 * Our handler should be called after ftrace does its job
 	 * (the notifier registered by ftrace uses priority 0). 
 	 * ftrace seems to instrument the beginning of each function in the 
@@ -203,37 +223,55 @@ struct notifier_block detector_nb = {
 	 * work first and only then instrument the resulting code of 
 	 * the target module. */
 };
-
 /* ====================================================================== */
+
 static int __init
 sample_module_init(void)
 {
-	int result = 0;
+	int ret = 0;
 	pr_info("[sample] Initializing\n");
 	
-	result = debug_util_init();
-	if (result != 0)
-		goto fail;
-		
-	result = kedr_init_detour_subsystem();
-	if (result != 0)
-		goto deinit_and_fail;
+	debugfs_dir_dentry = debugfs_create_dir(debugfs_dir_name, NULL);
+	if (IS_ERR(debugfs_dir_dentry)) {
+		pr_err("[sample] debugfs is not supported\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	if (debugfs_dir_dentry == NULL) {
+		pr_err("[sample] "
+			"failed to create a directory in debugfs\n");
+		ret = -EINVAL;
+		goto out;
+	}
+	
+	ret = debug_util_init(debugfs_dir_dentry);
+	if (ret != 0)
+		goto out_rmdir;
+	
+	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
+	if (ret != 0)
+		goto out_cleanup_debug;
+	
+	ret = kedr_init_detour_subsystem();
+	if (ret != 0)
+		goto out_cleanup_sections;
 	
 	// TODO: if something else needs to be initialized, do it 
 	// before registering our callbacks with the notification system.
 	
-	/* find_module() requires module_mutex to be locked. */
-	result = mutex_lock_interruptible(&module_mutex);
-	if (result != 0)
+	/* find_module() requires 'module_mutex' to be locked. */
+	ret = mutex_lock_killable(&module_mutex);
+	if (ret != 0)
 	{
 		pr_info("[sample] "
 		"failed to lock module_mutex\n");
-		goto fini_detour_and_fail;
+		goto out_cleanup_detour;
 	}
     
-	result = register_module_notifier(&detector_nb);
-	if (result < 0)
-		goto unlock_and_fail;
+	ret = register_module_notifier(&detector_nb);
+	if (ret < 0)
+		goto out_unlock;
     
 	/* Check if the target is already loaded */
 	if (find_module(target_name) != NULL)
@@ -243,17 +281,17 @@ sample_module_init(void)
 		target_name);
 
 		pr_info("[sample] "
-"instrumentation of already loaded target modules is not supported\n");
-		result = -EEXIST;
-		goto unreg_and_fail;
+"processing of already loaded target modules is not supported\n");
+		ret = -EEXIST;
+		goto out_unreg_notifier;
 	}
     
-	result = mutex_lock_interruptible(&target_module_mutex);
-	if (result != 0)
+	ret = mutex_lock_killable(&target_module_mutex);
+	if (ret != 0)
 	{
 		pr_info("[sample] "
 		"failed to lock target_module_mutex\n");
-		goto unreg_and_fail;
+		goto out_unreg_notifier;
 	}
 
 	handle_module_notifications = 1;
@@ -265,20 +303,26 @@ sample_module_init(void)
  * is loaded or have finished cleaning-up and is just about to unload. */
 	return 0; /* success */
 
-unreg_and_fail:
+out_unreg_notifier:
 	unregister_module_notifier(&detector_nb);
 
-unlock_and_fail:
+out_unlock:
 	mutex_unlock(&module_mutex);
 
-fini_detour_and_fail:
+out_cleanup_detour:
 	kedr_cleanup_detour_subsystem();
 
-deinit_and_fail:
+out_cleanup_sections:
+	kedr_cleanup_section_subsystem();
+
+out_cleanup_debug:
 	debug_util_fini();
 
-fail:
-	return result;
+out_rmdir:
+	debugfs_remove(debugfs_dir_dentry);
+
+out:
+	return ret;
 }
 
 static void __exit
@@ -286,11 +330,14 @@ sample_module_exit(void)
 {
 	pr_info("[sample] Cleaning up\n");
 	
-	// Better to unregister notifications before cleaning up the rest.
+	/* Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
 	
 	kedr_cleanup_detour_subsystem();
+	kedr_cleanup_section_subsystem();
 	debug_util_fini();
+	debugfs_remove(debugfs_dir_dentry);
+	
 	// TODO: more cleanup if necessary
 }
 

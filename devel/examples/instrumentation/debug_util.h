@@ -6,16 +6,19 @@
  * The functions listed below that return void print an error message to 
  * the system log if an error occurs. */
 
-/* Initialize debugging facilities. 
- * The function creates files in debugfs if necessary, etc.
- * Returns 0 on success, negative error code on failure.
+struct dentry;
+
+/* Initializes debugging facilities. 
+ * The function may create files in debugfs in the directory specified by 
+ * 'debugfs_dir_dentry' among other things .
+ * Returns 0 on success, a negative error code on failure.
  *
  * This function should usually be called from the module's initialization
  * function. */
 int 
-debug_util_init(void);
+debug_util_init(struct dentry *debugfs_dir_dentry);
 
-/* Finalize output subsystem.
+/* Finalizes debug output subsystem.
  * The function removes files if debug_util_init() created some, etc.
  *
  * This function should usually be called from the module's cleanup
@@ -39,7 +42,7 @@ debug_util_clear(void);
 void
 debug_util_print_string(const char *s);
 
-/* Output a sequence of bytes of length 'count' as is to a debug 'stream' 
+/* Outputs a sequence of bytes of length 'count' as is to a debug 'stream' 
  * 
  * The caller must ensure that the memory area pointed to by 'bytes' is at 
  * least 'count' bytes is size.
@@ -48,14 +51,14 @@ debug_util_print_string(const char *s);
 void
 debug_util_print_raw_bytes(const void *bytes, unsigned int count);
 
-/* Output the given u64 value using the specified format string 'fmt'. 
+/* Outputs the given u64 value using the specified format string 'fmt'. 
  * The format string must contain "%llu", "%llx" or the like. 
  * 
  * This function cannot be used in atomic context. */
 void
 debug_util_print_u64(u64 data, const char *fmt);
 
-/* Output a sequence of bytes of length 'count' to a debug 'stream'. 
+/* Outputs a sequence of bytes of length 'count' to a debug 'stream'. 
  * Each byte is output as a hex number, the consecutive bytes are separated
  * by spaces: 0D FA 7E and so forth.
  * 

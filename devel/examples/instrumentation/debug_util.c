@@ -10,17 +10,13 @@
 #include <asm/uaccess.h>
 
 #include "debug_util.h"
-
 /* ====================================================================== */
-/* A directory for output files in debugfs. */
-struct dentry *debug_dir_dentry = NULL;
-const char *debug_dir_name = "kedr_sample";
 
-/* The file in debugfs. */
+/* The file for debug output. */
 struct dentry *debug_out_file = NULL;
 const char *debug_out_name = "output";
-
 /* ====================================================================== */
+
 /* A buffer that accumulates strings sent to it by debug_util_print_*().
  * The buffer grows automatically when necessary.
  * The operations with such buffer should be performed with the 
@@ -259,48 +255,33 @@ DEBUG_UTIL_DEFINE_FOPS_RO(fops_output_ro, &output_buffer);
 
 /* ====================================================================== */
 int 
-debug_util_init(void)
+debug_util_init(struct dentry *debugfs_dir_dentry)
 {
 	int ret = 0;
-
+	
+	BUG_ON(debugfs_dir_dentry == NULL);
+	
 	ret = output_buffer_init(&output_buffer);
 	if (ret != 0) {
 		pr_err("[sample] "
 			"failed to create the output buffer\n");
-		goto fail;
+		goto out;
 	}
 
-	debug_dir_dentry = debugfs_create_dir(debug_dir_name, NULL);
-	if (IS_ERR(debug_dir_dentry)) {
-		pr_err("[sample] debugfs is not supported\n");
-		debug_dir_dentry = NULL;
-		ret = -ENODEV;
-		goto fail_ob;
-	}
-
-	if (debug_dir_dentry == NULL) {
-		pr_err("[sample] "
-			"failed to create a directory in debugfs\n");
-		ret = -EINVAL;
-		goto fail_ob;
-	}
-	
 	debug_out_file = debugfs_create_file(debug_out_name, S_IRUGO,
-		debug_dir_dentry, NULL, &fops_output_ro);
+		debugfs_dir_dentry, NULL, &fops_output_ro);
 	if (debug_out_file == NULL) {
 		pr_err("[sample] "
 			"failed to create output file in debugfs\n");
 		ret = -EINVAL;
-		goto fail_files;
+		goto out_free_buf;
 	}
 
 	return 0;
 
-fail_files:
-	debugfs_remove(debug_dir_dentry);
-fail_ob:
+out_free_buf:
 	output_buffer_destroy(&output_buffer);
-fail:
+out:
 	return ret;
 }
 
@@ -309,8 +290,6 @@ debug_util_fini(void)
 {
 	if (debug_out_file != NULL)
 		debugfs_remove(debug_out_file);
-	if (debug_dir_dentry != NULL)
-		debugfs_remove(debug_dir_dentry);
 	output_buffer_destroy(&output_buffer);
 }
 

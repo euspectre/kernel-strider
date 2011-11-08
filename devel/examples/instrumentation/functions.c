@@ -70,6 +70,7 @@
 #include "ifunc.h"
 #include "instrument.h"
 #include "util.h"
+#include "sections.h"
 /* ====================================================================== */
 
 /* Detour buffer for the target module. The instrumented code of the 
@@ -77,17 +78,17 @@
  * executed. A jump to the start of the instrumented function will be placed
  * at the beginning of the original function, so the rest of the latter 
  * should never be executed. */
-void *detour_buffer = NULL; 
+static void *detour_buffer = NULL; 
 
 /* Memory areas for fallback functions. */
-void *fallback_init_area = NULL;
-void *fallback_core_area = NULL;
+static void *fallback_init_area = NULL;
+static void *fallback_core_area = NULL;
 
 /* The list of functions (struct kedr_ifunc) to be instrumented. */
-LIST_HEAD(ifuncs);
+static LIST_HEAD(ifuncs);
 
 /* Number of functions in the target module */
-unsigned int num_funcs = 0;
+static unsigned int num_funcs = 0;
 /* ====================================================================== */
 
 /* For a given function, free the structures related to the jump tables for
@@ -388,51 +389,186 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
 	return 0;
 }
 
-static int 
-function_compare_by_address(const void *lhs, const void *rhs)
+/* Deletes all the special items (see below) from the list and frees them.*/
+static void
+destroy_special_items(struct list_head *items_list)
 {
-	const struct kedr_ifunc *left = 
-		*(const struct kedr_ifunc **)(lhs);
-	const struct kedr_ifunc *right = 
-		*(const struct kedr_ifunc **)(rhs);
+	struct kedr_ifunc *pos;
+	struct kedr_ifunc *tmp;
 	
-	if (left->addr == right->addr)
-		return 0;
-	else if (left->addr < right->addr)
+	BUG_ON(items_list == NULL);
+	
+	list_for_each_entry_safe(pos, tmp, items_list, list) {
+		list_del(&pos->list);
+		kfree(pos);
+	}
+}
+
+/* Allocates a special item and sets 'addr' field in it to the given value. 
+ * Returns the pointer to the item if successful, NULL if there is not 
+ * enough memory. 
+ * 
+ * [NB] For special items, it is enough to set only the address. */
+static struct kedr_ifunc *
+construct_item(unsigned long addr)
+{
+	struct kedr_ifunc *item;
+	item = (struct kedr_ifunc *)kzalloc(sizeof(struct kedr_ifunc), 
+		GFP_KERNEL);
+	if (item == NULL)
+		return NULL;
+	
+	item->addr = (void *)addr;
+	return item;
+}
+
+/* Creates the list of the special items, i.e. the instances of 
+ * struct kedr_ifunc representing sections and the ends of the areas of the
+ * given module. 
+ * The items will be added to the specified list (must be empty on entry).
+ * If successful, the function returns the number of items created (>= 0).
+ * A negative error code is returned in case of failure. */
+static int
+create_special_items(struct list_head *items_list, 
+	struct module *target_module)
+{
+	int num = 0;
+	int ret = 0;
+	struct list_head *section_list = NULL;
+	struct kedr_section *sec;
+	struct kedr_ifunc *item;
+	
+	BUG_ON(target_module == NULL);
+	BUG_ON(items_list == NULL);
+	BUG_ON(!list_empty(items_list));
+	
+	/* Obtain names and addresses of the target's ELF sections */
+	section_list = kedr_get_sections(target_module);
+	BUG_ON(section_list == NULL);
+	if (IS_ERR(section_list)) {
+		pr_err("[sample] "
+	"Failed to obtain names and addresses of the target's sections.\n");
+		ret = (int)PTR_ERR(section_list);
+		goto out;
+	}
+	
+	list_for_each_entry(sec, section_list, list) {
+		item = construct_item(sec->addr);
+		if (item == NULL) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		list_add_tail(&item->list, items_list);
+		++num;
+	}
+	
+	/* Here we rely on the fact that the code is placed at the beginning
+	 * of "init" and "core" areas of the module by the module loader. */
+	if (target_module->module_init != NULL) {
+		item = construct_item(
+			(unsigned long)target_module->module_init + 
+			target_module->init_text_size);
+		if (item == NULL) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		list_add_tail(&item->list, items_list);
+		++num;
+	}
+
+	if (target_module->module_core != NULL) {
+		item = construct_item(
+			(unsigned long)target_module->module_core + 
+			target_module->core_text_size);
+		if (item == NULL) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		list_add_tail(&item->list, items_list);
+		++num;
+	}
+
+	return num;
+
+out:
+	destroy_special_items(items_list);
+	return ret;
+}
+
+/* A helper structure that is used to implement stable sorting of function
+ * boundaries (to determine function size later). 
+ * '*obj' may represent a function or a special item (like the end of "init"
+ * or "core" area or the start of a section). 
+ * 'index' is the original index of an item, i.e. the index in the array 
+ * before sorting. */
+struct func_boundary_item
+{
+	struct kedr_ifunc *obj;
+	int index;
+};
+
+/* Compare pairs (addr, index) in a lexicographical order. This is 
+ * to make sorting stable, that is, to preserve the order of the elements
+ * with equal values of 'addr'. 
+ * 'index' is the index of the element in the array before sorting. */
+static int 
+compare_items(const void *lhs, const void *rhs)
+{
+	const struct func_boundary_item *left = 
+		(const struct func_boundary_item *)lhs;
+	const struct func_boundary_item *right = 
+		(const struct func_boundary_item *)rhs;
+	
+	if (left->obj->addr == right->obj->addr) {
+		if (left->index == right->index)
+		/* may happen only if an element is compared to itself */
+			return 0; 
+		else if (left->index < right->index)
+			return -1;
+		else 
+			return 1;
+	}
+	else if (left->obj->addr < right->obj->addr)
 		return -1;
 	else 
 		return 1;
 }
 
 static void 
-ptr_swap(void *lhs, void *rhs, int size)
+swap_items(void *lhs, void *rhs, int size)
 {
-	struct kedr_ifunc **left = 
-		(struct kedr_ifunc **)(lhs);
-	struct kedr_ifunc **right = 
-		(struct kedr_ifunc **)(rhs);
-	struct kedr_ifunc *p;
+	struct func_boundary_item *left = 
+		(struct func_boundary_item *)lhs;
+	struct func_boundary_item *right = 
+		(struct func_boundary_item *)rhs;
+	struct func_boundary_item p;
 	
-	p = *left;
-	*left = *right;
-	*right = p;
+	BUG_ON(size != (int)sizeof(struct func_boundary_item));
+	
+	p.obj = left->obj;
+	p.index = left->index;
+	
+	left->obj = right->obj;
+	left->index = right->index;
+	
+	right->obj = p.obj;
+	right->index = p.index;
 }
 
-/* Find the functions in the original code + find the addresses of the 
+/* Find the functions in the original code and find the addresses of the 
  * corresponding fallback functions. Create and partially initialize 'struct
  * kedr_ifunc' instances, add them to 'ifuncs' list. */
 static int
 find_functions(struct module *target_module)
 {
-	struct kedr_ifunc **pfuncs = NULL;
-	struct kedr_ifunc init_text_end;
-	struct kedr_ifunc core_text_end;
+	struct func_boundary_item *func_boundaries = NULL;
+	LIST_HEAD(special_items);
 	struct kedr_ifunc *pos;
 	int ret; 
 	int i;
+	int num_special;
 	
 	BUG_ON(target_module == NULL);
-	
 	ret = kallsyms_on_each_symbol(symbol_walk_callback, 
 		(void *)target_module);
 	if (ret)
@@ -444,64 +580,77 @@ find_functions(struct module *target_module)
 			module_name(target_module));
 		return 0;
 	} 
-	
-	pr_info("[sample] "
-		"Found %u functions in \"%s\"\n",
+	pr_info("[sample] Found %u functions in \"%s\"\n",
 		num_funcs,
 		module_name(target_module));
 	
+	ret = create_special_items(&special_items, target_module);
+	if (ret < 0)
+		return ret;
+	
+	num_special = ret;
+	/* num_special should not be 0: at least "core" area should be 
+	 * present. If it is 0, it is weird. */
+	WARN_ON(num_special == 0); 
+	
 	/* This array is only necessary to estimate the size of each 
-	 * function.
-	 * The 2 extra elements are for the address bounds, namely for the 
-	 * addresses immediately following "init" and "core" areas of 
-	 * code.
-	 * 
-	 * [NB] If there are aliases (except "init_module" and 
-	 * "cleanup_module"), i.e. the symbols with different names and 
-	 * the same addresses, the size of only one of the symbols in such 
-	 * group will be non-zero. We can just skip symbols with size 0.
-	 */
-	pfuncs = (struct kedr_ifunc **)kzalloc(
-		sizeof(struct kedr_ifunc *) * (num_funcs + 2), 
+	 * function. */
+	func_boundaries = (struct func_boundary_item *)kzalloc(
+		sizeof(struct func_boundary_item) * 
+			(num_funcs + num_special),
 		GFP_KERNEL);
 		
-	if (pfuncs == NULL)
+	if (func_boundaries == NULL) {
+		destroy_special_items(&special_items);
 		return -ENOMEM;
+	}
 	
+	/* We add special items before the regular functions. Because of the 
+	 * fact that the way of sorting we use is stable, the special items
+	 * having the same address as a function will still appear before 
+	 * the function in the sorted array. 
+	 * 
+	 * Note that sort() is not required to be stable by itself. */
 	i = 0;
+	list_for_each_entry(pos, &special_items, list) {
+		func_boundaries[i].obj = pos;
+		func_boundaries[i].index = i;
+		++i;
+	}
+	BUG_ON(i != num_special);
+	
 	list_for_each_entry(pos, &ifuncs, list) {
-		pfuncs[i++] = pos;
+		func_boundaries[i].obj = pos;
+		func_boundaries[i].index = i;
+		++i;
 	}
-
-	/* We only need to initialize the addresses for these fake 
-	 * "functions" */
-	if (target_module->module_init) {
-		init_text_end.addr = target_module->module_init + 
-			target_module->init_text_size;
-		pfuncs[i++] = &init_text_end;
-	}
-	if (target_module->module_core) {
-		core_text_end.addr = target_module->module_core + 
-			target_module->core_text_size;
-		pfuncs[i++] = &core_text_end;
-	}
-	
-	/* NB: sort 'i' elements, not 'num_funcs' */
-	sort(pfuncs, (size_t)i, sizeof(struct kedr_ifunc *), 
-		function_compare_by_address, ptr_swap);
-	
-	/* The last element should now be the end of init or core area. */
+	BUG_ON(i != (int)num_funcs + num_special);
 	--i;
-	WARN_ON(pfuncs[i] != &core_text_end && 
-		pfuncs[i] != &init_text_end);
 	
+	sort(func_boundaries, (size_t)(num_funcs + num_special), 
+		sizeof(struct func_boundary_item), 
+		compare_items, swap_items);
+
+	//<>
+	/*debug_util_print_u64((u64)(func_boundaries[i].obj->addr),
+		"0x%llx\n");*/
+	//<>	
 	while (i-- > 0) {
-		pfuncs[i]->size = 
-			((unsigned long)(pfuncs[i + 1]->addr) - 
-			(unsigned long)(pfuncs[i]->addr));
+		func_boundaries[i].obj->size = 
+			((unsigned long)(func_boundaries[i + 1].obj->addr) - 
+			(unsigned long)(func_boundaries[i].obj->addr));
+		//<>
+		/*debug_util_print_u64((u64)(func_boundaries[i].obj->addr),
+			"0x%llx\n");*/
+		//<>
 	}
-	kfree(pfuncs);
+	kfree(func_boundaries);
+	destroy_special_items(&special_items);
 	
+	/* If there are aliases besides "init_module" and "cleanup_module",
+	 * i.e. the symbols with different names and the same address, the 
+	 * size of only one of the symbols in such group will be non-zero. 
+	 * So we can simply skip symbols with size 0. */
 	ifuncs_remove_aliases_and_small_funcs();
 	if (list_empty(&ifuncs))
 		pr_info("[sample] No functions found in \"%s\" "

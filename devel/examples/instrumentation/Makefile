@@ -19,7 +19,8 @@ MODULE_SOURCES := \
 	util.c 		\
 	instrument.c	\
 	code_gen.c	\
-	operations.c
+	operations.c	\
+	sections.c
 
 # This is only to specify build dependencies
 MODULE_HEADERS := \
@@ -32,7 +33,8 @@ MODULE_HEADERS := \
 	code_gen.h	\
 	operations.h	\
 	ir.h		\
-	primary_storage.h
+	primary_storage.h \
+	sections.h
 
 # This is only to specify build dependencies
 INSN_ANALYZER_FILES := \
@@ -76,6 +78,7 @@ $(MODULE_NAME)-y := \
 	instrument.o	\
 	code_gen.o	\
 	operations.o	\
+	sections.o	\
 	$(ARCH_DIR)/lib/inat.o \
 	$(ARCH_DIR)/lib/insn.o
 
