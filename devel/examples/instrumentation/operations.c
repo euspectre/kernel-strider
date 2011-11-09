@@ -77,11 +77,11 @@
  * - kedr_process_function_exit
  * - kedr_process_block_end
  * - kedr_lookup_replacement
- * Each of this function accepts one parameter (type: unsigned long or 
+ * Each of these functions accepts one parameter (type: unsigned long or 
  * pointer). The parameter is expected to be in %eax/%rax by the time the 
  * appropriate wrapper is called. The return value of the function will also
  * be stored in this register. Other general-purpose registers as well as 
- * flags will be preserved by the wrappers.
+ * the flags will be preserved by the wrappers.
  *
  * These wrappers allow to reduce code bloat. If it were not for them, one
  * would need to insert the code for saving and restoring registers directly

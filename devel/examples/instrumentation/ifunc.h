@@ -15,9 +15,9 @@ struct kedr_ifunc
 	void *addr; 
 	
 	/* Size of the code. Note that it is determined as the difference 
-	 * between the start addresses of the next function and of this one.
-	 * So the trailing bytes may actually be padding area rather than 
-	 * belong to the function's body. */
+	 * between the start addresses of the next function and of this one
+	 * most of the time. So the trailing bytes may actually be padding 
+	 * area rather than belong to the function's body. */
 	unsigned long size;
 	
 	/* Name of the function */

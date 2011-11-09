@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/hash.h>
+#include <linux/module.h>
 
 #include <kedr/asm/insn.h> /* instruction analysis support */
 
@@ -833,6 +834,18 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 }
 /* ====================================================================== */
 
+/* If the node is the first in a block, includes the nodes created when 
+ * processing the former into this block. Does nothing otherwise. */
+static void
+ir_node_update_block_start(struct kedr_ir_node *node)
+{
+	if (node->block_starts && node->first_node != node) {
+		node->first_node->block_starts = 1;
+		node->block_starts = 0;
+	}
+}
+/* ====================================================================== */
+
 /* If the instruction is jmp short, replace it with jmp near. 
  * The function does nothing if the node contains some other instruction. */
 static void 
@@ -853,8 +866,7 @@ ir_node_jmp_short_to_near(struct kedr_ir_node *node)
 	offset_opcode = insn_offset_opcode(&node->insn);
 	pos += offset_opcode;
 	
-	*pos = KEDR_OP_JMP_REL32;
-	++pos;
+	*pos++ = KEDR_OP_JMP_REL32;
 	
 	/* Write the offset as if the instruction was in the original 
 	 * instance of the function - just in case. */
@@ -916,10 +928,8 @@ ir_node_jcc_short_to_near(struct kedr_ir_node *node,
 	 * byte being 0x10 greater for jcc rel32, e.g.:
 	 *   77 (ja rel8) => 0F 87 (ja rel32) 
 	 *   78 (js rel8) => 0F 88 (js rel32), etc. */
-	*pos = 0x0f;
-	++pos;
-	*pos = opcode + 0x10;
-	++pos;
+	*pos++ = 0x0f;
+	*pos++ = opcode + 0x10;
 	
 	*(u32 *)pos = X86_OFFSET_FROM_ADDR(node->orig_addr, 
 		offset_opcode + len,
@@ -1004,20 +1014,20 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 		X86_MAX_INSN_SIZE);
 	pos = node_orig->insn_buffer + insn_offset_immediate(&node->insn);
 	*pos = 0x02;
-		
+
 	kernel_insn_init(&node_orig->insn, node_orig->insn_buffer);
 	insn_get_length(&node_orig->insn);
 	BUG_ON(node_orig->insn.length != 
-		2 + insn_offset_opcode(&node->insn));
+		2 + insn_offset_opcode(&node->insn)); 
+	/* +2: +1 for opcode, +1 for immediate */
 	
 	node_orig->dest_inner = node;
 	
 	/* jmp short 05 */
 	pos = node_jump_over->insn_buffer;
-	*pos = 0xeb;
-	++pos;
+	*pos++ = 0xeb;
 
-	*pos = KEDR_SIZE_JMP_REL32;
+	*pos = KEDR_SIZE_JMP_REL32; /* short jump over the near jump */
 	node_jump_over->dest_inner = list_entry(node->list.next, 
 		struct kedr_ir_node, list);
 
@@ -1027,8 +1037,7 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 
 	/* Create the near jump to the destination in the reference node */
 	pos = node->insn_buffer;
-	*pos = KEDR_OP_JMP_REL32;
-	++pos;
+	*pos++ = KEDR_OP_JMP_REL32;
 	*(u32 *)pos = X86_OFFSET_FROM_ADDR(node->orig_addr, 
 		KEDR_SIZE_JMP_REL32,
 		node->dest_addr);
@@ -1038,11 +1047,7 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 	insn_get_length(&node->insn);
 	BUG_ON(node->insn.length != KEDR_SIZE_JMP_REL32);
 	
-	if (node->block_starts) {
-		/* Include the new nodes into the block. */
-		node->first_node->block_starts = 1;
-		node->block_starts = 0;
-	}
+	ir_node_update_block_start(node);
 	return 0;
 }
 
@@ -1250,13 +1255,10 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 //				&err);
 			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
 			
-			/*debug_util_print_string("Generated insn: ");
+			debug_util_print_string("Generated insn: ");
 			debug_util_print_hex_bytes(t.insn_buffer, 
 				t.insn.length);
 			debug_util_print_string("\n");
-			
-			pr_info("[DBG] prefix bytes: %u\n",
-				(unsigned int)insn.prefixes.nbytes);*/
 		}
 	}
 	//<>

@@ -3,10 +3,9 @@
 #ifndef INSTRUMENT_H_1649_INCLUDED
 #define INSTRUMENT_H_1649_INCLUDED
 
-#include <linux/list.h>
-#include <linux/module.h>
-
 #include "ifunc.h"
+
+struct module;
 
 /* Creates the instrumented instance of the function in the temporary memory
  * buffer. The resulting code will only need relocation before it can be 

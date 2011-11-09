@@ -33,7 +33,7 @@
  *
  * When the primary storage is initialized, all its fields will be zeroed
  * except the following ones:
- *   'tid' - it will contain a thread id;
+ *   'tid' - it will contain the id of the current thread;
  *   'orig_func' - it will contain the address of the original instance of 
  *   the function (passed to kedr_process_function_entry as a parameter).
  *  
