@@ -302,7 +302,7 @@ ir_node_create_from_insn(struct insn *src_insn)
 	return node;
 }
 
-/* Remove all the nodes from the IR and delete all of them. */
+/* Remove all the nodes from the IR and destroy them. */
 static void
 ir_destroy(struct list_head *ir)
 {
@@ -1228,8 +1228,9 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			struct kedr_ir_node t;
 			int err = 0;
 			struct insn insn;
-			u8 buf[] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x01, 0x4D, 0x08, /**/0x90};
+			u8 buf[] = {0x83, 0x56, 0x78, 0x55, /**/0x90};
 			
+			memset(&t, 0, sizeof(struct kedr_ir_node));
 			kernel_insn_init(&insn, &buf[0]);
 			insn_get_length(&insn);
 			
@@ -1247,18 +1248,63 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 //				&t,
 //				1,
 //				&err);
-//			kedr_mk_mov_lea_expr_reg(&insn, 
-//				INAT_REG_CODE_BX,
-//				1,
+//			kedr_mk_lea_expr_reg(&insn, 
+//				INAT_REG_CODE_SI,
 //				&t,
 //				1,
 //				&err);
-			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
+//			kedr_mk_mov_expr_reg(&insn, 
+//				INAT_REG_CODE_SI,
+//				&t,
+//				1,
+//				&err);
+//			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
+//			kedr_mk_call_rel32(0xffffbeef, &t, 1, &err);
+//			kedr_mk_call_reg(INAT_REG_CODE_BP, &t, 1, &err);
+//			kedr_mk_sub_lower32b_from_ax(0xbaadf00d,
+//				&t, 1, &err);
+//			kedr_mk_cmp_value32_with_ax(0xbeeff00d,
+//				&t, 1, &err);
+//			kedr_mk_jcc(INAT_CC_NZ, &t, &t, 1, &err);
+//			kedr_mk_ret(&t, 1, &err);
+//			kedr_mk_xchg_ax_stack_top(&t, 1, &err);
+//			kedr_mk_mov_value32_to_ax(0xf00d1234, &t, 1, &err);
+//			kedr_mk_mov_value32_to_slot(0xf00d1234, 
+//				INAT_REG_CODE_AX,
+//				0x224,
+//				&t,
+//				1,
+//				&err);
+//			kedr_mk_or_value32_to_slot(0xf00d1234, 
+//				INAT_REG_CODE_AX,
+//				0x224,
+//				&t,
+//				1,
+//				&err);
+//			kedr_mk_test_reg_reg(INAT_REG_CODE_CX, &t, 1, &err);
+//			kedr_mk_jmp_to_external(0xffffbeef, &t, 1, &err);
+//			kedr_mk_mov_eax_to_reg_on_stack(INAT_REG_CODE_DI, 0,
+//				&t, 1, &err);
+//			kedr_mk_jmp_offset_base(INAT_REG_CODE_BX, 
+//				0xbeeff00d, &t, 1, &err);
+//			kedr_mk_xchg_reg_reg(INAT_REG_CODE_AX, 
+//				INAT_REG_CODE_SI, &t, 1, &err);
+//			kedr_mk_pushf(&t, 1, &err);
+//			kedr_mk_popf(&t, 1, &err);
+//			kedr_mk_sub_reg_reg(INAT_REG_CODE_DX, 
+//				INAT_REG_CODE_DI, &t, 1, &err);
+//			kedr_mk_add_value8_to_reg(8, INAT_REG_CODE_CX, &t, 
+//				1, &err);
+			kedr_mk_neg_reg(INAT_REG_CODE_BP, &t, 1, &err);
 			
 			debug_util_print_string("Generated insn: ");
 			debug_util_print_hex_bytes(t.insn_buffer, 
 				t.insn.length);
 			debug_util_print_string("\n");
+			/*debug_util_print_u64((u64)t.iprel_addr, 
+				"t.iprel_addr = 0x%llx\n");
+			debug_util_print_u64((u64)t.dest_inner, 
+				"t.dest_inner = 0x%llx\n");*/
 		}
 	}
 	//<>

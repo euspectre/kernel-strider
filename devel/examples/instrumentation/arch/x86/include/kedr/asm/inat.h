@@ -200,6 +200,40 @@
 #define INAT_OPTYPE_Y		17
 #define INAT_OPTYPE_Z		18
 
+/* Condition codes used in jcc, cmovcc, setcc. Such code is usually given in
+ * the lower 4 bits of the opcode.
+ * [NB] Invert the lower bit of the opcode <=> invert the condition. 
+ * See Table B10 "Encoding of Conditional Test (tttn) Field" in 
+ * Intel Software Developer's Manual Vol. 2B. */
+#define INAT_CC_O	0x0
+#define INAT_CC_NO	0x1
+#define INAT_CC_B	0x2	/* B, NAE */
+#define INAT_CC_NAE	0x2
+#define INAT_CC_NB	0x3	/* NB, AE */
+#define INAT_CC_AE	0x3
+#define INAT_CC_E	0x4	/* E, Z */
+#define INAT_CC_Z	0x4
+#define INAT_CC_NE	0x5	/* NE, NZ */
+#define INAT_CC_NZ	0x5
+#define INAT_CC_BE	0x6	/* BE, NA */
+#define INAT_CC_NA	0x6
+#define INAT_CC_NBE	0x7	/* NBE, A */
+#define INAT_CC_A	0x7
+#define INAT_CC_S	0x8
+#define INAT_CC_NS	0x9
+#define INAT_CC_P	0xa	/* P, PE */
+#define INAT_CC_PE	0xa
+#define INAT_CC_NP	0xb	/* NP, PO */
+#define INAT_CC_PO	0xb
+#define INAT_CC_L	0xc	/* L, NGE */
+#define INAT_CC_NGE	0xc
+#define INAT_CC_NL	0xd	/* NL, GE */
+#define INAT_CC_GE	0xd
+#define INAT_CC_LE	0xe	/* LE, NG */
+#define INAT_CC_NG	0xe
+#define INAT_CC_NLE	0xf	/* NLE, G */
+#define INAT_CC_G	0xf
+
 /* Attribute search APIs.
  * The functions will store the attributes in '*attr'. The caller must 
  * ensure 'attr' points to a insn_attr_t instance. */
