@@ -466,14 +466,15 @@ resolve_jtables_overlaps(struct kedr_jtable *jtable,
 }
 
 static int 
-handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn, 
-	struct kedr_if_data *if_data)
+handle_jmp_near_indirect(struct kedr_ifunc *func, 
+	struct kedr_if_data *if_data, struct kedr_ir_node *node)
 {
 	unsigned long jtable_addr;
 	unsigned long end_addr = 0;
 	int in_init = 0;
 	int in_core = 0;
 	struct module *mod = if_data->mod;
+	struct insn *insn = &node->insn;
 	unsigned long pos;
 	unsigned int num_elems;
 	struct kedr_jtable *jtable;
@@ -503,7 +504,7 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 		pr_warning("[sample] Spurious jump table (?) at %p "
 			"referred to by jmp at %pS, leaving it as is.\n",
 			(void *)jtable_addr,
-			insn->kaddr);
+			(void *)node->orig_addr);
 		WARN_ON_ONCE(1);
 		return 0;
 	}
@@ -529,6 +530,7 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 	
 	jtable->addr = (unsigned long *)jtable_addr;
 	jtable->num  = num_elems;
+	jtable->referrer = node;
 	
 	resolve_jtables_overlaps(jtable, func);
 	
@@ -537,14 +539,13 @@ handle_jmp_near_indirect(struct kedr_ifunc *func, struct insn *insn,
 	 * indirect jumps. This simplifies creation of the jump tables for 
 	 * the instrumented instance of the function. */
 	list_add_tail(&jtable->list, &func->jump_tables);
-	++func->num_jump_tables;
 	
 	//<>
 	pr_info("[DBG] Found jump table with %u entries at %p "
 		"referred to by a jmp at %pS\n",
 		jtable->num,
 		(void *)jtable->addr, 
-		(void *)insn->kaddr);
+		(void *)node->orig_addr);
 	//<>
 	return 0;
 }
@@ -600,7 +601,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 		X86_MODRM_REG(insn->modrm.value) == 4 && 
 		X86_MODRM_MOD(insn->modrm.value) != 3 &&
 		X86_MODRM_RM(insn->modrm.value) == 4) {
-		ret = handle_jmp_near_indirect(func, insn, if_data);
+		ret = handle_jmp_near_indirect(func, if_data, node);
 		if (ret != 0)
 			return ret;
 	}
@@ -608,7 +609,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 }
 
 /* Find the IR nodes corresponding to the elements of 'jtable', write their 
- * addresses to the elements of 'i_jtable'. The jump tables for the 
+ * addresses to the elements of 'jtable->i_table'. The jump tables for the 
  * instrumented code will contain these addresses until the instrumented 
  * code is prepared. After that, the elements of these tables should be 
  * replaced with the appropriate values. 
@@ -616,20 +617,90 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
  * This function also marks the appropriate IR nodes as the start nodes of 
  * the blocks. */
 static void
-ir_prefill_jump_table(const struct kedr_jtable *jtable, 
-	unsigned long *i_jtable)
+ir_prefill_jump_table(const struct kedr_jtable *jtable)
 {
+	unsigned long *table = jtable->i_table;
 	unsigned int i;
 	for (i = 0; i < jtable->num; ++i) {
 		struct kedr_ir_node *node = node_map_lookup(jtable->addr[i]);
-		i_jtable[i] = (unsigned long)node;
-		if (i_jtable[i] == 0) {
+		table[i] = (unsigned long)node;
+		if (table[i] == 0) {
 			pr_err("[sample] No IR element found for "
 				"the instruction at %p\n", 
 				(void *)(jtable->addr[i]));
 			BUG();
 		}
 		node->block_starts = 1;
+	}
+}
+
+static unsigned long
+find_i_table(struct kedr_jtable *jtable, struct list_head *jt_list)
+{
+	struct kedr_jtable *pos;
+	
+	if (jtable->i_table != NULL)
+		return (unsigned long)jtable->i_table;
+	
+	BUG_ON(jtable->num != 0);
+	
+	/* 'jtable' seems to have no elements. Find if there is another 
+	 * instance of struct kedr_jtable that refers to the same jump table
+	 * but has nonzero elements. This would mean that two or more jumps
+	 * in the function use the same jump table. Very unlikely, but 
+	 * still. */
+	list_for_each_entry(pos, jt_list, list) {
+		if (pos != jtable && pos->addr == jtable->addr && 
+		    pos->i_table != NULL) {
+		    	return (unsigned long)pos->i_table;
+		}
+	}
+	return 0; /* A really empty jump table. */
+}
+
+/* Sets the addresses of the jump tables in the IR nodes corresponding to
+ * the indirect near jumps. That is, the function replaces 'disp32' in these 
+ * jumps with the lower 32 bits of the jump table addresses to be used in 
+ * the instrumented code. After that, this displacement should remain the
+ * same during the rest of the instrumentation process.
+ * 
+ * [NB] The (unlikely) situation when 2 or more jumps use the same jump
+ * table is handled here too. 
+ * 
+ * [NB] The jumps with "empty" jump tables will remain unchanged. */
+static void
+ir_set_jtable_addresses(struct kedr_ifunc *func)
+{
+	struct kedr_jtable *jtable;
+	unsigned long table;
+	u8 *pos;
+	struct kedr_ir_node *node;
+	unsigned char len;
+	
+	if (list_empty(&func->jump_tables))
+		return; 
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		BUG_ON(jtable->referrer == NULL);
+		node = jtable->referrer;
+		
+		table = find_i_table(jtable, &func->jump_tables);
+		if (table == 0) 
+			continue;
+		
+		pos = node->insn_buffer + 
+			insn_offset_displacement(&node->insn);
+		len = node->insn.length;
+		*(u32 *)pos = (u32)table; 
+		/* On x86-64, the bits we have cut off from the address of 
+		 * the table must all be 1, because the table resides in
+		 * the module mapping space. */
+		
+		/* Re-decode the instruction - just in case. */
+		kernel_insn_init(&node->insn, (void *)node->insn_buffer);
+		insn_get_length(&node->insn);
+		
+		BUG_ON(len != node->insn.length);
 	}
 }
 
@@ -640,62 +711,49 @@ ir_prefill_jump_table(const struct kedr_jtable *jtable,
  * the corresponding IR nodes for future processing. These IR nodes will be
  * marked as the starting nodes of the code blocks among other things.
  * 
- * The pointers to the created jump tables will be stored in 
- * func->i_jump_tables[]. If an item of jump_table list has 0 elements, 
- * the corresponding item in func->i_jump_tables[] will be NULL.
+ * The pointers to the created jump tables will be stored in 'i_table' 
+ * fields of the corresponding jtable structures. If an item of jump_table 
+ * list has 0 elements, jtable->i_table will be NULL.
  *
  * [NB] The order of the corresponding indirect jumps and the order of the 
  * elements in func->jump_tables list must be the same. 
  *
- * [NB] In case of error, func->i_jump_tables will be freed in 
- * ifunc_destroy(), so it is not necessary to free it here. */
+ * [NB] In case of error, func->jt_buf will be freed in ifunc_destroy(), so 
+ * it is not necessary to free it here. */
 static int 
 create_jump_tables(struct kedr_ifunc *func, struct list_head *ir)
 {
 	struct kedr_jtable *jtable;
 	unsigned int total = 0;
-	unsigned int i = 0;
 	void *buf;
-	
-	if (func->num_jump_tables == 0)
-		return 0;
 		
-	func->i_jump_tables = kzalloc(
-		func->num_jump_tables * sizeof(unsigned long *),
-		GFP_KERNEL);
-	if (func->i_jump_tables == NULL)
-		return -ENOMEM;
-	
 	/* Find the total number of elements in all jump tables for this 
 	 * function. */
 	list_for_each_entry(jtable, &func->jump_tables, list) {
 		total += jtable->num;
 	}
 	
-	/* If there are jump tables but each of these jump tables has no
-	 * elements (i.e. the jumps are not within the function), nothing to
-	 * do. */
+	/* If there are no jump tables or each of the jump tables has no
+	 * elements (i.e. the jumps are not within the function), nothing
+	 * to do. */
 	if (total == 0)
 		return 0;
 	
 	buf = kedr_alloc_detour_buffer(total * sizeof(unsigned long));
 	if (buf == NULL)
 		return -ENOMEM;
+	func->jt_buf = buf;
 	
 	list_for_each_entry(jtable, &func->jump_tables, list) {
-		if (jtable->num == 0) {
-			func->i_jump_tables[i] = NULL;
-		} 
-		else {
-			func->i_jump_tables[i] = (unsigned long *)buf;
-			buf = (void *)((unsigned long)buf + 
-				jtable->num * sizeof(unsigned long));
-			ir_prefill_jump_table(jtable, 
-				func->i_jump_tables[i]);
-		}
-		++i;
+		if (jtable->num == 0) 
+			continue;
+		jtable->i_table = (unsigned long *)buf;
+		buf = (void *)((unsigned long)buf + 
+			jtable->num * sizeof(unsigned long));
+		ir_prefill_jump_table(jtable);
 	}
-	BUG_ON(i != func->num_jump_tables);
+
+	ir_set_jtable_addresses(func);
 	return 0;
 }
 
@@ -800,7 +858,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	
 	BUG_ON(func == NULL);
 	BUG_ON(func->tbuf != NULL);
-	BUG_ON(func->num_jump_tables > 0 && func->i_jump_tables == NULL);
+	BUG_ON(!list_empty(&func->jump_tables) && func->jt_buf == NULL);
 	
 	//<>
 	// For now, the instrumented instance will contain only a jump to 
@@ -1224,16 +1282,16 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			(unsigned long)&kedr_process_block_end_wrapper,
 			(unsigned long)&kedr_lookup_replacement_wrapper);
 		/**/
-		{
-			struct kedr_ir_node t;
-			int err = 0;
-			struct insn insn;
-			u8 buf[] = {0x83, 0x56, 0x78, 0x55, /**/0x90};
-			
-			memset(&t, 0, sizeof(struct kedr_ir_node));
-			kernel_insn_init(&insn, &buf[0]);
-			insn_get_length(&insn);
-			
+//		{
+//			struct kedr_ir_node t;
+//			int err = 0;
+//			struct insn insn;
+//			u8 buf[] = {0x83, 0x56, 0x78, 0x55, /**/0x90};
+//			
+//			memset(&t, 0, sizeof(struct kedr_ir_node));
+//			kernel_insn_init(&insn, &buf[0]);
+//			insn_get_length(&insn);
+//			
 //			kedr_mk_mov_reg_to_reg(INAT_REG_CODE_AX, 
 //				INAT_REG_CODE_BX, &t, 1, &err);
 //			kedr_mk_store_reg_to_spill_slot(
@@ -1295,17 +1353,17 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 //				INAT_REG_CODE_DI, &t, 1, &err);
 //			kedr_mk_add_value8_to_reg(8, INAT_REG_CODE_CX, &t, 
 //				1, &err);
-			kedr_mk_neg_reg(INAT_REG_CODE_BP, &t, 1, &err);
-			
-			debug_util_print_string("Generated insn: ");
-			debug_util_print_hex_bytes(t.insn_buffer, 
-				t.insn.length);
-			debug_util_print_string("\n");
+//			kedr_mk_neg_reg(INAT_REG_CODE_BP, &t, 1, &err);
+//			
+//			debug_util_print_string("Generated insn: ");
+//			debug_util_print_hex_bytes(t.insn_buffer, 
+//				t.insn.length);
+//			debug_util_print_string("\n");
 			/*debug_util_print_u64((u64)t.iprel_addr, 
 				"t.iprel_addr = 0x%llx\n");
 			debug_util_print_u64((u64)t.dest_inner, 
 				"t.dest_inner = 0x%llx\n");*/
-		}
+//		}
 	}
 	//<>
 	

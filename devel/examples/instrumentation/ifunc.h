@@ -45,13 +45,9 @@ struct kedr_ifunc
 	 * same jump table. */
 	struct list_head jump_tables;
 	
-	/* The number of elements in 'jump_tables' list. */
-	unsigned int num_jump_tables; 
-	
-	/* The array of pointers to the jump tables for the instrumented
-	 * function instance. 
-	 * Number of tables: 'num_jump_tables'. */
-	unsigned long **i_jump_tables;
+	/* A buffer in the module mapping memory space containing all the 
+	 * jump tables for the instrumented code. */
+	void *jt_buf;
 	
 	/* The start address of the fallback instance of the original 
 	 * function. That instance should be used if the instrumented code 
@@ -65,8 +61,10 @@ struct kedr_ifunc
 	struct list_head relocs;
 };
 
+struct kedr_ir_node;
+
 /* Jump tables used for near relative jumps within the function 
- * (optimized 'switch' constructs, etc.) */
+ * (optimized 'switch' constructs). */
 struct kedr_jtable
 {
 	/* The tables for a given function are stored in a list */
@@ -76,8 +74,16 @@ struct kedr_jtable
 	 * values. */
 	unsigned long *addr; 
 	
-	/* Number of elements */
+	/* Number of elements. */
 	unsigned int num;
+	
+	/* Start address of the jump table for the instrumented code (the 
+	 * number of elements is the same). */
+	unsigned long *i_table;
+	
+	/* The IR node containing the instruction that refers to this
+	 * jump table. */
+	struct kedr_ir_node *referrer;
 };
 
 /* 'kedr_reloc' represents an instruction in the instrumented code that 

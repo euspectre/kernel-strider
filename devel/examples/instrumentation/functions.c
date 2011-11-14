@@ -97,7 +97,6 @@ static unsigned int num_funcs = 0;
 static void 
 cleanup_jump_tables(struct kedr_ifunc *func)
 {
-	unsigned int i;
 	struct kedr_jtable *jtable;
 	struct kedr_jtable *jtmp;
 	
@@ -106,22 +105,10 @@ cleanup_jump_tables(struct kedr_ifunc *func)
 		kfree(jtable);
 	}
 	
-	if (func->i_jump_tables == NULL)
-		return;
-
-	/* The first non-NULL element of func->i_jump_tables points to the 
-	 * beginning of the whole allocated memory area. Find it and call
-	 * kedr_free_detour_buffer() for it to release all the tables at 
-	 * once. */
-	for (i = 0; i < func->num_jump_tables; ++i) {
-		if (func->i_jump_tables[i] != NULL) {
-			kedr_free_detour_buffer(func->i_jump_tables[i]);
-			break;
-		}
+	if (func->jt_buf != NULL) {
+		kedr_free_detour_buffer(func->jt_buf);
+		func->jt_buf = NULL;
 	}
-	
-	kfree(func->i_jump_tables);
-	func->i_jump_tables = NULL;
 }
 
 /* Destroy the given 'struct kedr_ifunc' object (and release the memory it
@@ -337,9 +324,6 @@ do_prepare_function(const char *name, struct module *mod,
 	INIT_LIST_HEAD(&tf->jump_tables);
 	INIT_LIST_HEAD(&tf->relocs);
 
-	/* num_jump_tables is 0 now, i_jump_tables is NULL. */
-	/* i_addr and tbuf are also NULL.  */
-	
 	/* Find the corresponding fallback function, it's at the same offset 
 	 * from the beginning of fallback_init_area or fallback_core_area as
 	 * the original function is from the beginning of init or core area
@@ -751,7 +735,10 @@ fixup_fallback_jump_tables(struct kedr_ifunc *func)
 		unsigned int i;
 		/* If the code refers to a "table" without elements (e.g. a 
 		 * table filled with the addresses of other functons, etc.),
-		 * nothing will be done. */
+		 * nothing will be done. 
+		 * If the number of the elements is 0 because some other 
+		 * jumps use the same jump table, the fixup will be done 
+		 * for only one of such jumps, which should be enough. */
 		for (i = 0; i < jtable->num; ++i)
 			table[i] = table[i] - func_start + fallback_start;
 	}
@@ -817,25 +804,20 @@ create_detour_buffer(void)
 static void
 fixup_instrumented_jump_tables(struct kedr_ifunc *func)
 {
-	unsigned int i = 0;
 	struct kedr_jtable *jtable;
 	
 	list_for_each_entry(jtable, &func->jump_tables, list) {
 		unsigned int k;
-		unsigned long *table;
+		unsigned long *table = jtable->i_table;
 		
-		if (func->i_jump_tables[i] == NULL) {
+		if (table == NULL) {
 			BUG_ON(jtable->num != 0);
-			++i;
 			continue;
 		}
 		
-		table = func->i_jump_tables[i];
 		for (k = 0; k < jtable->num; ++k)
 			table[k] += (unsigned long)func->i_addr;
-		++i;
 	}
-	BUG_ON(i != func->num_jump_tables);
 }
 
 /* The instruction to be relocated can be either call/jmp rel32 or
