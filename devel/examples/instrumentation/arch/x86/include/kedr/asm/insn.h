@@ -233,6 +233,13 @@ static inline unsigned int insn_offset_immediate(struct insn *insn)
 				 X86_REG_MASK(INAT_REG_CODE_DX))
 #endif
 
+/* Non-scratch ("callee-save") general purpose registers. Note that Xsp
+ * is not included into this set. */
+#define X86_REG_MASK_NON_SCRATCH \
+	(X86_REG_MASK_ALL & 	 \
+	~X86_REG_MASK_SCRATCH &  \
+	~X86_REG_MASK(INAT_REG_CODE_SP))
+
 /* Maximum size of a machine instruction on x86, in bytes. Actually, 15
  * would be enough. From Intel Software Developer's Manual Vol2A, section 
  * 2.2.1: "The instruction-size limit of 15 bytes still applies <...>".

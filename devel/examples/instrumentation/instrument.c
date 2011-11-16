@@ -52,6 +52,9 @@ extern char *target_function;
  * out of a block). */
 /* ====================================================================== */
 
+/* A special code with the meaning "no register". */
+#define KEDR_REG_NONE   0xff
+
 /* Parameters of a hash map to be used to lookup IR nodes by the addresses 
  * of the corresponding machine instructions in the original code.
  * 
@@ -208,7 +211,7 @@ register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
  * corresponding bit is 1) but not in 'mask_used' (the corresponding bit is 
  * 0). The code is 0-7 on x86-32 and 0-15 on x86-64. If there are several
  * registers of this kind, it is unspecified which one of them is returned.
- * If there are no such registers, 0xff is returned. 
+ * If there are no such registers, KEDR_REG_NONE is returned. 
  *
  * N.B. The higher bits of the masks must be cleared. */
 static u8 
@@ -223,7 +226,7 @@ choose_register(unsigned int mask_choose_from, unsigned int mask_used)
 	/* N.B. Both masks have their higher bits zeroed => so will 'mask'*/
 	mask = mask_choose_from & ~mask_used;
 	if (mask == 0)
-		return 0xff; /* nothing found */
+		return KEDR_REG_NONE; /* nothing found */
 	
 	while (mask % 2 == 0) {
 		mask >>= 1;
@@ -849,20 +852,16 @@ ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
 // TODO: implement kedr_handle_*() functions here
 /* ====================================================================== */
 
-/* Using the IR created before, perform the instrumentation. */
+//<>
+/* TODO: remove when the instrumentation mechanism is prepared. */
 static int
-do_instrument(struct kedr_ifunc *func, struct list_head *ir)
+stub_do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
 	u32 *poffset;
 	struct kedr_reloc *reloc;
 	
-	BUG_ON(func == NULL);
-	BUG_ON(func->tbuf != NULL);
-	BUG_ON(!list_empty(&func->jump_tables) && func->jt_buf == NULL);
-	
-	//<>
-	// For now, the instrumented instance will contain only a jump to 
-	// the fallback function to check the mechanism.
+	/* For now, the instrumented instance will contain only a jump to 
+	 * the fallback function to check the mechanism. */
 	func->tbuf = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
 	if (func->tbuf == NULL)
 		return -ENOMEM;
@@ -882,13 +881,158 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	*(u8 *)func->tbuf = KEDR_OP_JMP_REL32;
 	poffset = (u32 *)((unsigned long)func->tbuf + 1);
 	*poffset = 0; /* to be relocated during deployment */
+	
+	return 0;
+}
+//<>
+
+#ifdef CONFIG_X86_64
+static unsigned int 
+update_base_mask_for_string_insn(struct kedr_ir_node *node, 
+	unsigned int base_mask)
+{
+	/* %rsi and %rdi are scratch registers on x86-64, so they cannot be
+	 * used as a base register anyway. No special handling of string
+	 * instructions is necessary here. */
+	return base_mask;
+}
+
+static int
+is_pusha_popa(struct insn *insn)
+{
+	/* No "PUSHA" and "POPA" instructions on x86-64. */
+	return 0;
+}
+
+#else	/* CONFIG_X86_32 */
+static unsigned int 
+update_base_mask_for_string_insn(struct kedr_ir_node *node, 
+	unsigned int base_mask)
+{
+	/* If the function contains instructions with addressing method X
+	 * (movs, lods, ...), %esi cannot be used as a base register. 
+	 * Same for addressing method Y (movs, stos, ...) and %edi. */
+	insn_attr_t *attr = &node->insn.attr;
+	if (attr->addr_method1 == INAT_AMETHOD_X || 
+	    attr->addr_method2 == INAT_AMETHOD_X)
+		base_mask &= ~X86_REG_MASK(INAT_REG_CODE_SI);
+	
+	if (attr->addr_method1 == INAT_AMETHOD_Y || 
+	    attr->addr_method2 == INAT_AMETHOD_Y)
+		base_mask &= ~X86_REG_MASK(INAT_REG_CODE_DI);
+	
+	//<>
+	/*if (node->insn.opcode.bytes[0] == 0xac) {
+		pr_warning("[DBG] lods: am1 == %d, am2 == %d\n",
+			attr->addr_method1, attr->addr_method2);
+	}*/
 	//<>
 	
-	// TODO: replace this stub with a real instrumentation.
+	return base_mask;
+}
+
+static int
+is_pusha_popa(struct insn *insn)
+{
+	BUG_ON(insn == NULL || insn->length == 0);
+	return (insn->opcode.bytes[0] == 0x60 || 
+		insn->opcode.bytes[0] == 0x61);
+}
+#endif
+
+/* Collects the data about register usage in the function and chooses 
+ * the base register for the instrumentation of that function. 
+ * 
+ * The return value is the code of the base resister on success, a negative
+ * error code on failure. */
+static int
+ir_choose_base_register(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	unsigned int allowed_base_mask = X86_REG_MASK_NON_SCRATCH;
+	unsigned int reg_usage[X86_REG_COUNT];
+	int base = KEDR_REG_NONE;
+	unsigned int usage_count = UINT_MAX;
+	int i;
+	
+	memset(&reg_usage[0], 0, sizeof(reg_usage));
+	
+	list_for_each_entry(node, ir, list) {
+		unsigned int mask;
+		
+		allowed_base_mask = update_base_mask_for_string_insn(node,
+			allowed_base_mask);
+		mask = register_usage_mask(&node->insn, func);
+		BUG_ON(mask > X86_REG_MASK_ALL);
+		
+		if ((mask == X86_REG_MASK_ALL) && 
+		    !is_pusha_popa(&node->insn)) {
+		    	/* Of all the instructions using all registers, we
+		    	 * can handle PUSHA and POPA only. */
+			pr_warning("[sample] The instruction at %pS seems "
+				"to use all general-purpose registers and "
+				"is neither PUSHA nor POPA. Currently, we "
+				"can not instrument the modules containing "
+				"such instructions.\n",
+				(void *)node->orig_addr);
+			return -EILSEQ;
+		}
+		for (i = 0; i < X86_REG_COUNT; ++i) {
+			if (mask & X86_REG_MASK(i))
+				++reg_usage[i];
+		}
+	}
+	
+	for (i = 0; i < X86_REG_COUNT; ++i) {
+		if ((X86_REG_MASK(i) & allowed_base_mask) &&
+		    reg_usage[i] < usage_count) {
+		    	base = i;
+		    	usage_count = reg_usage[i];
+		}
+	}
+	BUG_ON(base == KEDR_REG_NONE); /* we should have chosen something */
+	
+	//<>
+	pr_warning("[DBG] allowed_base_mask = 0x%08x; "
+		"chosen: %d (usage count: %u)\n",
+		allowed_base_mask, base, usage_count);
+	//<>
+	return base;
+}
+
+/* Using the IR created before, perform the instrumentation. */
+static int
+do_instrument(struct kedr_ifunc *func, struct list_head *ir)
+{
+	int ret;
+	u8 base;
+	
+	BUG_ON(func == NULL);
+	BUG_ON(func->tbuf != NULL);
+	BUG_ON(!list_empty(&func->jump_tables) && func->jt_buf == NULL);
+	
+	ret = ir_choose_base_register(func, ir);
+	if (ret < 0)
+		return ret;
+	
+	base = (u8)ret;
+	//<>
+//	pr_warning("[DBG] Non scratch reg mask: 0x%08x\n", 
+//		X86_REG_MASK_NON_SCRATCH);
+	//<>
+	
+	// TODO
+	// 1. Choose the base register
+	// 2. Check for the insns that use all registers
+	// 3. Phase 1: "release" the base register
+	// 4. ...
+	
 	
 	// TODO: At the end, add relocations for the nodes with 
 	// iprel_addr != 0 to func->relocs.
-	return 0;
+	
+	// TODO: replace this stub with a real instrumentation.
+	return stub_do_instrument(func, ir);
 }
 /* ====================================================================== */
 
