@@ -122,8 +122,9 @@ BEGIN {
     mem_flag["RW"] = "INAT_MEM_CAN_READ | INAT_MEM_CAN_WRITE"
     
     # For now, operand attributes are processed only for the operands
-    # specified in Mod R/M byte.
-    opnd_attr_expr = "^[CDEGMNPQRSUVW][a-z]*"
+    # specified in Mod R/M byte and also if xSI and xDI based addressing
+    # is used.
+    opnd_attr_expr = "^[ACDEFGIJMNOPQRSUVWXY][a-z]*"
     
     # Flags for the addressing method (how to interpret a given operand)
     amethod_flag["A"] = "INAT_AMETHOD_A"
@@ -421,7 +422,7 @@ function convert_operands(count,opnd,      i,j,imm,mod,s)
             # It is possible that the addressing mode is not followed by 
             # an operand type flag (example: "lea"). 
             # Also, we need to filter out "ES" and the like where the first
-            # capital letter is actually not the addressing method.
+            # capital letter is actually not an addressing method.
             if (length(i) == 1 || match(i, "[a-z]") == 2)
                 attr_am[j] = amethod_flag[s]
             
