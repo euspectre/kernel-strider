@@ -14,12 +14,13 @@
 #include "detour_buffer.h"
 #include "primary_storage.h"
 #include "ir.h"
-#include "code_gen.h"
 #include "operations.h"
+#include "ir_handlers.h"
 
 //<> For debugging only
 #include "debug_util.h"
 extern char *target_function;
+const char *func_name = "";
 //<>
 /* ====================================================================== */
 
@@ -253,9 +254,10 @@ kedr_ir_node_create(void)
 	if (node == NULL)
 		return NULL;
 	
-	node->first_node = node;
-	node->last_node  = node;
+	node->first = node;
+	node->last  = node;
 	
+	node->reg_mask = X86_REG_MASK_ALL;
 	return node;
 }
 
@@ -316,6 +318,15 @@ ir_destroy(struct list_head *ir)
 		list_del(&pos->list);
 		kedr_ir_node_destroy(pos);
 	}
+}
+
+/* Non-zero if the node corresponded to an instruction from the original
+ * function when that node was created, that is, if it is a reference node.
+ * 0 is returned otherwise. */
+static int
+is_reference_node(struct kedr_ir_node *node)
+{
+	return (node->orig_addr != 0);
 }
 
 /* For each direct jump within the function, link its node in the IR to the 
@@ -469,7 +480,7 @@ resolve_jtables_overlaps(struct kedr_jtable *jtable,
 }
 
 static int 
-handle_jmp_near_indirect(struct kedr_ifunc *func, 
+process_jmp_near_indirect(struct kedr_ifunc *func, 
 	struct kedr_if_data *if_data, struct kedr_ir_node *node)
 {
 	unsigned long jtable_addr;
@@ -580,6 +591,12 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	if (offset_after_insn > func->size)
 		func->size = offset_after_insn;
 	
+	/* [NB] We cannot skip the no-ops as they may be the destinations of
+	 * the jumps. 
+	 * For example, PAUSE instruction (F3 90) is a special kind of a nop
+	 * that is used inside the spin-wait loops, jumps to it are common. 
+	 */
+	
 	/* Create and initialize the IR node and record the mapping 
 	 * (address, node) in the hash map. */
 	node = ir_node_create_from_insn(insn);
@@ -604,7 +621,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 		X86_MODRM_REG(insn->modrm.value) == 4 && 
 		X86_MODRM_MOD(insn->modrm.value) != 3 &&
 		X86_MODRM_RM(insn->modrm.value) == 4) {
-		ret = handle_jmp_near_indirect(func, if_data, node);
+		ret = process_jmp_near_indirect(func, if_data, node);
 		if (ret != 0)
 			return ret;
 	}
@@ -775,6 +792,32 @@ ir_mark_node_separate_block(struct kedr_ir_node *node,
 	node_after->block_starts = 1;
 }
 
+
+/* Can the instruction in the node transfer control outside of the given
+ * function? If not, the return value is 0. If it can or it is unknown 
+ * (e.g., indirect jumps), the return value is non-zero. */
+static int
+is_transfer_outside(struct kedr_ir_node *node, struct kedr_ifunc *func)
+{
+	return (node->dest_addr != 0 && 
+		!is_address_in_function(node->dest_addr, func));
+}
+
+/* An instruction constitutes a special (as opposed to "normal") block 
+ * if it transfers control outside of the function or is a jump backwards
+ * within the function. Indirect jumps and calls are also considered as 
+ * special blocks. */
+static int 
+is_special_block(struct kedr_ir_node *node, struct kedr_ifunc *func)
+{
+	return (is_transfer_outside(node, func) ||
+		(node->dest_inner != NULL && 
+			node->dest_inner->orig_addr <= node->orig_addr));
+	/* "<=" is here rather than plain "<" just in case a jump to itself 
+	 * is encountered. I have seen such jumps a couple of times in the 
+	 * kernel modules, some special kind of padding, may be. */
+}
+
 /* If the current instruction is a control transfer instruction, determine
  * whether it should be reflected in the set of code blocks (i.e. whether we
  * should mark some IR nodes as the beginnings of the blocks). 
@@ -793,17 +836,11 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 	if (node->dest_addr == 0) /* not a control transfer instruction */
 		return;
 	
-	if (is_address_in_function(node->dest_addr, func)) {
-		BUG_ON(node->dest_inner == NULL); 
-		if (node->dest_inner->orig_addr < node->orig_addr) {
-			/* jump backwards */
-			ir_mark_node_separate_block(node, ir);
-			node->dest_inner->block_starts = 1;
-		}
-		
-	} else	/* indirect jump or control transfer outside of the
-		 * function => this instruction is a separate block */
+	if (is_special_block(node, func)) {
 		ir_mark_node_separate_block(node, ir);
+		if (node->dest_inner != NULL)
+			node->dest_inner->block_starts = 1;
+	}
 }
 
 /* Split the code into blocks (see the comment at the beginning of this 
@@ -847,9 +884,6 @@ ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
 			++num_mem_ops;
 	}
 }
-/* ====================================================================== */
-
-// TODO: implement kedr_handle_*() functions here
 /* ====================================================================== */
 
 //<>
@@ -898,9 +932,16 @@ update_base_mask_for_string_insn(struct kedr_ir_node *node,
 }
 
 static int
-is_pusha_popa(struct insn *insn)
+is_pushad(struct insn *insn)
 {
-	/* No "PUSHA" and "POPA" instructions on x86-64. */
+	/* No "PUSHAD" instruction on x86-64. */
+	return 0;
+}
+
+static int
+is_popad(struct insn *insn)
+{
+	/* No "POPAD" instruction on x86-64. */
 	return 0;
 }
 
@@ -921,27 +962,29 @@ update_base_mask_for_string_insn(struct kedr_ir_node *node,
 	    attr->addr_method2 == INAT_AMETHOD_Y)
 		base_mask &= ~X86_REG_MASK(INAT_REG_CODE_DI);
 	
-	//<>
-	/*if (node->insn.opcode.bytes[0] == 0xac) {
-		pr_warning("[DBG] lods: am1 == %d, am2 == %d\n",
-			attr->addr_method1, attr->addr_method2);
-	}*/
-	//<>
-	
 	return base_mask;
 }
 
 static int
-is_pusha_popa(struct insn *insn)
+is_pushad(struct insn *insn)
 {
 	BUG_ON(insn == NULL || insn->length == 0);
-	return (insn->opcode.bytes[0] == 0x60 || 
-		insn->opcode.bytes[0] == 0x61);
+	return (insn->opcode.bytes[0] == 0x60);
+}
+
+static int
+is_popad(struct insn *insn)
+{
+	BUG_ON(insn == NULL || insn->length == 0);
+	return (insn->opcode.bytes[0] == 0x61);
 }
 #endif
 
 /* Collects the data about register usage in the function and chooses 
  * the base register for the instrumentation of that function. 
+ *
+ * The function saves the collected data about register usage in 'reg_mask'
+ * fields of the corresponding nodes.
  * 
  * The return value is the code of the base resister on success, a negative
  * error code on failure. */
@@ -966,17 +1009,19 @@ ir_choose_base_register(struct kedr_ifunc *func, struct list_head *ir)
 		BUG_ON(mask > X86_REG_MASK_ALL);
 		
 		if ((mask == X86_REG_MASK_ALL) && 
-		    !is_pusha_popa(&node->insn)) {
+		    !is_pushad(&node->insn) && !is_popad(&node->insn)) {
 		    	/* Of all the instructions using all registers, we
-		    	 * can handle PUSHA and POPA only. */
+		    	 * can handle PUSHAD and POPAD only. */
 			pr_warning("[sample] The instruction at %pS seems "
-				"to use all general-purpose registers and "
-				"is neither PUSHA nor POPA. Currently, we "
-				"can not instrument the modules containing "
-				"such instructions.\n",
+			"to use all general-purpose registers and is "
+			"neither PUSHAD nor POPAD. Currently, we can not "
+			"instrument the modules containing such "
+			"instructions.\n",
 				(void *)node->orig_addr);
 			return -EILSEQ;
 		}
+		
+		node->reg_mask = mask;
 		for (i = 0; i < X86_REG_COUNT; ++i) {
 			if (mask & X86_REG_MASK(i))
 				++reg_usage[i];
@@ -1000,35 +1045,173 @@ ir_choose_base_register(struct kedr_ifunc *func, struct list_head *ir)
 	return base;
 }
 
+/* Tests if the node corresponds to 'jmp near indirect'
+ * Opcode: FF/4 */
+static int
+is_jump_near_indirect(struct kedr_ir_node *node)
+{
+	struct insn *insn = &node->insn;
+	return (insn->opcode.bytes[0] == 0xff && 
+		X86_MODRM_REG(insn->modrm.bytes[0]) == 4);
+}
+
+/* Tests if the node corresponds to 'call near indirect'
+ * Opcode: FF/2 */
+static int
+is_call_near_indirect(struct kedr_ir_node *node)
+{
+	struct insn *insn = &node->insn;
+	return (insn->opcode.bytes[0] == 0xff && 
+		X86_MODRM_REG(insn->modrm.bytes[0]) == 2);
+}
+
+/* Calls: E8; 9A; FF/2, FF/3 */
+static int
+insn_is_call(struct insn *insn)
+{
+	u8 opcode = insn->opcode.bytes[0];
+	u8 ext_opcode = X86_MODRM_REG(insn->modrm.bytes[0]);
+	
+	return (opcode == 0xe8 || opcode == 0x9a ||
+		(opcode == 0xff && (ext_opcode == 2 || ext_opcode == 3)));
+}
+
+/* Each control transfer outside of the function that is not a call or 
+ * an indirect jump is considered a function exit here. 
+ * Indirect jumps will be handled separately because we can only determine
+ * the destination of such jumps in runtime. */
+static int
+is_function_exit(struct kedr_ir_node *node, struct kedr_ifunc *func)
+{
+	struct insn *insn = &node->insn;
+	return (is_transfer_outside(node, func) &&
+		!insn_is_call(insn) &&
+		!is_jump_near_indirect(node));
+}
+
+static int
+is_end_of_normal_block(struct list_head *ir, struct kedr_ir_node *node, 
+	struct kedr_ifunc *func)
+{
+	struct kedr_ir_node *next_node;
+	
+	if (is_special_block(node, func) || 
+	    node->list.next == ir) /* leave the padding alone */
+		return 0;
+	
+	next_node = list_entry(node->list.next, struct kedr_ir_node, list);
+	return next_node->block_starts;
+}
+
+static int
+is_jump_out_of_block(struct list_head *ir, struct kedr_ir_node *node, 
+	struct kedr_ifunc *func)
+{
+	struct kedr_ir_node *pos;
+	
+	/* We may consider only inner jumps forward. Other kinds of control 
+	 * transfer can only be performed by the instructions in the special
+	 * blocks. */
+	if (node->dest_inner == 0 || is_special_block(node, func))
+		return 0;
+	
+	/* If we've got here, the node corresponds to an inner jump forward.
+	 * Its destination must be before the end of the function. 
+	 * In particular, the node must not be the last one. */
+	BUG_ON(node->list.next == ir);
+	pos = list_entry(node->list.next, struct kedr_ir_node, list);
+	list_for_each_entry_from(pos, ir, list) {
+		if (pos->block_starts) {
+			/* Another block starts before the destination of 
+			 * the jump (or the first its node may be that
+			 * destination). */
+			node->jump_past_block_end = 1;
+			return 1;
+		}
+		
+		/* We are still inside the same block and 'pos' is the 
+		 * destination of the jump. */
+		if (pos == node->dest_inner)
+			return 0;
+	}
+	
+	/* Must not get here because if we do, it means that neither the 
+	 * next block nor the destination of the jump has been found before
+	 * the end of the function. */
+	BUG();
+	return 0;
+}
+
 /* Using the IR created before, perform the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
 	int ret;
 	u8 base;
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *tmp;
 	
 	BUG_ON(func == NULL);
 	BUG_ON(func->tbuf != NULL);
 	BUG_ON(!list_empty(&func->jump_tables) && func->jt_buf == NULL);
+	
+	//<> For debugging only
+	func_name = func->name;
+	//<>
 	
 	ret = ir_choose_base_register(func, ir);
 	if (ret < 0)
 		return ret;
 	
 	base = (u8)ret;
-	//<>
-//	pr_warning("[DBG] Non scratch reg mask: 0x%08x\n", 
-//		X86_REG_MASK_NON_SCRATCH);
-	//<>
+	
+	/* Phase 1: "release" the base register and handle the structural
+	 * elements (entry, exits, block ends, ...). */
+	list_for_each_entry_safe(node, tmp, ir, list) {
+		if (!is_reference_node(node))
+			continue;
+		
+		ret = 0;
+		if (is_function_exit(node, func))
+			ret = kedr_handle_function_exit(node, base);
+		else if (is_jump_out_of_block(ir, node, func))
+			ret = kedr_handle_jump_out_of_block(node, base);
+		else if (is_call_near_indirect(node))
+			ret = kedr_handle_call_near_indirect(node, base);
+		else if (is_jump_near_indirect(node))
+			ret = kedr_handle_jump_near_indirect(node, base);
+		else if (is_pushad(&node->insn))
+			ret = kedr_handle_pushad(node, base);
+		else if (is_popad(&node->insn))
+			ret = kedr_handle_popad(node, base);
+		else 
+			/* General case, just "release" the base register. 
+			 * This can be necessary for special blocks too. */
+			ret = kedr_handle_general_case(node, base);
+		
+		if (ret < 0)
+			return ret;
+		
+		/* In addition to handling the node, determine if it is the
+		 * last node of a normal block and if so, add appropriate 
+		 * instructions after it. */
+		if (is_end_of_normal_block(ir, node, func)) {
+			ret = kedr_handle_end_of_normal_block(node, base);
+			if (ret < 0)
+				return ret;
+		}
+	}
+	ret = kedr_handle_function_entry(ir, func, base);
+	if (ret < 0)
+		return ret;
 	
 	// TODO
-	// 1. Choose the base register
-	// 2. Check for the insns that use all registers
-	// 3. Phase 1: "release" the base register
-	// 4. ...
+	// Phase 2: ...
 	
+	// TODO: Choose the length of the inner jumps
 	
-	// TODO: At the end, add relocations for the nodes with 
+	// TODO: Create the temporary buffer and place the code there.
+	// TODO: During that process, add relocations for the nodes with 
 	// iprel_addr != 0 to func->relocs.
 	
 	// TODO: replace this stub with a real instrumentation.
@@ -1041,8 +1224,8 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 static void
 ir_node_update_block_start(struct kedr_ir_node *node)
 {
-	if (node->block_starts && node->first_node != node) {
-		node->first_node->block_starts = 1;
+	if (node->block_starts && node->first != node) {
+		node->first->block_starts = 1;
 		node->block_starts = 0;
 	}
 }
@@ -1207,7 +1390,7 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 	
 	list_add(&node_orig->list, node->list.prev);
 	list_add(&node_jump_over->list, &node_orig->list);
-	node->first_node = node_orig;
+	node->first = node_orig;
 	
 	/* jcxz/loop* 02
 	 * Copy the insn along with the prefixes it might have to the first
@@ -1425,89 +1608,6 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			(unsigned long)&kedr_process_function_exit_wrapper,
 			(unsigned long)&kedr_process_block_end_wrapper,
 			(unsigned long)&kedr_lookup_replacement_wrapper);
-		/**/
-//		{
-//			struct kedr_ir_node t;
-//			int err = 0;
-//			struct insn insn;
-//			u8 buf[] = {0x83, 0x56, 0x78, 0x55, /**/0x90};
-//			
-//			memset(&t, 0, sizeof(struct kedr_ir_node));
-//			kernel_insn_init(&insn, &buf[0]);
-//			insn_get_length(&insn);
-//			
-//			kedr_mk_mov_reg_to_reg(INAT_REG_CODE_AX, 
-//				INAT_REG_CODE_BX, &t, 1, &err);
-//			kedr_mk_store_reg_to_spill_slot(
-//				INAT_REG_CODE_CX, 
-//				INAT_REG_CODE_BP,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_load_reg_from_spill_slot(
-//				INAT_REG_CODE_CX, 
-//				INAT_REG_CODE_BP,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_lea_expr_reg(&insn, 
-//				INAT_REG_CODE_SI,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_mov_expr_reg(&insn, 
-//				INAT_REG_CODE_SI,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_pop_reg(INAT_REG_CODE_DX, &t, 1, &err);
-//			kedr_mk_call_rel32(0xffffbeef, &t, 1, &err);
-//			kedr_mk_call_reg(INAT_REG_CODE_BP, &t, 1, &err);
-//			kedr_mk_sub_lower32b_from_ax(0xbaadf00d,
-//				&t, 1, &err);
-//			kedr_mk_cmp_value32_with_ax(0xbeeff00d,
-//				&t, 1, &err);
-//			kedr_mk_jcc(INAT_CC_NZ, &t, &t, 1, &err);
-//			kedr_mk_ret(&t, 1, &err);
-//			kedr_mk_xchg_ax_stack_top(&t, 1, &err);
-//			kedr_mk_mov_value32_to_ax(0xf00d1234, &t, 1, &err);
-//			kedr_mk_mov_value32_to_slot(0xf00d1234, 
-//				INAT_REG_CODE_AX,
-//				0x224,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_or_value32_to_slot(0xf00d1234, 
-//				INAT_REG_CODE_AX,
-//				0x224,
-//				&t,
-//				1,
-//				&err);
-//			kedr_mk_test_reg_reg(INAT_REG_CODE_CX, &t, 1, &err);
-//			kedr_mk_jmp_to_external(0xffffbeef, &t, 1, &err);
-//			kedr_mk_mov_eax_to_reg_on_stack(INAT_REG_CODE_DI, 0,
-//				&t, 1, &err);
-//			kedr_mk_jmp_offset_base(INAT_REG_CODE_BX, 
-//				0xbeeff00d, &t, 1, &err);
-//			kedr_mk_xchg_reg_reg(INAT_REG_CODE_AX, 
-//				INAT_REG_CODE_SI, &t, 1, &err);
-//			kedr_mk_pushf(&t, 1, &err);
-//			kedr_mk_popf(&t, 1, &err);
-//			kedr_mk_sub_reg_reg(INAT_REG_CODE_DX, 
-//				INAT_REG_CODE_DI, &t, 1, &err);
-//			kedr_mk_add_value8_to_reg(8, INAT_REG_CODE_CX, &t, 
-//				1, &err);
-//			kedr_mk_neg_reg(INAT_REG_CODE_BP, &t, 1, &err);
-//			
-//			debug_util_print_string("Generated insn: ");
-//			debug_util_print_hex_bytes(t.insn_buffer, 
-//				t.insn.length);
-//			debug_util_print_string("\n");
-			/*debug_util_print_u64((u64)t.iprel_addr, 
-				"t.iprel_addr = 0x%llx\n");
-			debug_util_print_u64((u64)t.dest_inner, 
-				"t.dest_inner = 0x%llx\n");*/
-//		}
 	}
 	//<>
 	
@@ -1516,6 +1616,8 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 		struct kedr_ir_node *node;
 		debug_util_print_string("Code in IR:\n");
 		list_for_each_entry(node, &kedr_ir, list) {
+			if (node->block_starts)
+				debug_util_print_string("[BS] ");
 			debug_util_print_hex_bytes(node->insn_buffer, 
 				node->insn.length);
 			debug_util_print_string("\n");

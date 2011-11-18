@@ -1,5 +1,12 @@
 MODULE_NAME := kedr_sample
 
+# [NB] If you have something.h and something.c, you need to change this 
+# Makefile in 3 places to add the code from these files to the module
+# built this way:
+#  - MODULE_SOURCES:   add something.c here
+#  - MODULE_HEADERS:   add something.h here
+#  - $(MODULE_NAME)-y: add something.o here
+
 # ARCH_DIR subdirectory contains necessary files for both x86 and x86-64.
 ARCH_DIR := arch/x86
 ARCH_INCLUDE_DIR := $(ARCH_DIR)/include/kedr/asm
@@ -20,7 +27,8 @@ MODULE_SOURCES := \
 	instrument.c	\
 	code_gen.c	\
 	operations.c	\
-	sections.c
+	sections.c	\
+	ir_handlers.c
 
 # This is only to specify build dependencies
 MODULE_HEADERS := \
@@ -34,7 +42,8 @@ MODULE_HEADERS := \
 	operations.h	\
 	ir.h		\
 	primary_storage.h \
-	sections.h
+	sections.h	\
+	ir_handlers.h
 
 # This is only to specify build dependencies
 INSN_ANALYZER_FILES := \
@@ -79,6 +88,7 @@ $(MODULE_NAME)-y := \
 	code_gen.o	\
 	operations.o	\
 	sections.o	\
+	ir_handlers.o	\
 	$(ARCH_DIR)/lib/inat.o \
 	$(ARCH_DIR)/lib/insn.o
 

@@ -18,7 +18,7 @@
  * 'insn' field in the corresponding node accordingly (in addition to 
  * 'insn_buffer'.
  *
- * N.B. kedr_mk_*() functions change neither 'first_node' nor 'last_node' in 
+ * N.B. kedr_mk_*() functions change neither 'first' nor 'last' in 
  * the IR nodes. 
  *
  * The last parameter of each kedr_mk_*() function ('err') is the pointer

@@ -34,8 +34,8 @@ struct kedr_ir_node
 	/* If the node represents a jump past the end of the block, this 
 	 * field will be non-zero, 0 otherwise. This distinction of the 
 	 * inner jumps is necessary: for the most of these, the destination
-	 * is dest_inner->first_node while for the jumps past the end of the
-	 * block, it is <last_node_of_the_block>->last_node->(next). */
+	 * is dest_inner->first while for the jumps past the end of the
+	 * block, it is <last_of_the_block>->last->(next). */
 	int jump_past_block_end;
 	
 	/* (see insn_jumps_to()) */
@@ -57,12 +57,12 @@ struct kedr_ir_node
 	unsigned long iprel_addr; 
 	
 	/* During the instrumentation, the instruction may be replaced with
-	 * a sequence of instructions. 'first_node' points to the first node
-	 * of that sequence, 'last_node' - to the last one. If no 
-	 * instructions have been  added, both 'first_node' and 'last_node'
+	 * a sequence of instructions. 'first' points to the first node
+	 * of that sequence, 'last' - to the last one. If no 
+	 * instructions have been  added, both 'first' and 'last'
 	 * point to this very node. */
-	struct kedr_ir_node *first_node;
-	struct kedr_ir_node *last_node;
+	struct kedr_ir_node *first;
+	struct kedr_ir_node *last;
 	
 	/* This field allows to place the node into a hash table when it is
 	 * needed. */
@@ -71,6 +71,11 @@ struct kedr_ir_node
 	/* Nonzero if this IR node corresponds to a start of a code block
 	 * in the original code, 0 otherwise. Default value: 0. */
 	int block_starts;
+	
+	/* Register usage mask for the instruction. To simplify debugging,
+	 * its default value should be as if the instruction used all the 
+	 * general-purpose registers. */
+	unsigned int reg_mask;
 	
 	// TODO: add more fields if necessary
 };
