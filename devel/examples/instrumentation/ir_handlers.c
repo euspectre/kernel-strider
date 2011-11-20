@@ -15,6 +15,7 @@
 #include "debug_util.h"
 extern char *target_function;
 extern const char *func_name;
+extern const struct kedr_ifunc *dbg_ifunc;
 //<>
 /* ====================================================================== */
 
@@ -51,11 +52,20 @@ kedr_handle_function_exit(struct kedr_ir_node *node, u8 base)
 
 /* TODO: describe, add asm snippet */
 int
-kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base)
+kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base,
+	u32 read_mask, u32 write_mask, u32 lock_mask)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
-		debug_util_print_string("end of a block\n");
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_string("end of a block, ");
+		debug_util_print_u64((u64)read_mask, 
+			"read mask: 0x%08llx, ");
+		debug_util_print_u64((u64)write_mask, 
+			"write mask: 0x%08llx, ");
+		debug_util_print_u64((u64)lock_mask, 
+			"lock mask: 0x%08llx, ");
+		debug_util_print_string("\n");
+	}
 	//<>
 	
 	// TODO
@@ -164,6 +174,119 @@ kedr_handle_general_case(struct kedr_ir_node *node, u8 base)
 	//<>
 	
 	// TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_setcc_cmovcc(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] SETcc/CMOVcc\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_cmpxchg(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG8B/16B\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_type_e_and_m(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, 
+			"[#%llu] Generic type E or M\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_type_x(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] Type X\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_type_y(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] Type Y\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_type_xy(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] Type XY\n");
+	}
+	//<>
+	
+	//TODO
 	return 0;
 }
 /* ====================================================================== */

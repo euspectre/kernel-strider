@@ -965,13 +965,13 @@ insn_has_rep_prefix(struct insn *insn)
 }
 
 /**
- * insn_is_locked_op() - Determine if the instruction performs a "locked" 
- * operation, i.e. if it has LOCK prefix.
- * @insn:	&struct insn containing instruction
+ * insn_has_prefix() - Determine if the instruction has a given legacy or
+ * mandatory prefix.
+  * @insn:	&struct insn containing instruction
  *
  * If necessary, decodes the prefixes first. */
 int 
-insn_is_locked_op(struct insn *insn)
+insn_has_prefix(struct insn *insn, insn_byte_t prefix)
 {
 	insn_byte_t *prefixes = insn->prefixes.bytes;
 	unsigned int i;
@@ -980,12 +980,11 @@ insn_is_locked_op(struct insn *insn)
 	insn_get_prefixes(insn);
 	
 	for (i = 0; i < X86_NUM_LEGACY_PREFIXES; ++i) {
-		if (prefixes[i] == 0xf0)
+		if (prefixes[i] == prefix)
 			return 1;
 	}
 	return 0;
 }
-
 
 /**
  * insn_reg_mask_for_expr() - Get information about the general-purpose 

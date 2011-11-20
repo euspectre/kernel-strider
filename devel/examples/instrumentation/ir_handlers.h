@@ -20,17 +20,19 @@ struct list_head;
  * 'node->last' appropriately. 
  *   'base' - the code of the base register chosen for the function. 
  *   'func' - the struct kedr_ifunc instance corresponding to the function
- * to be instrumented. */
+ * to be instrumented. 
+ *   'num'  - the number (index) of the current memory accessing instruction
+ * in the block. */
 
+/* ====================================================================== */
+/* Transformation of the IR, phase 1 */
+/* ====================================================================== */
 int
 kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func, 
 	u8 base);
 
 int
 kedr_handle_function_exit(struct kedr_ir_node *node, u8 base);
-
-int
-kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base);
 
 int
 kedr_handle_jump_out_of_block(struct kedr_ir_node *node, u8 base);
@@ -50,7 +52,36 @@ kedr_handle_popad(struct kedr_ir_node *node, u8 base);
 int
 kedr_handle_general_case(struct kedr_ir_node *node, u8 base);
 
-// TODO
+/* ====================================================================== */
+/* Transformation of the IR, phase 2 */
+/* ====================================================================== */
+
+/* '*_mask' - read, write and lock masks created when analyzing the 
+ * instructions of this block. */
+int
+kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base,
+	u32 read_mask, u32 write_mask, u32 lock_mask);
+
+int
+kedr_handle_setcc_cmovcc(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_cmpxchg(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_type_e_and_m(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_type_x(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_type_y(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_type_xy(struct kedr_ir_node *node, u8 base, u8 num);
 /* ====================================================================== */
 
 #endif // IR_HANDLERS_H_1609_INCLUDED

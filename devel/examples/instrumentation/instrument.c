@@ -21,6 +21,7 @@
 #include "debug_util.h"
 extern char *target_function;
 const char *func_name = "";
+const struct kedr_ifunc *dbg_ifunc = NULL;
 //<>
 /* ====================================================================== */
 
@@ -817,6 +818,115 @@ is_special_block(struct kedr_ir_node *node, struct kedr_ifunc *func)
 	 * is encountered. I have seen such jumps a couple of times in the 
 	 * kernel modules, some special kind of padding, may be. */
 }
+/* ====================================================================== */
+
+/* is_ma_insn_*() - check if that is an instruction accessing memory 
+ * ("ma" - "memory access").
+ * 
+ * [NB] For type E instructions (generic, CMPXCHG, SETcc, CMOVcc), 
+ * is_ma_insn_*() functions return 0 if the instructions do not access 
+ * memory (ModRM.Mod == 3). 
+ * 
+ * Type M (MOVBE, CMPXCHG8B/16B), X, Y and XY instructions considered here
+ * always access memory. */
+static int
+is_insn_type_x(struct kedr_ir_node *node)
+{
+	insn_attr_t *attr = &node->insn.attr;
+	return (attr->addr_method1 == INAT_AMETHOD_X ||
+		attr->addr_method2 == INAT_AMETHOD_X);
+}
+
+static int
+is_insn_type_y(struct kedr_ir_node *node)
+{
+	insn_attr_t *attr = &node->insn.attr;
+	return (attr->addr_method1 == INAT_AMETHOD_Y || 
+		attr->addr_method2 == INAT_AMETHOD_Y);
+}
+
+static int
+is_insn_type_xy(struct kedr_ir_node *node)
+{
+	return (is_insn_type_x(node) && is_insn_type_y(node));
+}
+
+static int
+is_insn_cmpxchg(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	u8 modrm = node->insn.modrm.bytes[0];
+	
+	/* CMPXCHG: 0F B0 and 0F B1 */
+	return (opcode[0] == 0x0f && 
+		(opcode[1] == 0xb0 || opcode[1] == 0xb1) && 
+		X86_MODRM_MOD(modrm) != 3);
+}
+
+static int
+is_insn_cmpxchg8b_16b(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	u8 modrm = node->insn.modrm.bytes[0];
+	
+	/* CMPXCHG8B/CMPXCHG16B: 0F C7 /1 */
+	return (opcode[0] == 0x0f && opcode[1] == 0xc7 &&
+		X86_MODRM_REG(modrm) == 1);
+}
+
+static int
+is_insn_movbe(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	
+	/* We need to check the prefix to distinguish MOVBE from CRC32 insn,
+	 * they have the same opcode. */
+	if (insn_has_prefix(&node->insn, 0xf2))
+		return 0;
+	
+	/* MOVBE: 0F 38 F0 and 0F 38 F1 */
+	return (opcode[0] == 0x0f && opcode[1] == 0x38 &&
+		(opcode[2] == 0xf0 || opcode[2] == 0xf1));
+}
+
+static int
+is_insn_setcc(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	u8 modrm = node->insn.modrm.bytes[0];
+	
+	/* SETcc: 0F 90 - 0F 9F */
+	return (opcode[0] == 0x0f && 
+		((opcode[1] & 0xf0) == 0x90) &&
+		X86_MODRM_MOD(modrm) != 3);
+}
+
+static int
+is_insn_cmovcc(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	u8 modrm = node->insn.modrm.bytes[0];
+	
+	/* CMOVcc: 0F 40 - 0F 4F */
+	return (opcode[0] == 0x0f && 
+		((opcode[1] & 0xf0) == 0x40) &&
+		X86_MODRM_MOD(modrm) != 3);
+}
+
+/* [NB] CMPXCHG, SETcc, etc. also use addressing method (type) E and will be
+ * reported by this function as such. To distinguish them from other type E
+ * instructions, use is_*_cmpxchg() and the like. */
+static int
+is_insn_type_e(struct kedr_ir_node *node)
+{
+	insn_attr_t *attr = &node->insn.attr;
+	u8 modrm = node->insn.modrm.bytes[0];
+	
+	return ((attr->addr_method1 == INAT_AMETHOD_E || 
+			attr->addr_method2 == INAT_AMETHOD_E) &&
+		X86_MODRM_MOD(modrm) != 3);
+}
+/* ====================================================================== */
 
 /* If the current instruction is a control transfer instruction, determine
  * whether it should be reflected in the set of code blocks (i.e. whether we
@@ -879,9 +989,16 @@ ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
 			num_mem_ops = 0;
 		}
 		
-		if (insn_is_mem_read(&pos->insn) || 
+		if (is_insn_type_xy(pos)) 
+			num_mem_ops += 2;
+		else if (insn_is_mem_read(&pos->insn) || 
 		    insn_is_mem_write(&pos->insn))
 			++num_mem_ops;
+		/* We assume that for string operations of type XY, it is 
+		 * needed to record 2 memory accesses at most. 
+		 * For the rest of the instructions we are interested in,
+		 * recording one memory access for each such instruction is
+		 * enough, even for CMPXCHG*. */
 	}
 }
 /* ====================================================================== */
@@ -1142,6 +1259,27 @@ is_jump_out_of_block(struct list_head *ir, struct kedr_ir_node *node,
 	return 0;
 }
 
+static void
+update_lock_mask(struct kedr_ir_node *node, u8 num, u32 *mask)
+{
+	if (insn_is_locked_op(&node->insn))
+		*mask |= 1 << num;
+}
+
+static void
+update_read_mask(struct kedr_ir_node *node, u8 num, u32 *mask)
+{
+	if (insn_is_mem_read(&node->insn))
+		*mask |= 1 << num;
+}
+
+static void
+update_write_mask(struct kedr_ir_node *node, u8 num, u32 *mask)
+{
+	if (insn_is_mem_write(&node->insn))
+		*mask |= 1 << num;
+}
+
 /* Using the IR created before, perform the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
@@ -1150,6 +1288,10 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	u8 base;
 	struct kedr_ir_node *node;
 	struct kedr_ir_node *tmp;
+	u32 read_mask = 0;
+	u32 write_mask = 0;
+	u32 lock_mask = 0;
+	u8 num = 0;
 	
 	BUG_ON(func == NULL);
 	BUG_ON(func->tbuf != NULL);
@@ -1157,6 +1299,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	
 	//<> For debugging only
 	func_name = func->name;
+	dbg_ifunc = func;
 	//<>
 	
 	ret = ir_choose_base_register(func, ir);
@@ -1165,8 +1308,13 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	
 	base = (u8)ret;
 	
+	//<>
+	if (strcmp(func_name, target_function) == 0)
+		debug_util_print_string("Phase 1\n");
+	//<>
+	
 	/* Phase 1: "release" the base register and handle the structural
-	 * elements (entry, exits, block ends, ...). */
+	 * elements (entry, exits, jumps out of a block, ...). */
 	list_for_each_entry_safe(node, tmp, ir, list) {
 		if (!is_reference_node(node))
 			continue;
@@ -1191,22 +1339,99 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		
 		if (ret < 0)
 			return ret;
-		
-		/* In addition to handling the node, determine if it is the
-		 * last node of a normal block and if so, add appropriate 
-		 * instructions after it. */
-		if (is_end_of_normal_block(ir, node, func)) {
-			ret = kedr_handle_end_of_normal_block(node, base);
-			if (ret < 0)
-				return ret;
-		}
 	}
 	ret = kedr_handle_function_entry(ir, func, base);
 	if (ret < 0)
 		return ret;
 	
-	// TODO
-	// Phase 2: ...
+	//<>
+	if (strcmp(func_name, target_function) == 0)
+		debug_util_print_string("Phase 2\n");
+	//<>
+	
+	/* Phase 2: instrument memory accesses and the ends of the blocks.*/
+	list_for_each_entry_safe(node, tmp, ir, list) {
+		if (!is_reference_node(node) || is_special_block(node, func))
+			continue;
+		
+		update_lock_mask(node, num, &lock_mask);
+		
+		ret = 0;
+		if (is_insn_cmovcc(node) || is_insn_setcc(node)) {
+			update_read_mask(node, num, &read_mask);
+			update_write_mask(node, num, &write_mask);
+			ret = kedr_handle_setcc_cmovcc(node, base, num);
+			++num;
+		} 
+		else if (is_insn_cmpxchg(node)) {
+			/* CMPXCHG counts as one operation, which is either
+			 * "read" or "read+write" ("update"). 
+			 * "read" happens always, so we record it in the 
+			 * mask here. If write operation takes place, the 
+			 * write mask will be updated in runtime. */
+			read_mask |= 1 << num;
+			ret = kedr_handle_cmpxchg(node, base, num);
+			++num;
+		}
+		else if (is_insn_cmpxchg8b_16b(node)) {
+			/* CMPXCHG* counts as one operation, which is either
+			 * read or read+write ("update"). */
+			read_mask |= 1 << num;
+			ret = kedr_handle_cmpxchg8b_16b(node, base, num);
+			++num;
+		}
+		else if (!insn_is_noop(&node->insn) && 
+			(is_insn_type_e(node) || is_insn_movbe(node)))
+		{
+			/* As SETcc, CMOVcc and CMPXCHG are also "type E" 
+			 * instructions, we have checked for these first. */
+			update_read_mask(node, num, &read_mask);
+			update_write_mask(node, num, &write_mask);
+			ret = kedr_handle_type_e_and_m(node, base, num);
+			++num;
+		}
+		else if (is_insn_type_x(node))
+		{
+			read_mask |= 1 << num; /* "read" from *(%xSI) */
+			ret = kedr_handle_type_x(node, base, num);
+			++num;
+		}
+		else if (is_insn_type_y(node))
+		{
+			write_mask |= 1 << num; /* "write" to *(%xDI) */
+			ret = kedr_handle_type_y(node, base, num);
+			++num;
+		}
+		else if (is_insn_type_xy(node))
+		{
+			/* We record 2 operations here, read from the source
+			 * and write to the destination. */
+			read_mask |= 1 << num;
+			write_mask |= 1 << (num + 1);
+			ret = kedr_handle_type_xy(node, base, num);
+			num += 2; 
+		}
+		BUG_ON(num > KEDR_MEM_NUM_RECORDS); /* just in case */
+		
+		if (ret < 0)
+			return ret;
+		
+		/* In addition to handling the node, determine if it is the
+		 * last node of a normal block and if so, add appropriate 
+		 * instructions after it. */
+		if (is_end_of_normal_block(ir, node, func)) {
+			ret = kedr_handle_end_of_normal_block(node, 
+				base, read_mask, write_mask, lock_mask);
+			if (ret < 0)
+				return ret;
+			
+			/* Prepare for the next normal block */
+			num = 0;
+			lock_mask = 0;
+			read_mask = 0;
+			write_mask = 0;
+		}
+	}
 	
 	// TODO: Choose the length of the inner jumps
 	
