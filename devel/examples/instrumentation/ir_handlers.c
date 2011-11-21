@@ -42,8 +42,11 @@ int
 kedr_handle_function_exit(struct kedr_ir_node *node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("exit\n");
+	}
 	//<>
 	
 	// TODO
@@ -57,6 +60,8 @@ kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base,
 {
 	//<>
 	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("end of a block, ");
 		debug_util_print_u64((u64)read_mask, 
 			"read mask: 0x%08llx, ");
@@ -74,11 +79,15 @@ kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base,
 
 /* TODO: describe, add asm snippet */
 int
-kedr_handle_jump_out_of_block(struct kedr_ir_node *node, u8 base)
+kedr_handle_jump_out_of_block(struct kedr_ir_node *node, 
+	struct kedr_ir_node *end_node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("jump out of a block\n");
+	}
 	//<>
 	
 	// TODO
@@ -90,8 +99,11 @@ int
 kedr_handle_call_near_indirect(struct kedr_ir_node *node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("call near indirect\n");
+	}
 	//<>
 	
 	// TODO
@@ -103,8 +115,11 @@ int
 kedr_handle_jump_near_indirect(struct kedr_ir_node *node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("jump near indirect\n");
+	}
 	//<>
 	
 	// TODO
@@ -134,8 +149,11 @@ int
 kedr_handle_pushad(struct kedr_ir_node *node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("pushad\n");
+	}
 	//<>
 	
 	// TODO
@@ -147,8 +165,11 @@ int
 kedr_handle_popad(struct kedr_ir_node *node, u8 base)
 {
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("popad\n");
+	}
 	//<>
 	
 	//TODO
@@ -162,15 +183,21 @@ kedr_handle_general_case(struct kedr_ir_node *node, u8 base)
 {
 	if (insn_is_noop(&node->insn)) {
 		//<>
-		if (strcmp(func_name, target_function) == 0)
+		if (strcmp(func_name, target_function) == 0) {
+			debug_util_print_u64((u64)(node->orig_addr - 
+				(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 			debug_util_print_string("no-op\n");
+		}
 		//<>
 		return 0;
 	}
 	
 	//<>
-	if (strcmp(func_name, target_function) == 0)
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_string("general\n");
+	}
 	//<>
 	
 	// TODO
@@ -218,6 +245,22 @@ kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *node, u8 base, u8 num)
 		debug_util_print_u64((u64)(node->orig_addr - 
 			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
 		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG8B/16B\n");
+	}
+	//<>
+	
+	//TODO
+	return 0;
+}
+
+/* TODO: describe, add asm snippet */
+int
+kedr_handle_xlat(struct kedr_ir_node *node, u8 base, u8 num)
+{
+	//<>
+	if (strcmp(func_name, target_function) == 0) {
+		debug_util_print_u64((u64)(node->orig_addr - 
+			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
+		debug_util_print_u64((u64)num, "[#%llu] XLAT\n");
 	}
 	//<>
 	

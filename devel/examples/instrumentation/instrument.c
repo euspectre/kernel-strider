@@ -926,6 +926,15 @@ is_insn_type_e(struct kedr_ir_node *node)
 			attr->addr_method2 == INAT_AMETHOD_E) &&
 		X86_MODRM_MOD(modrm) != 3);
 }
+
+static int
+is_insn_xlat(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	
+	/* XLAT: D7 */
+	return (opcode[0] == 0xd7);
+}
 /* ====================================================================== */
 
 /* If the current instruction is a control transfer instruction, determine
@@ -1220,45 +1229,6 @@ is_end_of_normal_block(struct list_head *ir, struct kedr_ir_node *node,
 	return next_node->block_starts;
 }
 
-static int
-is_jump_out_of_block(struct list_head *ir, struct kedr_ir_node *node, 
-	struct kedr_ifunc *func)
-{
-	struct kedr_ir_node *pos;
-	
-	/* We may consider only inner jumps forward. Other kinds of control 
-	 * transfer can only be performed by the instructions in the special
-	 * blocks. */
-	if (node->dest_inner == 0 || is_special_block(node, func))
-		return 0;
-	
-	/* If we've got here, the node corresponds to an inner jump forward.
-	 * Its destination must be before the end of the function. 
-	 * In particular, the node must not be the last one. */
-	BUG_ON(node->list.next == ir);
-	pos = list_entry(node->list.next, struct kedr_ir_node, list);
-	list_for_each_entry_from(pos, ir, list) {
-		if (pos->block_starts) {
-			/* Another block starts before the destination of 
-			 * the jump (or the first its node may be that
-			 * destination). */
-			node->jump_past_block_end = 1;
-			return 1;
-		}
-		
-		/* We are still inside the same block and 'pos' is the 
-		 * destination of the jump. */
-		if (pos == node->dest_inner)
-			return 0;
-	}
-	
-	/* Must not get here because if we do, it means that neither the 
-	 * next block nor the destination of the jump has been found before
-	 * the end of the function. */
-	BUG();
-	return 0;
-}
-
 static void
 update_lock_mask(struct kedr_ir_node *node, u8 num, u32 *mask)
 {
@@ -1280,6 +1250,48 @@ update_write_mask(struct kedr_ir_node *node, u8 num, u32 *mask)
 		*mask |= 1 << num;
 }
 
+/* Checks if the normal block starting with 'start_node' and ending with 
+ * 'end_node' contains forward jumps to the locations inside the function 
+ * but outside of this block. If so, the function handles these jumps. */
+static int
+handle_jumps_out_of_block(struct kedr_ir_node *start_node, 
+	struct kedr_ir_node *end_node, struct list_head *ir, u8 base)
+{
+	int ret = 0;
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *tmp;
+	
+	BUG_ON(start_node == NULL || end_node == NULL);
+	
+	node = start_node;
+	list_for_each_entry_safe_from(node, tmp, ir, list) {
+		/* We are inside of a normal block, so we only need to 
+		 * consider forward jumps within the function. */
+		if (node->dest_inner != NULL && 
+		    node->dest_inner->orig_addr > end_node->orig_addr) {
+		    	node->jump_past_block_end = 1;
+			ret = kedr_handle_jump_out_of_block(node, end_node, 
+				base);
+			if (ret < 0)
+				return ret;
+		}
+			
+		/* [NB] 'end_node' may also be a jump out of the block,
+		 * so we handle the node first and only then check if it is
+		 * 'end_node'. */
+		if (node == end_node)
+			return 0;
+	}
+	
+	/* Must not get here */
+	BUG();
+	return -EILSEQ;
+}
+/*
+if (is_jump_out_of_block(ir, node, func))
+	ret = kedr_handle_jump_out_of_block(node, base);
+*/
+
 /* Using the IR created before, perform the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
@@ -1288,6 +1300,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	u8 base;
 	struct kedr_ir_node *node;
 	struct kedr_ir_node *tmp;
+	struct kedr_ir_node *start_node = NULL;
 	u32 read_mask = 0;
 	u32 write_mask = 0;
 	u32 lock_mask = 0;
@@ -1314,7 +1327,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	//<>
 	
 	/* Phase 1: "release" the base register and handle the structural
-	 * elements (entry, exits, jumps out of a block, ...). */
+	 * elements (entry, exits). */
 	list_for_each_entry_safe(node, tmp, ir, list) {
 		if (!is_reference_node(node))
 			continue;
@@ -1322,8 +1335,6 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		ret = 0;
 		if (is_function_exit(node, func))
 			ret = kedr_handle_function_exit(node, base);
-		else if (is_jump_out_of_block(ir, node, func))
-			ret = kedr_handle_jump_out_of_block(node, base);
 		else if (is_call_near_indirect(node))
 			ret = kedr_handle_call_near_indirect(node, base);
 		else if (is_jump_near_indirect(node))
@@ -1354,6 +1365,14 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		if (!is_reference_node(node) || is_special_block(node, func))
 			continue;
 		
+		if (node->block_starts) {
+			start_node = node;
+			num = 0;
+			lock_mask = 0;
+			read_mask = 0;
+			write_mask = 0;
+		}
+		
 		update_lock_mask(node, num, &lock_mask);
 		
 		ret = 0;
@@ -1380,6 +1399,11 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			ret = kedr_handle_cmpxchg8b_16b(node, base, num);
 			++num;
 		}
+		else if (is_insn_xlat(node)) {
+			read_mask |= 1 << num;
+			ret = kedr_handle_xlat(node, base, num);
+			++num;
+		}
 		else if (!insn_is_noop(&node->insn) && 
 			(is_insn_type_e(node) || is_insn_movbe(node)))
 		{
@@ -1389,6 +1413,16 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			update_write_mask(node, num, &write_mask);
 			ret = kedr_handle_type_e_and_m(node, base, num);
 			++num;
+		}
+		else if (is_insn_type_xy(node))
+		{
+			/* We record 2 operations here, read from the source
+			 * and write to the destination. Check for XY goes
+			 * first to distinguish the type from X and Y. */
+			read_mask |= 1 << num;
+			write_mask |= 1 << (num + 1);
+			ret = kedr_handle_type_xy(node, base, num);
+			num += 2; 
 		}
 		else if (is_insn_type_x(node))
 		{
@@ -1402,34 +1436,27 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			ret = kedr_handle_type_y(node, base, num);
 			++num;
 		}
-		else if (is_insn_type_xy(node))
-		{
-			/* We record 2 operations here, read from the source
-			 * and write to the destination. */
-			read_mask |= 1 << num;
-			write_mask |= 1 << (num + 1);
-			ret = kedr_handle_type_xy(node, base, num);
-			num += 2; 
-		}
+
 		BUG_ON(num > KEDR_MEM_NUM_RECORDS); /* just in case */
 		
 		if (ret < 0)
 			return ret;
 		
 		/* In addition to handling the node, determine if it is the
-		 * last node of a normal block and if so, add appropriate 
-		 * instructions after it. */
-		if (is_end_of_normal_block(ir, node, func)) {
+		 * last node of a normal block. If that block contains at 
+		 * least one memory access of interest, add appropriate 
+		 * instructions after it and process jumps out of the block
+		 * if they are there. */
+		if (is_end_of_normal_block(ir, node, func) && num > 0) {
+			ret = handle_jumps_out_of_block(start_node, node, 
+				ir, base);
+			if (ret < 0)
+				return ret;
+			
 			ret = kedr_handle_end_of_normal_block(node, 
 				base, read_mask, write_mask, lock_mask);
 			if (ret < 0)
 				return ret;
-			
-			/* Prepare for the next normal block */
-			num = 0;
-			lock_mask = 0;
-			read_mask = 0;
-			write_mask = 0;
 		}
 	}
 	

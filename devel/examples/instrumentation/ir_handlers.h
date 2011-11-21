@@ -35,9 +35,6 @@ int
 kedr_handle_function_exit(struct kedr_ir_node *node, u8 base);
 
 int
-kedr_handle_jump_out_of_block(struct kedr_ir_node *node, u8 base);
-
-int
 kedr_handle_call_near_indirect(struct kedr_ir_node *node, u8 base);
 
 int
@@ -62,6 +59,12 @@ int
 kedr_handle_end_of_normal_block(struct kedr_ir_node *node, u8 base,
 	u32 read_mask, u32 write_mask, u32 lock_mask);
 
+/* 'end_node' - the last reference node of the block that 'node' belongs to.
+ */
+int
+kedr_handle_jump_out_of_block(struct kedr_ir_node *node, 
+	struct kedr_ir_node *end_node, u8 base);
+
 int
 kedr_handle_setcc_cmovcc(struct kedr_ir_node *node, u8 base, u8 num);
 
@@ -70,6 +73,9 @@ kedr_handle_cmpxchg(struct kedr_ir_node *node, u8 base, u8 num);
 
 int
 kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *node, u8 base, u8 num);
+
+int
+kedr_handle_xlat(struct kedr_ir_node *node, u8 base, u8 num);
 
 int
 kedr_handle_type_e_and_m(struct kedr_ir_node *node, u8 base, u8 num);
