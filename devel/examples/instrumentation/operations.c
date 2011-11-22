@@ -155,4 +155,16 @@ kedr_lookup_replacement(unsigned long addr)
 	return /*<>*/ addr; /* by default, do not replace the call address */
 }
 KEDR_DEFINE_WRAPPER(kedr_lookup_replacement);
+
+static __used void
+kedr_warn_unreachable(unsigned long insn_addr)
+{
+	/* Report the problem and return. */
+	pr_err("[sample] The instruction at %pS was expected not to return "
+		"control to the code following it but it did so. "
+		"Aborting execution to prevent unforeseen consequences.\n", 
+		(void *)insn_addr);
+	return; 
+}
+KEDR_DEFINE_WRAPPER(kedr_warn_unreachable);
 /* ====================================================================== */

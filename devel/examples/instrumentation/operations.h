@@ -96,6 +96,24 @@ KEDR_DECLARE_WRAPPER(kedr_process_block_end);
  *   replacement function). 
  */
 KEDR_DECLARE_WRAPPER(kedr_lookup_replacement);
+
+/* kedr_warn_unreachable
+ * This function is used to issue warnings and may be perform some other 
+ * operations if the execution reaches the code after the given instruction
+ * (usually, a jump outside of a function) that was expected to be 
+ * unreachable. 
+ * kedr_warn_unreachable() should return after it performs everything 
+ * necessary. In particular, it should not use BUG(). The code calling it
+ * is responsible for stopping the execution after kedr_warn_unreachable() 
+ * returns.
+ * 
+ * Parameter:
+ *   unsigned long addr - the address of the original instruction that 
+ *   should not have returned control to the code following it.
+ * Return value:
+ *   none
+ */
+KEDR_DECLARE_WRAPPER(kedr_warn_unreachable);
 /* ====================================================================== */
 
 #endif // OPERATIONS_H_1810_INCLUDED
