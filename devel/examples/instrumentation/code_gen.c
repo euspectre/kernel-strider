@@ -957,6 +957,112 @@ kedr_mk_neg_reg(u8 reg, struct kedr_ir_node *base_node, int in_place,
 		(unsigned char)(pos - node->insn_buffer));
 }
 
-// TODO: Do not place kedr_handle_*() here, they are better suited for 
-// instrument.c
+/* add <offset_bx>(%base), %rax */
+void
+kedr_mk_add_slot_bx_to_ax(u8 base, struct kedr_ir_node *base_node, 
+	int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	BUG_ON(base >= X86_REG_COUNT);
+	
+	if (*err != 0)
+		return;
+	
+	node = prepare_node(base_node, in_place, err);
+	if (node == NULL)
+		return;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		base);
+	
+	*pos++ = 0x03; /* opcode */
+	pos = write_modrm_expr(pos, base, INAT_REG_CODE_AX, 1, 
+		(unsigned long)(INAT_REG_CODE_BX * sizeof(unsigned long)));
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+}
+
+/* add %rbx, %rax */
+void
+kedr_mk_add_bx_to_ax(struct kedr_ir_node *base_node, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return;
+	
+	node = prepare_node(base_node, in_place, err);
+	if (node == NULL)
+		return;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		INAT_REG_CODE_BX);
+	
+	*pos++ = 0x03; /* opcode */
+	*pos++ = KEDR_MK_MODRM(3, INAT_REG_CODE_AX, INAT_REG_CODE_BX);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+}
+
+/* movzx %al, %rax (movzbq/movzbl %al, %rax/%eax) */
+void
+kedr_mk_movzx_al_ax(struct kedr_ir_node *base_node, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return;
+	
+	node = prepare_node(base_node, in_place, err);
+	if (node == NULL)
+		return;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		INAT_REG_CODE_AX);
+	
+	*pos++ = 0x0f; /* opcode: 0F B6/r */
+	*pos++ = 0xb6;
+	*pos++ = KEDR_MK_MODRM(3, INAT_REG_CODE_AX, INAT_REG_CODE_AX);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+}
+
+/* ud2 */
+void
+kedr_mk_ud2(struct kedr_ir_node *base_node, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return;
+	
+	node = prepare_node(base_node, in_place, err);
+	if (node == NULL)
+		return;
+	
+	pos = node->insn_buffer;
+	*pos++ = 0x0f; /* opcode: 0F 0B/r */
+	*pos++ = 0x0b;
+		
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+}
 /* ====================================================================== */

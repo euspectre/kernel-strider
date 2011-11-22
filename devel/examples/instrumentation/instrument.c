@@ -19,6 +19,8 @@
 
 //<> For debugging only
 #include "debug_util.h"
+#include "code_gen.h"
+
 extern char *target_function;
 const char *func_name = "";
 const struct kedr_ifunc *dbg_ifunc = NULL;

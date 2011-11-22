@@ -224,4 +224,28 @@ void
 kedr_mk_neg_reg(u8 reg, struct kedr_ir_node *base_node, int in_place, 
 	int *err);
 
+/* add <offset_bx>(%base), %rax
+ * This instruction is used when handling XLAT. */
+void
+kedr_mk_add_slot_bx_to_ax(u8 base, struct kedr_ir_node *base_node, 
+	int in_place, int *err);
+	
+/* add %rbx, %rax
+ * This instruction is used when handling XLAT. */
+void
+kedr_mk_add_bx_to_ax(struct kedr_ir_node *base_node, int in_place, 
+	int *err);
+
+/* movzx %al, %rax (or, with another memonic, "movzbq %al, %rax")
+ * This instruction is used when handling XLAT. */
+void
+kedr_mk_movzx_al_ax(struct kedr_ir_node *base_node, int in_place, 
+	int *err);
+
+/* ud2, the instruction that results in generating exception "invalid 
+ * opcode". Used, for example, when handling indirect jumps. */
+void
+kedr_mk_ud2(struct kedr_ir_node *base_node, int in_place, 
+	int *err);
+
 #endif // CODE_GEN_H_1759_INCLUDED
