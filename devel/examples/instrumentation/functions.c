@@ -677,7 +677,7 @@ relocate_insn_in_fallback(struct insn *insn, void *data)
 			insn->length, 
 			new_offset);
 		
-		if (is_address_in_function(addr, func))
+		if (kedr_is_address_in_function(addr, func))
 		/* no fixup needed, the offset may remain the same */
 			return 0; 
 		
@@ -714,7 +714,7 @@ relocate_insn_in_fallback(struct insn *insn, void *data)
 static int 
 relocate_fallback_function(struct kedr_ifunc *func)
 {
-	return for_each_insn((unsigned long)func->fallback, 
+	return kedr_for_each_insn((unsigned long)func->fallback, 
 		(unsigned long)func->fallback + func->size, 
 		relocate_insn_in_fallback, 
 		(void *)func); 

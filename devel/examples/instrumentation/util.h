@@ -32,6 +32,9 @@
  * KEDR_FUNC_ALIGN. */
 #define KEDR_ALIGN_VALUE(_val) \
   (((unsigned long)(_val) + KEDR_FUNC_ALIGN - 1) & ~(KEDR_FUNC_ALIGN - 1))
+
+/* A special code with the meaning "no register". */
+#define KEDR_REG_NONE   0xff
 /* ====================================================================== */
 
 /* For each instruction in [start_addr; end_addr), the function decodes it
@@ -43,18 +46,18 @@
  * insn->kaddr field.
  *
  * proc() is expected to return 0 on success and a negative error code on 
- * failure. for_each_insn() continues as long as there are instructions 
+ * failure. kedr_for_each_insn() continues as long as there are instructions 
  * left and proc() returns 0. If proc() returns nonzero, for_each_insn()
  * stops and returns this value.
  * 
  * Use this function instead of explicit walking, decoding and processing 
  * the areas of code (you remember C++ and STL best practices, right?). */
 int 
-for_each_insn(unsigned long start_addr, unsigned long end_addr,
+kedr_for_each_insn(unsigned long start_addr, unsigned long end_addr,
 	int (*proc)(struct insn *, void *), void *data);
 
-/* for_each_insn_in_function() - similar to for_each_insn() but operates 
- * only on the given function 'func' (on its original code). 
+/* Similar to kedr_for_each_insn() but operates only on the given function 
+ * 'func' (on its original code). 
  * 
  * Note that 'proc' callback must have a different prototype here:
  *   int <name>(struct kedr_ifunc *, struct insn *, void *)
@@ -62,16 +65,36 @@ for_each_insn(unsigned long start_addr, unsigned long end_addr,
  * special wrapper structures (for_each_insn_in_function() handles wrapping
  * stuff itself). */
 int
-for_each_insn_in_function(struct kedr_ifunc *func, 
+kedr_for_each_insn_in_function(struct kedr_ifunc *func, 
 	int (*proc)(struct kedr_ifunc *, struct insn *, void *), 
 	void *data);
 
 /* Nonzero if 'addr' is an address of some location within the given 
  * function, 0 otherwise. */
 static inline int
-is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
+kedr_is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
 {
 	return (addr >= (unsigned long)func->addr && 
 		addr < (unsigned long)func->addr + func->size);
+}
+
+/* Returns the code of a register which is in 'mask_choose_from' (the 
+ * corresponding bit is 1) but not in 'mask_used' (the corresponding bit is 
+ * 0). The code is 0-7 on x86-32 and 0-15 on x86-64. If there are several
+ * registers of this kind, it is unspecified which one of them is returned.
+ * If there are no such registers, KEDR_REG_NONE is returned. 
+ *
+ * N.B. The higher bits of the masks must be cleared. */
+u8 
+kedr_choose_register(unsigned int mask_choose_from, unsigned int mask_used);
+
+/* Similar to kedr_choose_register() but the chosen register is additionally
+ * guaranteed to be different from %base. */
+static inline u8 
+kedr_choose_work_register(unsigned int mask_choose_from, 
+	unsigned int mask_used, u8 base)
+{
+	return kedr_choose_register(mask_choose_from, 
+		mask_used | X86_REG_MASK(base));
 }
 #endif // UTIL_H_1633_INCLUDED

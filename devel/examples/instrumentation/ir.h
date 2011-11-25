@@ -77,6 +77,10 @@ struct kedr_ir_node
 	 * general-purpose registers. */
 	unsigned int reg_mask;
 	
+	/* Nonzero if the node corresponds to an inner jmp near indirect
+	 * that uses a jump table. Default value: 0. */
+	int inner_jmp_indirect;
+	
 	// TODO: add more fields if necessary
 };
 

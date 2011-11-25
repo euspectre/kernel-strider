@@ -56,9 +56,6 @@ const struct kedr_ifunc *dbg_ifunc = NULL;
  * out of a block). */
 /* ====================================================================== */
 
-/* A special code with the meaning "no register". */
-#define KEDR_REG_NONE   0xff
-
 /* Parameters of a hash map to be used to lookup IR nodes by the addresses 
  * of the corresponding machine instructions in the original code.
  * 
@@ -210,42 +207,6 @@ register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
 		
 	return reg_mask;
 }
-
-/* Returns the code of a register which is in 'mask_choose_from' (the 
- * corresponding bit is 1) but not in 'mask_used' (the corresponding bit is 
- * 0). The code is 0-7 on x86-32 and 0-15 on x86-64. If there are several
- * registers of this kind, it is unspecified which one of them is returned.
- * If there are no such registers, KEDR_REG_NONE is returned. 
- *
- * N.B. The higher bits of the masks must be cleared. */
-static u8 
-choose_register(unsigned int mask_choose_from, unsigned int mask_used)
-{
-	unsigned int mask;
-	u8 rcode = 0;
-	
-	BUG_ON((mask_choose_from & ~X86_REG_MASK_ALL) != 0);
-	BUG_ON((mask_used & ~X86_REG_MASK_ALL) != 0);
-	
-	/* N.B. Both masks have their higher bits zeroed => so will 'mask'*/
-	mask = mask_choose_from & ~mask_used;
-	if (mask == 0)
-		return KEDR_REG_NONE; /* nothing found */
-	
-	while (mask % 2 == 0) {
-		mask >>= 1;
-		++rcode;
-	}
-	return rcode;
-}
-
-static u8 
-choose_work_register(unsigned int mask_choose_from, unsigned int mask_used, 
-	u8 base)
-{
-	return choose_register(mask_choose_from, 
-		mask_used | X86_REG_MASK(base));
-}
 /* ====================================================================== */
 
 struct kedr_ir_node *
@@ -343,7 +304,7 @@ ir_make_links_for_jumps(struct kedr_ifunc *func, struct list_head *ir)
 	
 	/* [NB] the address 0 is definitely outside of the function */
 	list_for_each_entry(pos, ir, list) {
-		if (!is_address_in_function(pos->dest_addr, func))
+		if (!kedr_is_address_in_function(pos->dest_addr, func))
 			continue;
 		pos->dest_inner = node_map_lookup(pos->dest_addr);
 		
@@ -368,7 +329,7 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 		BUG_ON(node->dest_addr == 0);
 		BUG_ON(node->dest_addr == (unsigned long)(-1));
 		
-		if (!is_address_in_function(node->dest_addr, func))
+		if (!kedr_is_address_in_function(node->dest_addr, func))
 			node->iprel_addr = node->dest_addr;
 		return;
 	}
@@ -383,7 +344,7 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 			node->insn.length, 
 			node->insn.displacement.value);
 
-		if (is_address_in_function(node->iprel_addr, func)) {
+		if (kedr_is_address_in_function(node->iprel_addr, func)) {
 			pr_info("[sample] Warning: the instruction at %pS "
 				"uses IP-relative addressing to access "
 				"the code of the original function.\n",
@@ -532,7 +493,7 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 	for (pos = jtable_addr; pos <= end_addr; 
 		pos += sizeof(unsigned long)) {
 		unsigned long jaddr = *(unsigned long *)pos;
-		if (!is_address_in_function(jaddr, func))
+		if (!kedr_is_address_in_function(jaddr, func))
 			break;
 		++num_elems;
 	}
@@ -617,13 +578,18 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	 * [NB] We don't need to do anything about other kinds of indirect 
 	 * jumps, like jmp near [reg], here. 
 	 * 
-	 * jmp near indirect has code FF/4. 'mod' and 'R/M' fields are used 
-	 * here to determine if SIB byte is present. */
+	 * jmp near indirect has opcode FF/4. Mod R/M and SIB fields are 
+	 * used here to determine if this is the sort of jumps we need to 
+	 * process. 
+	 * Mod R/M == 0x24, SIB.Base == 5: 
+	 *   reg == 100(b) - for FF/4; 
+	 *   mod == 00(b), rm == 100(b), SIB.Base == 5 - SIB is present and
+	 *   the addressing expression has the following form:
+	 *   "<scaled_index> + disp32". */
 	opcode = insn->opcode.bytes[0];
 	if (opcode == 0xff && 
-		X86_MODRM_REG(insn->modrm.value) == 4 && 
-		X86_MODRM_MOD(insn->modrm.value) != 3 &&
-		X86_MODRM_RM(insn->modrm.value) == 4) {
+		insn->modrm.bytes[0] == 0x24 && 
+		X86_SIB_BASE(insn->sib.value) == 5) {
 		ret = process_jmp_near_indirect(func, if_data, node);
 		if (ret != 0)
 			return ret;
@@ -690,7 +656,9 @@ find_i_table(struct kedr_jtable *jtable, struct list_head *jt_list)
  * [NB] The (unlikely) situation when 2 or more jumps use the same jump
  * table is handled here too. 
  * 
- * [NB] The jumps with "empty" jump tables will remain unchanged. */
+ * [NB] The jumps with "empty" jump tables will remain unchanged as we 
+ * cannot predict where these jumps transfer control. We assume they lead
+ * outside of the function (may not always be the case, but still). */
 static void
 ir_set_jtable_addresses(struct kedr_ifunc *func)
 {
@@ -718,6 +686,8 @@ ir_set_jtable_addresses(struct kedr_ifunc *func)
 		/* On x86-64, the bits we have cut off from the address of 
 		 * the table must all be 1, because the table resides in
 		 * the module mapping space. */
+		
+		node->inner_jmp_indirect = 1;
 		
 		/* Re-decode the instruction - just in case. */
 		kernel_insn_init(&node->insn, (void *)node->insn_buffer);
@@ -803,7 +773,7 @@ static int
 is_transfer_outside(struct kedr_ir_node *node, struct kedr_ifunc *func)
 {
 	return (node->dest_addr != 0 && 
-		!is_address_in_function(node->dest_addr, func));
+		!kedr_is_address_in_function(node->dest_addr, func));
 }
 
 /* An instruction constitutes a special (as opposed to "normal") block 
@@ -1206,8 +1176,9 @@ insn_is_call(struct insn *insn)
 
 /* Each control transfer outside of the function that is not a call or 
  * an indirect jump is considered a function exit here. 
- * Indirect jumps will be handled separately because we can only determine
- * the destination of such jumps in runtime. */
+ * Indirect jumps should be handled separately because the address they
+ * transfer control to is known only in runtime and we need to properly
+ * prepare registers, etc. */
 static int
 is_function_exit(struct kedr_ir_node *node, struct kedr_ifunc *func)
 {
@@ -1222,12 +1193,25 @@ is_end_of_normal_block(struct list_head *ir, struct kedr_ir_node *node,
 	struct kedr_ifunc *func)
 {
 	struct kedr_ir_node *next_node;
+	struct list_head *item;
 	
-	if (is_special_block(node, func) || 
-	    node->list.next == ir) /* leave the padding alone */
+	if (is_special_block(node, func))
 		return 0;
 	
-	next_node = list_entry(node->list.next, struct kedr_ir_node, list);
+	/* Get the next reference node, if any */
+	for (item = node->list.next; item != ir; item = item->next) {
+		struct kedr_ir_node *n = 
+			list_entry(item, struct kedr_ir_node, list);
+		if (is_reference_node(n))
+			break;
+	}
+		
+	/* If there are no reference nodes after 'node', do nothing. 
+	 * Leave the padding alone. */
+	if (item == ir) 
+		return 0;
+	
+	next_node = list_entry(item, struct kedr_ir_node, list);
 	return next_node->block_starts;
 }
 
@@ -1269,7 +1253,8 @@ handle_jumps_out_of_block(struct kedr_ir_node *start_node,
 	list_for_each_entry_safe_from(node, tmp, ir, list) {
 		/* We are inside of a normal block, so we only need to 
 		 * consider forward jumps within the function. */
-		if (node->dest_inner != NULL && 
+		if (is_reference_node(node) && 
+		    node->dest_inner != NULL && 
 		    node->dest_inner->orig_addr > end_node->orig_addr) {
 		    	node->jump_past_block_end = 1;
 			ret = kedr_handle_jump_out_of_block(node, end_node, 
@@ -1329,7 +1314,11 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	//<>
 	
 	/* Phase 1: "release" the base register and handle the structural
-	 * elements (entry, exits). */
+	 * elements (entry, exits, ...). */
+	ret = kedr_handle_function_entry(ir, func, base);
+	if (ret < 0)
+		return ret;
+	
 	list_for_each_entry_safe(node, tmp, ir, list) {
 		if (!is_reference_node(node))
 			continue;
@@ -1339,8 +1328,11 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			ret = kedr_handle_function_exit(node, base);
 		else if (is_call_near_indirect(node))
 			ret = kedr_handle_call_near_indirect(node, base);
-		else if (is_jump_near_indirect(node))
-			ret = kedr_handle_jump_near_indirect(node, base);
+		else if (is_jump_near_indirect(node)) {
+			ret = (node->inner_jmp_indirect) ? 
+				kedr_handle_jmp_indirect_inner(node, base) :
+				kedr_handle_jmp_indirect_out(node, base);
+		}
 		else if (is_pushad(&node->insn))
 			ret = kedr_handle_pushad(node, base);
 		else if (is_popad(&node->insn))
@@ -1353,9 +1345,6 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		if (ret < 0)
 			return ret;
 	}
-	ret = kedr_handle_function_entry(ir, func, base);
-	if (ret < 0)
-		return ret;
 	
 	//<>
 	if (strcmp(func_name, target_function) == 0)
@@ -1438,11 +1427,13 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			ret = kedr_handle_type_y(node, base, num);
 			++num;
 		}
-
 		BUG_ON(num > KEDR_MEM_NUM_RECORDS); /* just in case */
-		
 		if (ret < 0)
 			return ret;
+		
+		/* [NB] indirect calls and jumps that are also type E are
+		 * not processed because they are in the special blocks. 
+		 * This is OK for now. */
 		
 		/* In addition to handling the node, determine if it is the
 		 * last node of a normal block. If that block contains at 
@@ -1455,8 +1446,8 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			if (ret < 0)
 				return ret;
 			
-			ret = kedr_handle_end_of_normal_block(node, 
-				base, read_mask, write_mask, lock_mask);
+			ret = kedr_handle_end_of_normal_block(node, base, 
+				read_mask, write_mask, lock_mask);
 			if (ret < 0)
 				return ret;
 		}
@@ -1719,7 +1710,7 @@ ir_node_process_short_jumps(struct kedr_ir_node *node,
 	    node->iprel_addr == 0) {
 		BUG_ON(node->dest_addr == 0);
 		BUG_ON(node->dest_addr == (unsigned long)(-1));
-		if (!is_address_in_function(node->dest_addr, func))
+		if (!kedr_is_address_in_function(node->dest_addr, func))
 			node->iprel_addr = node->dest_addr;
 	}
 	return 0;
@@ -1789,7 +1780,7 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 	 * we have skipped too many trailing zeros above. */
 	if_data.mod = mod;
 	if_data.ir = &kedr_ir;
-	ret = for_each_insn_in_function(func, do_process_insn, 
+	ret = kedr_for_each_insn_in_function(func, do_process_insn, 
 		(void *)&if_data);
 	if (ret != 0)
 		goto out;
@@ -1845,17 +1836,6 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 
 	//<>
 	if (strcmp(func->name, "cfake_read") == 0) {
-		unsigned int mask_choose_from = X86_REG_MASK_ALL & ~X86_REG_MASK(INAT_REG_CODE_SP)
-			& ~X86_REG_MASK(INAT_REG_CODE_SI);
-		unsigned int mask_used = X86_REG_MASK_SCRATCH | X86_REG_MASK(INAT_REG_CODE_BP)
-			| X86_REG_MASK(INAT_REG_CODE_DI);
-		pr_info("[DBG] choose from: 0x%x, used: 0x%x, chosen: %u\n",
-			mask_choose_from,
-			mask_used,
-			/*choose_register(mask_choose_from, mask_used)*/
-			choose_work_register(mask_choose_from, mask_used, INAT_REG_CODE_BX)
-		);
-		
 		pr_info("[DBG] function addresses: "
 			"0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
 			(unsigned long)&kedr_process_function_entry_wrapper,
@@ -1870,6 +1850,11 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 		struct kedr_ir_node *node;
 		debug_util_print_string("Code in IR:\n");
 		list_for_each_entry(node, &kedr_ir, list) {
+			if (is_reference_node(node)) {
+				debug_util_print_u64((u64)(node->orig_addr -
+					(unsigned long)func->addr), 
+					"@+%llx: ");
+			}
 			if (node->block_starts)
 				debug_util_print_string("[BS] ");
 			debug_util_print_hex_bytes(node->insn_buffer, 
