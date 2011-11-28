@@ -93,11 +93,41 @@ struct kedr_reloc
 	/* The relocations are stored in a list. */
 	struct list_head list; 
 	
+	/* Type of the relocation. */
+	enum
+	{
+		/* The original value (imm32 or disp32) in the instruction 
+		 * does not matter. The correct value will be calculated
+		 * during relocation: the displacement of the memory byte 
+		 * pointed to by 'dest' from the end of the instruction. 
+		 * This type of relocation is useful for the instructions
+		 * that refer to something outside of the current function
+		 * at a known address but contain only the 32-bit offset to
+		 * that location (function calls, RIP-relative addressing). 
+		 */
+		KEDR_RELOC_IPREL = 0,
+		
+		/* The actual address of the byte following the instruction
+		 * will be added to the value (imm32) in the instruction
+		 * during relocation. The result will replace that previous
+		 * value in the instruction.
+		 * On x86-64, the process is similar. The original 'imm32' 
+		 * is sign-extended before addition and the lower 32 bits
+		 * of the result constitute the new 'imm32'. 
+		 * This special type of relocation is useful for the 
+		 * instructions that already contain the 32-bit displacement
+		 * of a memory location they refer to in their 'imm32' but
+		 * need to contain lower 32 bits of the actual address of
+		 * that location instead. */
+		KEDR_RELOC_ADDR32
+	} rtype;
+	
 	/* The offset of the instruction in the temporary buffer (it will be
 	 * the same in the final memory area too). */
 	unsigned long offset;
 	
-	/* The address the instruction should refer to. 'displacement' or
+	/* (Used only for type KEDR_RELOC_EXT_IPREL.)
+	 * The address the instruction should refer to. 'displacement' or
 	 * 'immediate' field of the instruction will be calculated based on
 	 * that (whichever is applicable). */
 	void *dest;

@@ -21,9 +21,9 @@
  * 'insn_buffer'.
  *
  * Return value: 'new_node->list' if a node has been added, or 'item' if the 
- * original node latter has been modified in place or if an error has 
- * occurred. Note that even if errors occur, the function returns the 
- * valid pointer to 'struct list_head' instance.
+ * original node has been modified in place or if an error has occurred. 
+ * Note that even if errors occur, the function returns the valid pointer 
+ * to 'struct list_head' instance.
  *
  * N.B. kedr_mk_*() functions change neither 'first' nor 'last' in 
  * the IR nodes. 
@@ -45,6 +45,32 @@
 struct list_head *
 kedr_mk_mov_reg_to_reg(u8 reg_from, u8 reg_to, struct list_head *item, 
 	int in_place, int *err);
+
+/* Store (mov %reg, <offset>(%base)) or load (mov <offset>(%base), %reg)
+ * depending on 'is_load'. */
+struct list_head *
+kedr_mk_load_store_reg_ps(u8 reg, u8 base, unsigned long offset, 
+	int is_load, struct list_head *item, int in_place, int *err);
+
+/* Load data from the given position in the primary storage ('ps') to the
+ * register. */
+static inline struct list_head *
+kedr_mk_load_reg_from_ps(u8 reg, u8 base, unsigned long offset, 
+	struct list_head *item, int in_place, int *err)
+{
+	return kedr_mk_load_store_reg_ps(reg, base, offset, 1, item, 
+		in_place, err);
+}
+
+/* Store data from the register to the given position in the primary 
+ * storage. */
+static inline struct list_head *
+kedr_mk_store_reg_to_ps(u8 reg, u8 base, unsigned long offset, 
+	struct list_head *item, int in_place, int *err)
+{
+	return kedr_mk_load_store_reg_ps(reg, base, offset, 0, item, 
+		in_place, err);
+}
 
 /* mov %reg, <offset_reg>(%base) */
 struct list_head *

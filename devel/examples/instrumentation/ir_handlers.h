@@ -62,7 +62,7 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base);
  * instructions of this block. */
 // TODO
 int
-kedr_handle_end_of_normal_block(struct kedr_ir_node *ref_node, u8 base,
+kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
 	u32 read_mask, u32 write_mask, u32 lock_mask);
 
 /* 'end_node' - the last reference node of the block that 'node' belongs to.

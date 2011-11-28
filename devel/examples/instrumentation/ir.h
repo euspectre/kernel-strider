@@ -31,12 +31,11 @@ struct kedr_ir_node
 	 * whether to use a short or a near jump). */
 	struct kedr_ir_node *dest_inner;
 	
-	/* If the node represents a jump past the end of the block, this 
-	 * field will be non-zero, 0 otherwise. This distinction of the 
-	 * inner jumps is necessary: for the most of these, the destination
-	 * is dest_inner->first while for the jumps past the end of the
-	 * block, it is <last_of_the_block>->last->(next). */
-	int jump_past_block_end;
+	/* Nonzero if the node represents a jump which destination is not 
+	 * 'dest_inner->first' as for many other nodes but rather 
+	 * 'dest_inner->last->(next)'. A jump past the end of the block is
+	 * one of the examples. Default value: 0. */
+	int jump_past_last;
 	
 	/* (see insn_jumps_to()) */
 	unsigned long dest_addr;
@@ -80,6 +79,11 @@ struct kedr_ir_node
 	/* Nonzero if the node corresponds to an inner jmp near indirect
 	 * that uses a jump table. Default value: 0. */
 	int inner_jmp_indirect;
+	
+	/* Nonzero if a relocation of type KEDR_RELOC_ADDR32 should be 
+	 * performed for the instruction. This is used in handling of the
+	 * forward jumps out of the blocks. Default value: 0. */
+	int needs_addr32_reloc;
 	
 	// TODO: add more fields if necessary
 };

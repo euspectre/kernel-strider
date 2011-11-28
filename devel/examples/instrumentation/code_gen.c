@@ -176,17 +176,11 @@ kedr_mk_mov_reg_to_reg(u8 reg_from, u8 reg_to, struct list_head *item,
 	return &node->list;
 }
 
-/* Store (mov %reg, <offset_reg>(%base)) or load 
- * (mov <offset_reg>(%base), %reg) depending on 'is_load'. 
- *
- * Here we make use of the fact that the array of spill slots for the 
- * registers is right at the beginning of the primary storage structure
- * %base points to. The number of the register is the number of its slot,
- * so <offset_regN> is sizeof(unsigned_long) * N. 1-byte displacement is
- * enough to encode such offsets. */
-static struct list_head *
-mk_load_store_reg_slot(u8 reg, u8 base, int is_load, struct list_head *item, 
-	int in_place, int *err)
+/* Store (mov %reg, <offset>(%base)) or load (mov <offset>(%base), %reg)
+ * depending on 'is_load'. */
+struct list_head *
+kedr_mk_load_store_reg_ps(u8 reg, u8 base, unsigned long offset, 
+	int is_load, struct list_head *item, int in_place, int *err)
 {
 	struct kedr_ir_node *node;
 	u8 *pos;
@@ -205,8 +199,7 @@ mk_load_store_reg_slot(u8 reg, u8 base, int is_load, struct list_head *item,
 	pos = write_rex_prefix(pos, 0, reg, KEDR_REG_UNUSED, base);
 	
 	*pos++ = is_load ? 0x8B : 0x89; /* opcode */
-	pos = write_modrm_expr(pos, base, reg, 1, 
-		(unsigned long)(reg * sizeof(unsigned long)));
+	pos = write_modrm_expr(pos, base, reg, (offset < 0x80), offset);
 	
 	decode_insn_in_node(node);
 	BUG_ON(node->insn.length != 
@@ -214,12 +207,19 @@ mk_load_store_reg_slot(u8 reg, u8 base, int is_load, struct list_head *item,
 	return &node->list;
 }
 
-/* mov %reg, <offset_reg>(%base) */
+/* mov %reg, <offset_reg>(%base) 
+ * Here we make use of the fact that the array of spill slots for the 
+ * registers is right at the beginning of the primary storage structure
+ * %base points to. The number of the register is the number of its slot,
+ * so <offset_regN> is sizeof(unsigned_long) * N. 1-byte displacement is
+ * enough to encode such offsets. */
 struct list_head *
 kedr_mk_store_reg_to_spill_slot(u8 reg, u8 base, struct list_head *item, 
 	int in_place, int *err)
 {
-	return mk_load_store_reg_slot(reg, base, 0, item, in_place, err);
+	return kedr_mk_store_reg_to_ps(reg, base, 
+		(unsigned long)(reg * sizeof(unsigned long)), item, 
+		in_place, err);
 }
 
 /* mov <offset_reg>(%base), %reg */
@@ -227,7 +227,9 @@ struct list_head *
 kedr_mk_load_reg_from_spill_slot(u8 reg, u8 base, struct list_head *item, 
 	int in_place, int *err)
 {
-	return mk_load_store_reg_slot(reg, base, 1, item, in_place, err);
+	return kedr_mk_load_reg_from_ps(reg, base, 
+		(unsigned long)(reg * sizeof(unsigned long)), item, 
+		in_place, err);
 }
 
 /* 'mov <expr>, %reg' or 'lea <expr>, %reg', depending on 'is_lea'.
@@ -628,7 +630,7 @@ kedr_mk_mov_value32_to_slot(u32 value32, u8 base, u32 offset,
 	pos = node->insn_buffer;
 	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED, 
 		base);
-	*pos++ = 0xc7;
+	*pos++ = 0xc7; /* opcode: C7/0 */
 	pos = write_modrm_expr(pos, base, 0, 0, (unsigned long)offset);
 	*(u32 *)pos = value32;
 	pos += 4;
@@ -646,6 +648,8 @@ kedr_mk_or_value32_to_slot(u32 value32, u8 base, u32 offset,
 {
 	struct kedr_ir_node *node;
 	u8 *pos;
+	int is_value8 = (value32 < 0x7F); 
+	/* 0x7F rather than 0x100 because of sign extension */
 	
 	if (*err != 0)
 		return item;
@@ -657,10 +661,16 @@ kedr_mk_or_value32_to_slot(u32 value32, u8 base, u32 offset,
 	pos = node->insn_buffer;
 	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED, 
 		base);
-	*pos++ = 0x81; /* opcode: 81/1 */
+	*pos++ = (is_value8) ? 0x83 : 0x81; /* opcode: 83/1 or 81/1 */
 	pos = write_modrm_expr(pos, base, 1, 0, (unsigned long)offset);
-	*(u32 *)pos = value32;
-	pos += 4;
+	
+	if (is_value8) {
+		*pos++ = (u8)value32;
+	}
+	else {
+		*(u32 *)pos = value32;
+		pos += 4;
+	}
 	
 	decode_insn_in_node(node);
 	BUG_ON(node->insn.length != 
@@ -791,41 +801,14 @@ kedr_mk_mov_eax_to_reg_on_stack(u8 reg, int is_xchg,
 	return &node->list;
 }
 
-/* Store (mov %eax, <offset_base>(%base)) or load 
- * (mov <offset_base>(%base), %eax) depending on 'is_load'. */
-static struct list_head *
-mk_load_store_eax_base_slot(u8 base, int is_load, struct list_head *item, 
-	int in_place, int *err)
-{
-	struct kedr_ir_node *node;
-	u8 *pos;
-	
-	BUG_ON(base >= X86_REG_COUNT);
-	
-	if (*err != 0)
-		return item;
-	
-	node = prepare_node(item, in_place, err);
-	if (node == NULL)
-		return item;
-	
-	pos = node->insn_buffer;
-	*pos++ = is_load ? 0x8B : 0x89; /* opcode */
-	pos = write_modrm_expr(pos, base, INAT_REG_CODE_AX, 1, 
-		(unsigned long)(base * sizeof(unsigned long)));
-	
-	decode_insn_in_node(node);
-	BUG_ON(node->insn.length != 
-		(unsigned char)(pos - node->insn_buffer));
-	return &node->list;
-}
-
 /* mov <offset_base>(%base), %eax */
 struct list_head *
 kedr_mk_load_eax_from_base_slot(u8 base, struct list_head *item, 
 	int in_place, int *err)
 {
-	return mk_load_store_eax_base_slot(base, 1, item, in_place, err);
+	return kedr_mk_load_reg_from_ps(INAT_REG_CODE_AX, base, 
+		(unsigned long)(base * sizeof(unsigned long)), item, 
+		in_place, err);
 }
 
 /* mov %eax, <offset_base>(%base) */
@@ -833,7 +816,9 @@ struct list_head *
 kedr_mk_store_eax_to_base_slot(u8 base, struct list_head *item, 
 	int in_place, int *err)
 {
-	return mk_load_store_eax_base_slot(base, 0, item, in_place, err);
+	return kedr_mk_store_reg_to_ps(INAT_REG_CODE_AX, base, 
+		(unsigned long)(base * sizeof(unsigned long)), item, 
+		in_place, err);
 }
 #endif
 

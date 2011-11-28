@@ -122,7 +122,7 @@ node_map_lookup(unsigned long orig_addr)
 
 //static int 
 //add_relocation(struct kedr_ifunc *func, ??? struct kedr_ir_node *node, 
-//	void *destination)
+//	int rtype, void *destination)
 //{
 //	struct kedr_reloc *reloc;
 //	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
@@ -1004,6 +1004,7 @@ stub_do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		func->tbuf = NULL;
 		return -ENOMEM;
 	}
+	reloc->rtype = KEDR_RELOC_IPREL;
 	reloc->offset = 0; /* The insn is at the beginning of the buffer */
 	reloc->dest = func->fallback;
 	list_add_tail(&reloc->list, &func->relocs);
@@ -1199,7 +1200,7 @@ is_end_of_normal_block(struct list_head *ir, struct kedr_ir_node *node,
 		return 0;
 	
 	/* Get the next reference node, if any */
-	for (item = node->list.next; item != ir; item = item->next) {
+	for (item = node->last->list.next; item != ir; item = item->next) {
 		struct kedr_ir_node *n = 
 			list_entry(item, struct kedr_ir_node, list);
 		if (is_reference_node(n))
@@ -1207,7 +1208,7 @@ is_end_of_normal_block(struct list_head *ir, struct kedr_ir_node *node,
 	}
 		
 	/* If there are no reference nodes after 'node', do nothing. 
-	 * Leave the padding alone. */
+	 * In addition, we leave the padding alone this way. */
 	if (item == ir) 
 		return 0;
 	
@@ -1256,7 +1257,7 @@ handle_jumps_out_of_block(struct kedr_ir_node *start_node,
 		if (is_reference_node(node) && 
 		    node->dest_inner != NULL && 
 		    node->dest_inner->orig_addr > end_node->orig_addr) {
-		    	node->jump_past_block_end = 1;
+		    	node->jump_past_last = 1;
 			ret = kedr_handle_jump_out_of_block(node, end_node, 
 				base);
 			if (ret < 0)
@@ -1351,7 +1352,8 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		debug_util_print_string("Phase 2\n");
 	//<>
 	
-	/* Phase 2: instrument memory accesses and the ends of the blocks.*/
+	/* Phase 2: instrument memory accesses, the ends of the blocks and 
+	 * the jumps out of the blocks. */
 	list_for_each_entry_safe(node, tmp, ir, list) {
 		if (!is_reference_node(node) || is_special_block(node, func))
 			continue;

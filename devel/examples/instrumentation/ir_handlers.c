@@ -664,44 +664,182 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base)
 /* Transformation of the IR, phase 2 */
 /* ====================================================================== */
 
-/* TODO: describe, add asm snippet */
+/* Processing the end of a "normal" block (i.e. not a block for a single 
+ * control transfer instruction) if the block has potential memory accesses.
+ *
+ * [NB] Jumps to 'block_end' are used to properly handle exits from the 
+ * block (see "jump_out_of_block.data"). If 'dest_addr' field is nonzero in 
+ * the storage, it is the actual destination address of such jump.
+ *
+ * 'temp' field is used as a scratch area. kedr_process_block_end() 
+ * does not change it. But it zeroes 'dest_addr' to make sure it is 0 
+ * when each block begins.
+ * 
+ * [NB] We make use of the fact that the wrapper functions preserve all the
+ * registers except %rax. So we can be sure %rdx will not be changed by
+ * kedr_process_block_end_wrapper().
+ *
+ * "Read mask", "write mask" and "lock mask" (LKMask) are determined by the 
+ * instrumentation system when analyzing the block. Note that each of the 
+ * masks is 32 bits in size both on x86-32 and on x86-64.
+ *
+ * "or" operation is used to accumulate read and write masks because some 
+ * bits of these masks may have been already set in the block (cmpxchg, ...)
+ * 
+ * [NB] We must preserve the values of flags in this code. 'or' and 'test'
+ * may change them, so pushf/popf are necessary.
+ *
+ * Code:
+ * block_end:
+ *	pushf
+ *	or    <ReadMask32>, <offset_read_mask>(%base)
+ *	or    <WriteMask32>, <offset_write_mask>(%base)
+ *	mov   <LKMask32>, <offset_lock_mask>(%base)
+ * 	mov   %rdx, <offset_dx>(%base)
+ *	mov   <offset_dest_addr>(%base), %rdx
+ * 	push  %rax
+ * 	mov   %base, %rax
+ * 	call  <kedr_process_block_end_wrapper>  # [NB] zeroes 'dest_addr'.
+ * 	pop   %rax
+ * We need %rdx restored before the jump so we save the destination in a 
+ * temporary.
+ * 	mov   %rdx, <offset_temp>(%base) 
+ * 	test  %rdx, %rdx
+ * 	mov   <offset_dx>(%base), %rdx
+ * 	jz    go_on
+ *	popf
+ *	jmp   *<offset_temp>(%base)
+ * go_on:
+ *	popf
+ * next_block:
+ */
 int
-kedr_handle_end_of_normal_block(struct kedr_ir_node *ref_node, u8 base,
+kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
 	u32 read_mask, u32 write_mask, u32 lock_mask)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_string("end of a block, ");
-		debug_util_print_u64((u64)read_mask, 
-			"read mask: 0x%08llx, ");
-		debug_util_print_u64((u64)write_mask, 
-			"write mask: 0x%08llx, ");
-		debug_util_print_u64((u64)lock_mask, 
-			"lock mask: 0x%08llx, ");
-		debug_util_print_string("\n");
-	}
-	//<>
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *node_jz;
+	struct list_head *item = NULL;
+	int err = 0;
 	
-	// TODO
-	return 0;
+	/* Create the first node of the sequence and place it after
+	 * 'end_node->last', then create the node for 'jz'. 
+	 * [NB] If the second allocation fails, the memory will be reclaimed
+	 * anyway when the IR is destroyed. */
+	node = kedr_ir_node_create();
+	if (node == NULL)
+		return -ENOMEM;
+	list_add(&node->list, &end_node->last->list);
+	
+	node_jz = kedr_ir_node_create();
+	if (node_jz == NULL)
+		return -ENOMEM;
+	
+	item = kedr_mk_pushf(&node->list, 1, &err);
+	item = kedr_mk_or_value32_to_slot(read_mask, base, 
+		offsetof(struct kedr_primary_storage, read_mask), 
+		item, 0, &err);
+	item = kedr_mk_or_value32_to_slot(write_mask, base, 
+		offsetof(struct kedr_primary_storage, write_mask),
+		item, 0, &err);
+	item = kedr_mk_mov_value32_to_slot(lock_mask, base,
+		offsetof(struct kedr_primary_storage, lock_mask),
+		item, 0, &err);
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_DX, base,
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_ps(INAT_REG_CODE_DX, base, 
+		(unsigned long)offsetof(struct kedr_primary_storage, 
+			dest_addr),
+		item, 0, &err);
+	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, &err);
+	item = kedr_mk_call_rel32(
+		(unsigned long)&kedr_process_block_end_wrapper, item, 0, 
+		&err);
+	item = kedr_mk_pop_reg(INAT_REG_CODE_AX, item, 0, &err);
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_DX, base,
+		(unsigned long)offsetof(struct kedr_primary_storage, temp),
+		item, 0, &err);
+	item = kedr_mk_test_reg_reg(INAT_REG_CODE_DX, item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_DX, base, 
+		item, 0, &err);
+	
+	list_add(&node_jz->list, item);	
+	item = kedr_mk_jcc(INAT_CC_Z, node, &node_jz->list, 1, &err);
+	item = kedr_mk_popf(item, 0, &err);
+	
+	item = kedr_mk_jmp_offset_base(base, 
+		(unsigned long)offsetof(struct kedr_primary_storage, temp),
+		item, 0, &err);
+	item = kedr_mk_popf(item, 0, &err);
+
+	if (err == 0) {
+		node->last = 
+			list_entry(item, struct kedr_ir_node, list);
+		node_jz->dest_inner = node->last; 
+		/* 'jz' jumps to the last 'popf' */
+	}
+	else
+		warn_fail(node);
+	
+	return err;
 }
 
-/* TODO: describe, add asm snippet */
+/* Handling of a direct jump (jmp near, jcc near) from a block to 
+ * another block. We need to make sure a handler function for the block end
+ * is called before the execution of another block begins.
+ * [NB] The jumps using 8-bit displacements should have been replaced with 
+ * jmp near or jcc near by this time, so we need to consider only these two
+ * kinds of jumps.
+ *
+ * insn: <op> <disp32>
+ * 
+ * During the instrumentation, we know the destination node of the jump
+ * ('node->dest_inner') but the exact address is not known until the end. 
+ * Therefore, we need a kind of "relocation" that will replace the 
+ * 32-bit value (<val32>) in 'mov' with the lower 32 bits of 
+ *   SignExt(<val32>) + <Address_of_mov> + <Length_of_mov>.
+ * That is, <dest32> is the value in the lower 32 bits of the destination 
+ * address (automatic sign extension will give the full address on x86-64).
+ * In turn, <val32> is calculated during the code generation phase before
+ * relocation. It is the offset of the jump destination from the end of 
+ * that 'mov' instruction.
+ * 
+ * Code:
+ *	mov <dest32>, <offset_dest_addr>(%base)
+ * 	<op> <disp_end>
+ * <disp_end> is a displacement of the position just past the end of what
+ * the last instruction of the block transforms to. A "block_end" handler
+ * will be placed there that will dispatch the jump properly.
+ * Set 'dest_inner' to the last node of the block for the insn above.
+ * A flag should have been already set in the node to indicate it is a 
+ * jump out ouf a block. So <disp_end> will be set properly during code
+ * generation as the displacement of the node just after 'end_node->last'.
+ */
 int
 kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node, 	
 	struct kedr_ir_node *end_node, u8 base)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_string("jump out of a block\n");
-	}
-	//<>
+	int err = 0;
+	struct list_head *item = ref_node->first->list.prev;
+	struct list_head *first_item;
 	
-	// TODO
+	BUG_ON(ref_node->jump_past_last == 0);
+	
+	first_item = kedr_mk_mov_value32_to_slot(0, base, 
+		(u32)offsetof(struct kedr_primary_storage, dest_addr),
+		item, 0, &err);
+	if (err != 0) {
+		warn_fail(ref_node);
+		return err;
+	}
+	ref_node->first = 
+		list_entry(first_item, struct kedr_ir_node, list);
+	ref_node->first->needs_addr32_reloc = 1;
+	
+	/* Change the destination of the jump: it will go to the code 
+	 * handling the end of the block (i.e. past 'end_node'). */
+	ref_node->dest_inner = end_node;
 	return 0;
 }
 

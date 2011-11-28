@@ -823,11 +823,10 @@ fixup_instrumented_jump_tables(struct kedr_ifunc *func)
 /* The instruction to be relocated can be either call/jmp rel32 or
  * an instruction using RIP-relative addressing.
  * 'dest' is the address it should refer to. */
-static int
-relocate_insn_in_icode(struct insn *insn, void *dest)
+static void
+relocate_iprel_in_icode(struct insn *insn, void *dest)
 {
 	u32 *to_fixup;
-	
 	BUG_ON(insn->length == 0);
 	
 	if (insn->opcode.bytes[0] == KEDR_OP_CALL_REL32 ||
@@ -843,12 +842,12 @@ relocate_insn_in_icode(struct insn *insn, void *dest)
 			insn->kaddr, 
 			insn->length,
 			dest);
-		return 0;
+		return;
 	}
 
 #ifdef CONFIG_X86_64
 	if (!insn_rip_relative(insn))
-		return 0;
+		return;
 
 	to_fixup = (u32 *)((unsigned long)insn->kaddr + 
 		insn_offset_displacement(insn));
@@ -857,7 +856,31 @@ relocate_insn_in_icode(struct insn *insn, void *dest)
 		insn->length,
 		dest);
 #endif
-	return 0;
+}
+
+/* See the description of KEDR_RELOC_ADDR32 in struct kedr_reloc. */
+static void
+relocate_addr32_in_icode(struct insn *insn)
+{
+	u32 *to_fixup;
+	unsigned long addr;
+	
+	BUG_ON(insn->length == 0);
+	/* imm32 must contain an offset of the memory location which address
+	 * is needed. As this type of relocation is expected to be used to 
+	 * handle jumps out of the blocks with memory accesses, that offset
+	 * must not be 0. This is because such jumps lead to another block 
+	 * and there are at least the instructions processing the end of 
+	 * the block between the jumps and their destinations. */
+	BUG_ON(insn->immediate.value == 0 || insn->immediate.nbytes != 4);
+	
+	addr = X86_SIGN_EXTEND_V32(insn->immediate.value) + 
+		(unsigned long)insn->kaddr + 
+		(unsigned long)insn->length;
+	
+	to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+		insn_offset_immediate(insn));
+	*to_fixup = (u32)addr;
 }
 
 /* Performs fixup of call and jump addresses in the instrumented instance, 
@@ -879,13 +902,18 @@ deploy_instrumented_function(struct kedr_ifunc *func)
 		struct insn insn;
 		void *kaddr = (void *)((unsigned long)func->i_addr + 
 			reloc->offset);
-		
+
 		BUG_ON(reloc->offset >= func->i_size);
-		
+				
 		kernel_insn_init(&insn, kaddr);
 		insn_get_length(&insn);
 		
-		relocate_insn_in_icode(&insn, reloc->dest);
+		if (reloc->rtype == KEDR_RELOC_IPREL)
+			relocate_iprel_in_icode(&insn, reloc->dest);
+		else if (reloc->rtype == KEDR_RELOC_ADDR32) 
+			relocate_addr32_in_icode(&insn);
+		else
+			BUG(); /* should not get here */
 		
 		list_del(&reloc->list);
 		kfree(reloc);
