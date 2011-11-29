@@ -60,11 +60,15 @@ get_mem_size_type_e_m(struct kedr_ir_node *node)
 	    attr->addr_method1 == INAT_AMETHOD_M) {
 	    	if (attr->opnd_type1 == INAT_OPTYPE_B)
 			return 1;
+		else if (attr->opnd_type1 == INAT_OPTYPE_W)
+			return 2;
 	}
 	if (attr->addr_method2 == INAT_AMETHOD_E || 
 	    attr->addr_method2 == INAT_AMETHOD_M) {
 	    	if (attr->opnd_type2 == INAT_OPTYPE_B)
 			return 1;
+		else if (attr->opnd_type2 == INAT_OPTYPE_W)
+			return 2;
 	}
 	
 	if (insn->opnd_bytes == 0) {
@@ -941,18 +945,23 @@ kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node,
  *	mov  %wreg, <offset_recN_mem_addr>(%base)
  * 	mov  <offset_wreg>(%base), %wreg 
  * 
- * The function adds this code after 'item'.  */
+ * The function adds this code after 'item'. 
+ * If 'size_hint' is 0, <size> is determined based on the instruction 
+ * attributes, otherwise 'size_hint' is used as <size>. */
 static struct list_head *
 mk_record_access_common(struct kedr_ir_node *node, u8 base, u8 num, 
+	unsigned int size_hint,
 	struct list_head *item, int *err)
 {
 	u8 wreg;
 	unsigned int expr_reg_mask;
 	int base_is_used;
+	unsigned int sz;
 	
 	if (*err != 0)
 		return item;
 	
+	sz = (size_hint == 0 ? get_mem_size_type_e_m(node) : size_hint);
 	expr_reg_mask = insn_reg_mask_for_expr(&node->insn);
 	base_is_used = (expr_reg_mask & X86_REG_MASK(base));
 	
@@ -982,72 +991,142 @@ mk_record_access_common(struct kedr_ir_node *node, u8 base, u8 num,
 		(u32)(unsigned long)node->orig_addr, base, 
 		KEDR_OFFSET_MEM_REC_FIELD(num, pc), item, 0, err);
 	
-	item = kedr_mk_mov_value32_to_slot(
-		(u32)get_mem_size_type_e_m(node), base,
-		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, err);
-	
 	item = kedr_mk_store_reg_to_ps(wreg, base, 
 		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, err);
+
+	item = kedr_mk_mov_value32_to_slot(
+		sz, 
+		base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, err);
 	
 	item = kedr_mk_load_reg_from_spill_slot(wreg, base, item, 0, err);
 	return item;
 }
 
-/* TODO: describe, add asm snippet */
+/* Processing memory accesses for the following instructions:
+ * 	SETcc and CMOVcc
+ *
+ * Apply this before the instruction sequence.
+ * 
+ * Code:
+ *	j<not cc> go_over
+ * 	... # same as "E-general"
+ * go_over:
+ */
 int
 kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] SETcc/CMOVcc\n");
-	}
-	//<>
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	struct insn *insn = &ref_node->insn;
+	u8 cc;
 	
 	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
 		return 0;
 	
-	//TODO
-	return 0;
+	/* Obtain the condition code from the last opcode byte, then invert
+	 * the least significant bit to invert the condition (see Intel's 
+	 * manual vol 2B, "B.1.4.7 Condition Test (tttn) Field"). */
+	BUG_ON(insn->opcode.nbytes == 0);
+	cc = insn->opcode.bytes[insn->opcode.nbytes - 1] & 0x0F;
+	cc ^= 1;
+	
+	item = kedr_mk_jcc(cc, ref_node->first, insert_after, 0, &err);
+	item = mk_record_access_common(ref_node, base, num, 0, item, &err);
+	
+	if (err == 0)
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	else
+		warn_fail(ref_node);
+	
+	return err;
 }
 
-/* TODO: describe, add asm snippet */
+/* Processing memory accesses for CMPXCHG*.
+ *
+ * <set_bit_N> is a 32-bit value where only the bit at position N is 1.
+ * When written to the appropriate slot in the storage, it is sign-extended
+ * but only the lower 32 bits are used when analysing.
+ * N is the number of the memory access in the block.
+ *
+ * [NB] Use "or" rather than "mov" to update the mask: other instructions 
+ * of this kind in the block may do the same.
+ * 
+ * Part 1: record read (happens always, should be taken into account in 
+ * read_mask). Apply this before the instruction sequence.
+ * Code:
+ *	... # same as "E-general"
+ * In case of CMPXCHG, the size of the accessed area can be determined from
+ * the instruction attributes. As for CMPXCHG8B/16B, it is 8 bytes if there
+ * is no REX.W, 16 bytes otherwise (use 'size_hint').
+ * 
+ * Part 2: update the data if write happens. Apply this after the 
+ * instruction sequence.
+ * If ZF is 0, it is read operation again, nothing to do.
+ * Code: 
+ *	jnz   go_on
+ *	pushf
+ *	or  <set_bit_N>, <offset_write_mask>(%base)
+ *	popf
+ * go_on:
+ */
+static int
+handle_cmpxchg_impl(struct kedr_ir_node *ref_node, u8 base, u8 num, 
+	unsigned int size_hint)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_jnz;
+	
+	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
+		return 0;
+	
+	/* Create the node for 'jnz' (to be filled later) */
+	node_jnz = kedr_ir_node_create();
+	if (node_jnz == NULL)
+		return -ENOMEM;
+	
+	mk_record_access_common(ref_node, base, num, size_hint, 
+		insert_after, &err);
+	list_add(&node_jnz->list, &ref_node->last->list);
+	
+	/* Make sure the jump will lead to the node following the 
+	 * instruction sequence. */
+	item = kedr_mk_jcc(INAT_CC_NZ, ref_node, &node_jnz->list, 1, &err);
+	node_jnz->jump_past_last = 1;
+	
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_or_value32_to_slot(((u32)1 << num), base, 
+		offsetof(struct kedr_primary_storage, write_mask),
+		item, 0, &err);
+	item = kedr_mk_popf(item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else
+		warn_fail(ref_node);
+	
+	return err;
+}
+
 int
 kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG\n");
-	}
-	//<>
-	
-	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
-		return 0;
-	
-	//TODO
-	return 0;
+	return handle_cmpxchg_impl(ref_node, base, num, 0);
 }
 
-/* TODO: describe, add asm snippet */
 int
 kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG8B/16B\n");
-	}
-	//<>
-	
-	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
-		return 0;
-	
-	//TODO
-	return 0;
+	u8 rex = ref_node->insn.rex_prefix.bytes[0]; /* 0 on x86-32 */
+	return handle_cmpxchg_impl(ref_node, base, num, 
+		(X86_REX_W(rex) ? 16 : 8));
 }
 
 /* TODO: describe, add asm snippet */
@@ -1076,7 +1155,7 @@ kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
 		return 0;
 	
-	mk_record_access_common(ref_node, base, num, insert_after, &err);
+	mk_record_access_common(ref_node, base, num, 0, insert_after, &err);
 	
 	if (err == 0)
 		ref_node->first = list_entry(insert_after->next, 

@@ -70,15 +70,12 @@ int
 kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node, 	
 	struct kedr_ir_node *end_node, u8 base);
 
-// TODO
 int
 kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
