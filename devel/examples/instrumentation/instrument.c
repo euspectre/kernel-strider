@@ -1306,13 +1306,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	ret = ir_choose_base_register(func, ir);
 	if (ret < 0)
 		return ret;
-	
 	base = (u8)ret;
-	
-	//<>
-	if (strcmp(func_name, target_function) == 0)
-		debug_util_print_string("Phase 1\n");
-	//<>
 	
 	/* Phase 1: "release" the base register and handle the structural
 	 * elements (entry, exits, ...). */
@@ -1346,11 +1340,6 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		if (ret < 0)
 			return ret;
 	}
-	
-	//<>
-	if (strcmp(func_name, target_function) == 0)
-		debug_util_print_string("Phase 2\n");
-	//<>
 	
 	/* Phase 2: instrument memory accesses, the ends of the blocks and 
 	 * the jumps out of the blocks. */
@@ -1459,7 +1448,8 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	
 	// TODO: Create the temporary buffer and place the code there.
 	// TODO: During that process, add relocations for the nodes with 
-	// iprel_addr != 0 to func->relocs.
+	// iprel_addr != 0 to func->relocs as well as for those with 
+	// needs_addr32_reloc.
 	
 	// TODO: replace this stub with a real instrumentation.
 	return stub_do_instrument(func, ir);

@@ -12,6 +12,8 @@
 #include "operations.h"
 #include "util.h"
 
+extern int process_sp_accesses;
+
 //<> For debugging only
 #include "debug_util.h"
 extern char *target_function;
@@ -40,6 +42,53 @@ warn_fail(struct kedr_ir_node *node)
 {
 	pr_err("[sample] Failed to instrument the instruction at %pS.\n",
 		(void *)node->orig_addr);
+}
+/* ====================================================================== */
+
+/* Determine the length of the memory area accessed by the given instruction
+ * of type E or M. 
+ * The instruction must be decoded before it is passed to this function. */
+static unsigned int
+get_mem_size_type_e_m(struct kedr_ir_node *node)
+{
+	insn_attr_t *attr = &node->insn.attr;
+	struct insn *insn = &node->insn;
+	
+	BUG_ON(insn->length == 0);
+	
+	if (attr->addr_method1 == INAT_AMETHOD_E || 
+	    attr->addr_method1 == INAT_AMETHOD_M) {
+	    	if (attr->opnd_type1 == INAT_OPTYPE_B)
+			return 1;
+	}
+	if (attr->addr_method2 == INAT_AMETHOD_E || 
+	    attr->addr_method2 == INAT_AMETHOD_M) {
+	    	if (attr->opnd_type2 == INAT_OPTYPE_B)
+			return 1;
+	}
+	
+	if (insn->opnd_bytes == 0) {
+		pr_warning("[sample] Unable to determine the size of the "
+			"operands for the instruction at %pS\n",
+			(void *)node->orig_addr);
+		WARN_ON_ONCE(1);
+	}
+	return insn->opnd_bytes;
+}
+
+/* Get the offset of the field '_field' of the memory access record #_index 
+ * from the beginning of the primary storage. */
+#define KEDR_OFFSET_MEM_REC_FIELD(_index, _field) \
+	(unsigned int)offsetof(struct kedr_primary_storage, mem_record) + \
+	(unsigned int)((_index) * sizeof(struct kedr_mem_record)) + \
+	(unsigned int)offsetof(struct kedr_mem_record, _field)
+
+/* Check if the memory addressing expression uses %rsp/%esp. */
+static int
+expr_uses_sp(struct insn *insn)
+{
+	unsigned int expr_reg_mask = insn_reg_mask_for_expr(insn);
+	return (expr_reg_mask & X86_REG_MASK(INAT_REG_CODE_SP));
 }
 /* ====================================================================== */
 
@@ -736,15 +785,26 @@ kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
 		return -ENOMEM;
 	
 	item = kedr_mk_pushf(&node->list, 1, &err);
-	item = kedr_mk_or_value32_to_slot(read_mask, base, 
-		offsetof(struct kedr_primary_storage, read_mask), 
-		item, 0, &err);
-	item = kedr_mk_or_value32_to_slot(write_mask, base, 
-		offsetof(struct kedr_primary_storage, write_mask),
-		item, 0, &err);
-	item = kedr_mk_mov_value32_to_slot(lock_mask, base,
-		offsetof(struct kedr_primary_storage, lock_mask),
-		item, 0, &err);
+	
+	/* 'val OR 0' is always 'val', no need to generate this OR insn */
+	if (read_mask != 0) {
+		item = kedr_mk_or_value32_to_slot(read_mask, base, 
+			offsetof(struct kedr_primary_storage, read_mask), 
+			item, 0, &err);
+	}
+	if (write_mask != 0) {
+		item = kedr_mk_or_value32_to_slot(write_mask, base, 
+			offsetof(struct kedr_primary_storage, write_mask),
+			item, 0, &err);
+	}
+	
+	/* After the block finishes, ps->lock_mask is still 0. No need to
+	 * write 0 there. */
+	if (lock_mask != 0) {
+		item = kedr_mk_mov_value32_to_slot(lock_mask, base,
+			offsetof(struct kedr_primary_storage, lock_mask),
+			item, 0, &err);
+	}
 	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_DX, base,
 		item, 0, &err);
 	item = kedr_mk_load_reg_from_ps(INAT_REG_CODE_DX, base, 
@@ -843,6 +903,96 @@ kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node,
 	return 0;
 }
 
+/* A helper function that generates the code given below to record the 
+ * memory access from the instruction in the node 'node'. 
+ * 
+ * There are 2 cases: 
+ * - %base is not used in the memory addressing expression <expr>; 
+ * - %base is used there. 
+ * %wreg is selected among the registers not used in <expr>, it should be
+ * different from %base too.
+ *
+ * <orig_pc32> - the (lower 32 bits of) address of the original instruction 
+ * (in the original kernel module).
+ * <offset_recN_FFFF> - offset of field FFFF of the record #N in the 
+ * storage.
+ *
+ * Code: 
+ * 
+ * Case 1: %base is not used in <expr>
+ *	mov  %wreg, <offset_wreg>(%base)
+ *	lea  <expr>, %wreg
+ * The following part is the same in both cases:
+ *	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  <size>, <offset_recN_mem_size>(%base)
+ *	mov  %wreg, <offset_recN_mem_addr>(%base)
+ * 	mov  <offset_wreg>(%base), %wreg
+ *
+ * =======================================================================
+ * Case 2: %base is used in <expr>. 
+ *	mov  %wreg, <offset_wreg>(%base)
+ * 	mov  %base, %wreg
+ * 	mov  <offset_base>(%wreg), %base
+ *	lea  <expr>, %base
+ *	xchg %base, %wreg
+ * The following part is the same in both cases:
+ *	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  <size>, <offset_recN_mem_size>(%base)
+ *	mov  %wreg, <offset_recN_mem_addr>(%base)
+ * 	mov  <offset_wreg>(%base), %wreg 
+ * 
+ * The function adds this code after 'item'.  */
+static struct list_head *
+mk_record_access_common(struct kedr_ir_node *node, u8 base, u8 num, 
+	struct list_head *item, int *err)
+{
+	u8 wreg;
+	unsigned int expr_reg_mask;
+	int base_is_used;
+	
+	if (*err != 0)
+		return item;
+	
+	expr_reg_mask = insn_reg_mask_for_expr(&node->insn);
+	base_is_used = (expr_reg_mask & X86_REG_MASK(base));
+	
+	wreg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(expr_reg_mask | X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (wreg == KEDR_REG_NONE) {
+		warn_no_wreg(node, base);
+		*err = -EILSEQ;
+		return item;
+	}
+	
+	item = kedr_mk_store_reg_to_spill_slot(wreg, base, item, 0, err);
+	
+	if (base_is_used) {
+		item = kedr_mk_mov_reg_to_reg(base, wreg, item, 0, err);
+		item = kedr_mk_load_reg_from_spill_slot(base, wreg, item, 0,
+			err);
+		item = kedr_mk_lea_expr_reg(&node->insn, base, item, 0, err);
+		item = kedr_mk_xchg_reg_reg(base, wreg, item, 0, err);
+	}
+	else {
+		item = kedr_mk_lea_expr_reg(&node->insn, wreg, item, 0, err);
+	}
+	
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), item, 0, err);
+	
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)get_mem_size_type_e_m(node), base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, err);
+	
+	item = kedr_mk_store_reg_to_ps(wreg, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, err);
+	
+	item = kedr_mk_load_reg_from_spill_slot(wreg, base, item, 0, err);
+	return item;
+}
+
 /* TODO: describe, add asm snippet */
 int
 kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
@@ -854,6 +1004,9 @@ kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
 		debug_util_print_u64((u64)num, "[#%llu] SETcc/CMOVcc\n");
 	}
 	//<>
+	
+	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
+		return 0;
 	
 	//TODO
 	return 0;
@@ -871,6 +1024,9 @@ kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	}
 	//<>
 	
+	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
+		return 0;
+	
 	//TODO
 	return 0;
 }
@@ -886,6 +1042,9 @@ kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num)
 		debug_util_print_u64((u64)num, "[#%llu] CMPXCHG8B/16B\n");
 	}
 	//<>
+	
+	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
+		return 0;
 	
 	//TODO
 	return 0;
@@ -907,21 +1066,25 @@ kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	return 0;
 }
 
-/* TODO: describe, add asm snippet */
+/* See mk_record_access_common(). */
 int
 kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, 
-			"[#%llu] Generic type E or M\n");
-	}
-	//<>
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
 	
-	//TODO
-	return 0;
+	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
+		return 0;
+	
+	mk_record_access_common(ref_node, base, num, insert_after, &err);
+	
+	if (err == 0)
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	else
+		warn_fail(ref_node);
+	
+	return err;
 }
 
 /* TODO: describe, add asm snippet */

@@ -60,14 +60,12 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base);
 
 /* '*_mask' - read, write and lock masks created when analyzing the 
  * instructions of this block. */
-// TODO
 int
 kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
 	u32 read_mask, u32 write_mask, u32 lock_mask);
 
 /* 'end_node' - the last reference node of the block that 'node' belongs to.
  */
-// TODO
 int
 kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node, 	
 	struct kedr_ir_node *end_node, u8 base);
@@ -88,7 +86,6 @@ kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num);
 int
 kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num);
 

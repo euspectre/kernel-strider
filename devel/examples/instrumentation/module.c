@@ -27,12 +27,26 @@ MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
 /* Name of the module to analyze, an empty name will match no module */
-static char *target_name = "";
+char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
 
 /* [DBG] Name of the function to provide additional debug output for. */
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
+
+/* If 0, memory access operations with the addressing expressions based on
+ * %rsp/%esp will not be recorded. The corresponding instructions are likely
+ * to deal only with the local variables of the function and its parameters
+ * passed by value. 
+ * Note that this does not "cut off" all the operations with the stack, just
+ * those that reference %rsp/%esp directly.
+ * If the parameter has a non-zero value, these operations will be 
+ * instrumented and processed like any other ones.
+ * Leaving this parameter as zero may reduce code bloat: the instrumented 
+ * versions of the affected memory access operations may be smaller.
+ * Default value: 0. */
+int process_sp_accesses = 0;
+module_param(process_sp_accesses, int, S_IRUGO);
 /* ====================================================================== */
 
 /* A directory for our system in debugfs. */
