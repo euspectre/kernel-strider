@@ -79,7 +79,6 @@ kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, u8 num);
 int
 kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num);
 

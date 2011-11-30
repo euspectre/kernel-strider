@@ -1129,20 +1129,84 @@ kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num)
 		(X86_REX_W(rex) ? 16 : 8));
 }
 
-/* TODO: describe, add asm snippet */
+/* Processing memory access for XLAT instruction. 
+ * Apply this before the instruction sequence.
+ *
+ * There are 2 cases: 
+ * 	1) %base is %rbx - the instructions that should be used in this 
+ * case only are enclosed in [].
+ * 	2) %base is not %rbx  - the instructions that should be used in 
+ * this case only are enclosed in {}. 
+ * The instructions that are not in brackets are the same in both cases.
+ *
+ * Note that both on x86-32 and on x86-64 the instructions listed below 
+ * deal with the full-sized registers (except %al).
+ * To simplify things a bit, we also assume that XLAT itself uses full-sized
+ * register as a base, that is, %ebx on x86-32 and %rbx on x86-64. In the 
+ * latter case, this means that REX.W must be present. It seems to be 
+ * unlikely that %ebx is used to contain the address of the XLAT table 
+ * on x86-64 rather than %rbx and the values of %rbx and (extended) %ebx
+ * are not the same.
+ *
+ * [NB] MOVZBL is sometimes used as another mnemonic for the variant of 
+ * MOVZX we use below.
+ *
+ * Code:
+ *	mov  %rax, <offset_ax>(%base)
+ * On entry, %al contains an unsigned index to the table XLAT uses.
+ *	movzx %al, %rax  # zero-extend the unsigned index...
+ * ...and add the original value of %rbx to it:
+ *	pushf	# 'add' affects flags, so we need to preserve them
+ *	[add <offset_bx>(%base), %rax]	# use this one if %base is %rbx...
+ *	{add %rbx, %rax}		# ...or this one if not
+ * 	popf
+ * Now %rax contains the address of the byte to be accessed by XLAT.
+ *	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  1, <offset_recN_mem_size>(%base)
+ *	mov  %rax, <offset_recN_mem_addr>(%base)
+ * 	mov  <offset_ax>(%base), %rax	# restore %rax
+ */
 int
 kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] XLAT\n");
-	}
-	//<>
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
 	
-	//TODO
-	return 0;
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_AX, base,
+		insert_after, 0, &err);
+	item = kedr_mk_movzx_al_ax(item, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	
+	if (base == INAT_REG_CODE_BX)
+		item = kedr_mk_add_slot_bx_to_ax(base, item, 0, &err);
+	else
+		item = kedr_mk_add_bx_to_ax(item, 0, &err);
+	
+	item = kedr_mk_popf(item, 0, &err);
+	
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)ref_node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), item, 0, &err);
+	
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_AX, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, &err);
+
+	item = kedr_mk_mov_value32_to_slot(
+		1, 
+		base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, &err);
+	
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_AX, base,
+		item, 0, &err);
+
+	if (err == 0)
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	else
+		warn_fail(ref_node);
+	
+	return err;
 }
 
 /* See mk_record_access_common(). */
