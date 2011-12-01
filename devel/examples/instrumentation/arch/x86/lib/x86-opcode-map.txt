@@ -167,7 +167,7 @@ AVXcode:
 # As its attributes are to be stored in the same table entry as those 
 # for MOVSXD, it is more valuable to set memory access attribute for
 # the latter.
-63: ARPL Ew,Gw (i64) | MOVSXD Gv,Ev (o64)   Mem: R
+63: ARPL Ew,Gw (i64) | MOVSXD Gv,Ed (o64)   Mem: R
 64: SEG=FS (Prefix)
 65: SEG=GS (Prefix)
 66: Operand-Size (Prefix)
