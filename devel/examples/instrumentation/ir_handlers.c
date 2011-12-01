@@ -45,6 +45,44 @@ warn_fail(struct kedr_ir_node *node)
 }
 /* ====================================================================== */
 
+/* Find the size of the operand based on the attributes of the instruction 
+ * and the given operand type. 
+ * [NB] This function may not be generic, it does not cover all operand 
+ * types. Still it should be enough for the instructions with addressing 
+ * methods E, M, X and Y, which is OK for now. */
+static unsigned int
+get_operand_size_from_insn_attr(struct insn *insn, unsigned char opnd_type)
+{
+	BUG_ON(insn->length == 0);
+	BUG_ON(insn->opnd_bytes == 0);
+	
+	switch (opnd_type)
+	{
+	case INAT_OPTYPE_B:
+		/* Byte, regardless of operand-size attribute. */
+		return 1;
+	case INAT_OPTYPE_D:
+		/* Doubleword, regardless of operand-size attribute. */
+		return 4;
+	case INAT_OPTYPE_Q:
+		/* Quadword, regardless of operand-size attribute. */
+		return 8;
+	case INAT_OPTYPE_V:
+		/* Word, doubleword or quadword (in 64-bit mode), depending 
+		 * on operand-size attribute. */
+		return insn->opnd_bytes;
+	case INAT_OPTYPE_W:
+		/* Word, regardless of operand-size attribute. */
+		return 2;
+	case INAT_OPTYPE_Z:
+		/* Word for 16-bit operand-size or doubleword for 32 or 
+		 * 64-bit operand-size. */
+		return (insn->opnd_bytes == 2 ? 2 : 4);
+	default: break;
+	}
+	return insn->opnd_bytes; /* just in case */
+}
+
 /* Determine the length of the memory area accessed by the given instruction
  * of type E or M. 
  * The instruction must be decoded before it is passed to this function. */
@@ -58,26 +96,50 @@ get_mem_size_type_e_m(struct kedr_ir_node *node)
 	
 	if (attr->addr_method1 == INAT_AMETHOD_E || 
 	    attr->addr_method1 == INAT_AMETHOD_M) {
-	    	if (attr->opnd_type1 == INAT_OPTYPE_B)
-			return 1;
-		else if (attr->opnd_type1 == INAT_OPTYPE_W)
-			return 2;
+	    	return get_operand_size_from_insn_attr(insn, 
+			attr->opnd_type1);
 	}
-	if (attr->addr_method2 == INAT_AMETHOD_E || 
+	else if (attr->addr_method2 == INAT_AMETHOD_E || 
 	    attr->addr_method2 == INAT_AMETHOD_M) {
-	    	if (attr->opnd_type2 == INAT_OPTYPE_B)
-			return 1;
-		else if (attr->opnd_type2 == INAT_OPTYPE_W)
-			return 2;
+	    	return get_operand_size_from_insn_attr(insn, 
+			attr->opnd_type2);
 	}
+
+	/* The function must be called only for the instructions of
+	 * type E or M. */
+	BUG();
+	return 0;
+}
+
+/* Determine the length of the memory area accessed by the given instruction
+ * of type X, Y or XY at a time (i.e. if no REP prefix is present). 
+ * For XY, only the first argument is checked because the other one
+ * is the same size (see the description of MOVS and CMPS instructions).
+ * 
+ * The instruction must be decoded before it is passed to this function. */
+static unsigned int
+get_mem_size_type_x_y(struct kedr_ir_node *node)
+{
+	insn_attr_t *attr = &node->insn.attr;
+	struct insn *insn = &node->insn;
 	
-	if (insn->opnd_bytes == 0) {
-		pr_warning("[sample] Unable to determine the size of the "
-			"operands for the instruction at %pS\n",
-			(void *)node->orig_addr);
-		WARN_ON_ONCE(1);
+	BUG_ON(insn->length == 0);
+	
+	if (attr->addr_method1 == INAT_AMETHOD_X || 
+	    attr->addr_method1 == INAT_AMETHOD_Y) {
+	    	return get_operand_size_from_insn_attr(insn, 
+			attr->opnd_type1);
 	}
-	return insn->opnd_bytes;
+	else if (attr->addr_method2 == INAT_AMETHOD_X || 
+	    attr->addr_method2 == INAT_AMETHOD_Y) {
+	    	return get_operand_size_from_insn_attr(insn, 
+			attr->opnd_type2);
+	}
+
+	/* The function must be called only for the instructions of
+	 * type X or Y. */
+	BUG();
+	return 0;
 }
 
 /* Get the offset of the field '_field' of the memory access record #_index 
@@ -1230,51 +1292,307 @@ kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	return err;
 }
 
-/* TODO: describe, add asm snippet */
+/* Processing memory accesses for the instruction with addressing methods 
+ * "X" and "Y" (but not "XY"). The method is specified via 'amethod'.
+ * [NB] REP* prefixes are taken into account automatically.
+ *
+ * %key_reg is %rsi for "X" and %rdi for "Y".
+ * %wreg is a register not used by the instruction and different 
+ * from %base as usual. It must not be %rsp either.
+ * %treg is a register different from %base, %wreg, %rsp and %key_reg.
+ *
+ * Note that the policy used to select %base guarantees that %base is not
+ * used by the instructions with X and Y addressing methods. %base is 
+ * selected from non-scratch registers, so it cannot be %ax, %cx or %dx used
+ * by some of such instructions. On x86-64, it can be neither %rsi nor %rdi 
+ * for the same reason. On x86-32, the policy requires that %esi and %edi 
+ * must not be chosen as %base for a function if there are X- or 
+ * Y-instructions in the function. To sum up, we can rely on the fact that 
+ * the instruction does not use %base.
+ *
+ * Part 1, apply it before the instruction.
+ * Code:
+ *	mov  %wreg, <offset_wreg>(%base)
+ * 	mov  %key_reg, %wreg	# start position
+ * ----------------------------------------------
+ *
+ * Part 2, apply it after the instruction.
+ * Now %key_reg is the position past the end by the size of the element 
+ * (S: 1, 2, 4 or 8). 
+ * We need to determine the beginning and the length of the accessed
+ * memory area taking the direction of processing in to account.
+ * Code:
+ * 	mov  %treg, <offset_treg>(%base)
+ *	pushf	
+ *	mov  %key_reg, %treg 	# treg - position past the end by S
+ *	sub  %wreg, %treg	# treg -= wreg => treg := +/- length
+ *	jz out			# length == 0, nothing has been processed
+ *	ja record_access	# common case: forward processing
+ * The data have been processed backwards.
+ *	mov  %key_reg, %wreg	# set the real start: new %key_reg + S
+ *	add  <S>, %wreg		# <S> is 1, 2, 4, or 8 => 8 bits is enough
+ * 	neg  %treg		# treg = -treg; now treg == length
+ *
+ * record_access:
+ *
+ * No matter in which direction the data processing was made, %wreg is now 
+ * the start address of the accessed memory block and %treg is the length of
+ * the block in bytes. [%wreg, %wreg + %treg)
+ *	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  %wreg, <offset_recN_mem_addr>(%base)
+ *	mov  %treg, <offset_recN_mem_size>(%base)
+ * out:
+ *	popf
+ *	mov  <offset_treg>(%base), %treg
+ *	mov  <offset_wreg>(%base), %wreg 
+ */
+static int 
+handle_type_x_and_y_impl(struct kedr_ir_node *ref_node, u8 base, u8 num, 
+	u8 amethod)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_record_access = NULL;
+	struct kedr_ir_node *node_out = NULL;
+	
+	u8 wreg;
+	u8 treg;
+	u8 key_reg = (amethod == INAT_AMETHOD_X ? 
+		INAT_REG_CODE_SI :
+		INAT_REG_CODE_DI);
+		
+	unsigned int sz = get_mem_size_type_x_y(ref_node);
+	
+	wreg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(ref_node->reg_mask | X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (wreg == KEDR_REG_NONE) {
+		warn_no_wreg(ref_node, base);
+		return -EILSEQ;
+	}
+	
+	treg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(X86_REG_MASK(wreg) | X86_REG_MASK(key_reg) | 
+			X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (treg == KEDR_REG_NONE) {
+		warn_no_wreg(ref_node, base);
+		return -EILSEQ;
+	}
+	
+	node_record_access = kedr_ir_node_create();
+	if (node_record_access == NULL)
+		return -ENOMEM;
+	node_out = kedr_ir_node_create();
+	if (node_out == NULL) {
+		kedr_ir_node_destroy(node_record_access);
+		return -ENOMEM;
+	}
+	
+	/* Part 1 - added before the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(wreg, base, insert_after,
+		0, &err);
+	item = kedr_mk_mov_reg_to_reg(key_reg, wreg, item, 0, &err);
+	
+	/* Part 2 - added after the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(treg, base, 
+		&ref_node->last->list, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(key_reg, treg, item, 0, &err);
+	item = kedr_mk_sub_reg_reg(wreg, treg, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_Z, node_out, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_A, node_record_access, item, 0, &err);
+	
+	item = kedr_mk_mov_reg_to_reg(key_reg, wreg, item, 0, &err);
+	item = kedr_mk_add_value8_to_reg((u8)sz, wreg, item, 0, &err);
+	item = kedr_mk_neg_reg(treg, item, 0, &err);
+	
+	kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)ref_node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), 
+		&node_record_access->list, 1, &err);
+	list_add(&node_record_access->list, item);
+	item = &node_record_access->list;
+		
+	item = kedr_mk_store_reg_to_ps(wreg, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, &err);
+	item = kedr_mk_store_reg_to_ps(treg, base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, &err);
+	
+	kedr_mk_popf(&node_out->list, 1, &err);
+	list_add(&node_out->list, item);
+	item = &node_out->list;
+	
+	item = kedr_mk_load_reg_from_spill_slot(treg, base, item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(wreg, base, item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else
+		warn_fail(ref_node);
+	
+	return err;
+}
+
 int
 kedr_handle_type_x(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] Type X\n");
-	}
-	//<>
-	
-	//TODO
-	return 0;
+	return handle_type_x_and_y_impl(ref_node, base, num, INAT_AMETHOD_X);
 }
 
-/* TODO: describe, add asm snippet */
 int
 kedr_handle_type_y(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] Type Y\n");
-	}
-	//<>
-	
-	//TODO
-	return 0;
+	return handle_type_x_and_y_impl(ref_node, base, num, INAT_AMETHOD_Y);
 }
 
-/* TODO: describe, add asm snippet */
+/* Processing memory accesses for the instruction with "X" and "Y" addressing 
+ * modes (when both modes are used for an instruction):
+ * MOVS, CMPS
+ * 
+ * [NB] REP* prefixes are taken into account automatically.
+ *
+ * We make use of the fact that %rax and %rdx are not used by MOVS and CMPS.
+ * These registers are used as work registers.
+ * After the instruction completes, we may use %rcx too, and it is
+ * convenient to make it the third work register we need. 
+ *
+ * Part 1, apply it before the instruction
+ * Code:
+ *	mov  %rax, <offset_ax>(%base)
+ *	mov  %rdx, <offset_dx>(%base)
+ * 	mov  %rsi, %rax
+ * 	mov  %rdi, %rdx
+ * ----------------------------------------
+ *
+ *
+ * Part 2, apply it after the instruction
+ * Code:
+ * 	mov  %rcx, <offset_cx>(%base)
+ *	pushfq
+ * 	mov  %rsi, %rcx		# rcx - position past the end by S
+ *	sub  %rax, %rcx		# rcx -= (old rsi) => wreg := +/- length
+ *	jz out			# length == 0, nothing has been processed
+ *	ja record_access	# common case: forward processing
+ * The data have been processed backwards (rcx is negative).
+ *	mov  %rsi, %rax		# set the real start position: new %rsi + S
+ *	add  <S>, %rax		# <S> is 1, 2, 4, or 8 => 8 bits is enough
+ *	mov  %rdi, %rdx		# ... same for %rdi
+ *	add  <S>, %rdx
+ * 	neg  %rcx		# rcx = -rcx; now rcx == length
+ *
+ * record_access:
+ *
+ * Record accesses to [%rax, %rax + %rcx) and [%rdx, %rdx + %rcx)
+ *	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  %rax, <offset_recN_mem_addr>(%base)
+ *	mov  %rcx, <offset_recN_mem_size>(%base)
+ *	mov  <orig_pc32>, <offset_recN+1_pc>(%base)
+ *	mov  %rdx, <offset_recN+1_mem_addr>(%base)
+ *	mov  %rcx, <offset_recN+1_mem_size>(%base)
+ * out:
+ *	popfq
+ *	mov  <offset_cx>(%base), %rcx
+ *	mov  <offset_dx>(%base), %rdx
+ *	mov  <offset_ax>(%base), %rax
+ */
 int
 kedr_handle_type_xy(struct kedr_ir_node *ref_node, u8 base, u8 num)
 {
-	//<>
-	if (strcmp(func_name, target_function) == 0) {
-		debug_util_print_u64((u64)(ref_node->orig_addr - 
-			(unsigned long)dbg_ifunc->addr), "0x%llx: ");
-		debug_util_print_u64((u64)num, "[#%llu] Type XY\n");
-	}
-	//<>
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_record_access = NULL;
+	struct kedr_ir_node *node_out = NULL;
 	
-	//TODO
-	return 0;
+	unsigned int sz = get_mem_size_type_x_y(ref_node);
+	
+	node_record_access = kedr_ir_node_create();
+	if (node_record_access == NULL)
+		return -ENOMEM;
+	node_out = kedr_ir_node_create();
+	if (node_out == NULL) {
+		kedr_ir_node_destroy(node_record_access);
+		return -ENOMEM;
+	}
+	
+	/* Part 1 - added before the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_AX, base, 
+		insert_after, 0, &err);
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_DX, base,
+		item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_AX, 
+		item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_DI, INAT_REG_CODE_DX, 
+		item, 0, &err);
+	
+	/* Part 2 - added after the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_CX, base, 
+		&ref_node->last->list, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_CX,
+		item, 0, &err);
+	item = kedr_mk_sub_reg_reg(INAT_REG_CODE_AX, INAT_REG_CODE_CX, 
+		item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_Z, node_out, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_A, node_record_access, item, 0, &err);
+	
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_AX,
+		item, 0, &err);
+	item = kedr_mk_add_value8_to_reg((u8)sz, INAT_REG_CODE_AX, item, 0,
+		&err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_DI, INAT_REG_CODE_DX,
+		item, 0, &err);
+	item = kedr_mk_add_value8_to_reg((u8)sz, INAT_REG_CODE_DX, item, 0,
+		&err);
+	item = kedr_mk_neg_reg(INAT_REG_CODE_CX, item, 0, &err);
+	
+	/* Record accesses to [%rax, %rax + %rcx) and [%rdx, %rdx + %rcx) */
+	kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)ref_node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), 
+		&node_record_access->list, 1, &err);
+	list_add(&node_record_access->list, item);
+	item = &node_record_access->list;
+	
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_AX, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, &err);
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_CX, base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, &err);
+	
+	++num;
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)ref_node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), item, 0, &err);
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_DX, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, &err);
+	item = kedr_mk_store_reg_to_ps(INAT_REG_CODE_CX, base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, &err);
+
+	/* out: */
+	kedr_mk_popf(&node_out->list, 1, &err);
+	list_add(&node_out->list, item);
+	item = &node_out->list;
+	
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_CX, base, 
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_DX, base, 
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_AX, base, 
+		item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else
+		warn_fail(ref_node);
+	
+	return err;
 }
 /* ====================================================================== */

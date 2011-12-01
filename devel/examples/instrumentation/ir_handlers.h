@@ -85,15 +85,12 @@ kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num);
 int
 kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_type_x(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_type_y(struct kedr_ir_node *ref_node, u8 base, u8 num);
 
-// TODO
 int
 kedr_handle_type_xy(struct kedr_ir_node *ref_node, u8 base, u8 num);
 /* ====================================================================== */
