@@ -963,6 +963,10 @@ kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node,
 		list_entry(first_item, struct kedr_ir_node, list);
 	ref_node->first->needs_addr32_reloc = 1;
 	
+	/* Set 'dest_inner' for the node with MOV to be able to properly 
+	 * relocate imm32 there later. */
+	ref_node->first->dest_inner = ref_node->dest_inner;
+	
 	/* Change the destination of the jump: it will go to the code 
 	 * handling the end of the block (i.e. past 'end_node'). */
 	ref_node->dest_inner = end_node;
@@ -1082,6 +1086,7 @@ kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	struct list_head *insert_after = ref_node->first->list.prev;
 	struct list_head *item;
 	struct insn *insn = &ref_node->insn;
+	struct kedr_ir_node *node_jcc;
 	u8 cc;
 	
 	if (!process_sp_accesses && expr_uses_sp(&ref_node->insn))
@@ -1094,12 +1099,24 @@ kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	cc = insn->opcode.bytes[insn->opcode.nbytes - 1] & 0x0F;
 	cc ^= 1;
 	
-	item = kedr_mk_jcc(cc, ref_node->first, insert_after, 0, &err);
+	node_jcc = kedr_ir_node_create();
+	if (node_jcc == NULL)
+		return -ENOMEM;
+	node_jcc->jump_past_last = 1;
+	list_add(&node_jcc->list, insert_after);
+	
+	/* A jump to the node following 'node_jcc->last'.
+	 * [NB] We cannot make ref_node the destination of this jump because 
+	 * our system will later set the destination to 'ref_node->first'
+	 * instead. That is, the jump will lead to itself in that case. */
+	item = kedr_mk_jcc(cc, node_jcc, &node_jcc->list, 1, &err);
 	item = mk_record_access_common(ref_node, base, num, 0, item, &err);
 	
-	if (err == 0)
+	if (err == 0) {
 		ref_node->first = list_entry(insert_after->next, 
 			struct kedr_ir_node, list);
+		node_jcc->last = list_entry(item, struct kedr_ir_node, list);
+	}
 	else
 		warn_fail(ref_node);
 	

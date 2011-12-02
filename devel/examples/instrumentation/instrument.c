@@ -1275,12 +1275,144 @@ handle_jumps_out_of_block(struct kedr_ir_node *start_node,
 	BUG();
 	return -EILSEQ;
 }
-/*
-if (is_jump_out_of_block(ir, node, func))
-	ret = kedr_handle_jump_out_of_block(node, base);
-*/
 
-/* Using the IR created before, perform the instrumentation. */
+/* Updates the offsets of the instructions from the beginning of the 
+ * instrumented instance.
+ * The function returns non-zero if the new offset is different from the
+ * old one for at least one node, 0 otherwise. */
+static int
+ir_update_offsets(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	int changed = 0;
+	long offset = 0;
+	
+	list_for_each_entry(node, ir, list) {
+		changed |= (node->offset != offset);
+		node->offset = offset;
+		offset += (long)node->insn.length;
+	}
+	return changed;
+}
+
+/* For the nodes with non-NULL 'dest_inner', update that field to actually
+ * point to the destination node. */
+static void 
+ir_resolve_dest_inner(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *dest;
+	
+	list_for_each_entry(node, ir, list) {
+		dest = node->dest_inner;
+		if (dest == NULL)
+			continue; 
+		
+		if (node->jump_past_last) {
+			BUG_ON(dest->last->list.next == ir);
+			dest = list_entry(dest->last->list.next,
+				struct kedr_ir_node, list);
+		}
+		else
+			dest = dest->first;
+		node->dest_inner = dest; 
+	}
+}
+
+
+/* Process direct inner jumps: choose among their near and short versions.
+ * If and instruction is changed by this function, it will be re-decoded.
+ * By the time this function is called, 'dest_inner' should already point 
+ * to the actual destination nodes of these jumps rather than to the 
+ * corresponding reference nodes. */
+static void
+ir_set_inner_jump_length(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	long disp;
+	unsigned int prefix_len;
+	u8 *pos;
+	u8 opcode;
+	
+	list_for_each_entry(node, ir, list) {
+		if (node->dest_inner == NULL)
+			continue; 
+		
+		/* Assume the jump is short, so the size of the instruction
+		 * is <size_of_prefixes> + 2. Calculate the displacement
+		 * to the destination (NB: it is not final yet!). */
+		prefix_len = insn_offset_opcode(&node->insn);
+		disp = node->dest_inner->offset - (node->offset + 
+			(long)prefix_len + 2);
+		if (disp > 127 || disp < -128)
+			continue; /* too long distance, leave as is */
+		
+		/* Make the jump short. The displacement in the instruction
+		 * will be set later. Set 0 for now - just in case. */
+		opcode = node->insn.opcode.bytes[0];
+		pos = node->insn_buffer + prefix_len;
+		if (opcode == 0xe9) { /* jmp near => jmp short */
+			*pos++ = 0xeb;
+			*pos++ = 0;
+			kernel_insn_init(&node->insn, node->insn_buffer);
+			insn_get_length(&node->insn);
+			BUG_ON(node->insn.length != 
+				(unsigned char)(pos - node->insn_buffer));
+		}
+		else if (opcode == 0x0f && 
+			(node->insn.opcode.bytes[1] & 0xf0) == 0x80) {
+			/* jcc near => jcc short */
+			*pos++ = node->insn.opcode.bytes[1] - 0x10;
+			*pos++ = 0;
+			kernel_insn_init(&node->insn, node->insn_buffer);
+			insn_get_length(&node->insn);
+			BUG_ON(node->insn.length != 
+				(unsigned char)(pos - node->insn_buffer));
+		}
+		/* Neither jmp near nor jcc near? Do nothing then, it might
+		 * be a short jump already or a mov generated when handling
+		 * a jump out of the block. */
+	}
+}
+
+/* Sets the displacements in jmp/jcc, short and near. By the time this 
+ * function is called, 'dest_inner' should already point to the actual 
+ * destination nodes of these jumps rather than to the corresponding 
+ * reference nodes. 
+ * [NB] This function does not re-decode the instructions it changes. This
+ * should not be a problem because all the fields except 'immediate' will
+ * remain valid. */
+static void
+ir_set_inner_jump_disp(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	u8 opcode;
+	u8 *pos;
+	long disp;
+	
+	list_for_each_entry(node, ir, list) {
+		if (node->dest_inner == NULL)
+			continue;
+		
+		disp = node->dest_inner->offset - (node->offset + 
+			(long)node->insn.length);
+		pos = node->insn_buffer + insn_offset_immediate(&node->insn);
+				
+		opcode = node->insn.opcode.bytes[0];
+		if (opcode == 0xeb || (opcode & 0xf0) == 0x70) {
+			/* jmp/jcc short */
+			BUG_ON(disp < -128 || disp > 127);
+			*pos = (u8)disp;
+		}
+		else { /* jmp/jcc near or mov (handling of jumps out of 
+			the block), imm32 assumed. */
+			*(u32 *)pos = (u32)disp;
+		}
+		
+	}
+}
+
+/* Using the IR created before, performs the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
@@ -1293,6 +1425,7 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	u32 write_mask = 0;
 	u32 lock_mask = 0;
 	u8 num = 0;
+	int offsets_changed = 0;
 	
 	BUG_ON(func == NULL);
 	BUG_ON(func->tbuf != NULL);
@@ -1444,12 +1577,28 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 		}
 	}
 	
-	// TODO: Choose the length of the inner jumps
+	/* Choose the length of the inner jumps and set the final offsets
+	 * of the instructions. */
+	ir_resolve_dest_inner(ir);
+	ir_update_offsets(ir);
+	do {
+		ir_set_inner_jump_length(ir);
+		offsets_changed = ir_update_offsets(ir);
+	}
+	while (offsets_changed);
+	ir_set_inner_jump_disp(ir);
+	
+	// ??? TODO: replace pointers in the jump tables with the offsets 
+	// of the destination instructions (i.e. the addresses relocated 
+	// as if the start address of the function was 0).
 	
 	// TODO: Create the temporary buffer and place the code there.
 	// TODO: During that process, add relocations for the nodes with 
 	// iprel_addr != 0 to func->relocs as well as for those with 
 	// needs_addr32_reloc.
+	
+	// TODO: output the total size of the instumented code somewhere
+	// as well as the total size of the init_text and core_text areas.
 	
 	// TODO: replace this stub with a real instrumentation.
 	return stub_do_instrument(func, ir);
@@ -1642,8 +1791,7 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 	BUG_ON(node_orig->insn.length != 
 		2 + insn_offset_opcode(&node->insn)); 
 	/* +2: +1 for opcode, +1 for immediate */
-	
-	node_orig->dest_inner = node;
+	/* Do not set dest_inner here, do that only for jmp/jcc nodes. */
 	
 	/* jmp short 05 */
 	pos = node_jump_over->insn_buffer;
@@ -1827,30 +1975,27 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 		goto out;
 
 	//<>
-	if (strcmp(func->name, "cfake_read") == 0) {
-		pr_info("[DBG] function addresses: "
-			"0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
-			(unsigned long)&kedr_process_function_entry_wrapper,
-			(unsigned long)&kedr_process_function_exit_wrapper,
-			(unsigned long)&kedr_process_block_end_wrapper,
-			(unsigned long)&kedr_lookup_replacement_wrapper);
-	}
-	//<>
-	
-	//<>
 	if (strcmp(func->name, target_function) == 0) {
 		struct kedr_ir_node *node;
 		debug_util_print_string("Code in IR:\n");
 		list_for_each_entry(node, &kedr_ir, list) {
+			debug_util_print_u64((u64)node->offset, 
+				"%llx: ");
 			if (is_reference_node(node)) {
 				debug_util_print_u64((u64)(node->orig_addr -
 					(unsigned long)func->addr), 
-					"@+%llx: ");
+					"(@+%llx) ");
 			}
 			if (node->block_starts)
 				debug_util_print_string("[BS] ");
 			debug_util_print_hex_bytes(node->insn_buffer, 
 				node->insn.length);
+			
+			if (node->dest_inner != NULL) {
+				debug_util_print_u64(
+					(u64)node->dest_inner->offset, 
+					", dest at 0x%llx");
+			}
 			debug_util_print_string("\n");
 		}
 	}

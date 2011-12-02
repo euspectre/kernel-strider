@@ -24,6 +24,10 @@ struct kedr_ir_node
 	 * instruction was added only during the instrumentation. */
 	unsigned long orig_addr;
 	
+	/* Offset of the instruction in the instrumented instance of the 
+	 * function from the beginning of that instance. */
+	long offset;
+	
 	/* If the node represents a direct relative jump within the
 	 * current function, 'dest_inner' points to the node corresponding
 	 * to the destination of the jump. This field is NULL if the node
