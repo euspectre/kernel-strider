@@ -95,8 +95,10 @@ on_module_load(struct module *mod)
 	int ret = 0;
 		
 	pr_info("[sample] "
-	"target module \"%s\" has just loaded.\n",
-		module_name(mod));
+	"Target module \"%s\" has just loaded. Estimated size of the "
+	"code areas (in bytes): %u\n",
+		module_name(mod), 
+		(mod->init_text_size + mod->core_text_size));
 	
 	/* Prevent our module from unloading when the target is loaded */
 	if (try_module_get(THIS_MODULE) == 0)

@@ -794,7 +794,10 @@ create_detour_buffer(void)
 	detour_buffer = kedr_alloc_detour_buffer(size);
 	if (detour_buffer == NULL)
 		return -ENOMEM;
-
+	
+	pr_info("[sample] Allocated buffer of size %lu for "
+		"the instrumented code\n",
+		size);
 	return 0;
 }
 
