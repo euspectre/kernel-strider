@@ -38,20 +38,19 @@ struct kedr_ifunc
 	/* Size of the instrumented version of the function. */
 	unsigned long i_size;
 	
-	/* The list of jump tables for the original function (one element 
-	 * per each indirect near jump of the appropriate kind). Some jump
-	 * tables may have 0 elements, this can happen if the elements are 
-	 * not the addresses within the function or if two jumps use the 
-	 * same jump table. */
+	/* The list of jump tables (one element per each indirect near jump 
+	 * of the appropriate kind). Some jump tables may have 0 elements, 
+	 * this can happen if the elements are not the addresses within 
+	 * the function or if two jumps use the same jump table. */
 	struct list_head jump_tables;
 	
 	/* A buffer in the module mapping memory space containing all the 
 	 * jump tables for the instrumented code. */
 	void *jt_buf;
 	
-	/* The start address of the fallback instance of the original 
-	 * function. That instance should be used if the instrumented code 
-	 * detects in runtime that something bad has happened. 
+	/* The start address of the fallback instance of the function. 
+	 * That instance should be used if the instrumented code detects 
+	 * in runtime that something bad has happened. 
 	 * [NB] The fallback instance uses the fixed up jump tables for the
 	 * original function (if the latter uses jump tables). */
 	void *fallback;

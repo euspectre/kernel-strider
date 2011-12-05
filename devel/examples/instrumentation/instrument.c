@@ -1412,6 +1412,28 @@ ir_set_inner_jump_disp(struct list_head *ir)
 	}
 }
 
+/* Replace the addresses of the nodes in the jump tables with the offsets 
+ * of the instructions the jumps should lead to. Note that each jump 
+ * destination is not always the node itself but 'node->first'. */
+static void
+fill_jump_tables(struct kedr_ifunc *func)
+{
+	struct kedr_jtable *jtable;
+	unsigned long *table;
+	struct kedr_ir_node *node;
+	unsigned int i;
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		if (jtable->num == 0)
+			continue;
+		table = jtable->i_table;
+		for (i = 0; i < jtable->num; ++i) {
+			node = (struct kedr_ir_node *)table[i];
+			table[i] = (unsigned long)node->first->offset;
+		}
+	}
+}
+
 /* Using the IR created before, performs the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
@@ -1588,17 +1610,15 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	while (offsets_changed);
 	ir_set_inner_jump_disp(ir);
 	
-	// ??? TODO: replace pointers in the jump tables with the offsets 
-	// of the destination instructions (i.e. the addresses relocated 
-	// as if the start address of the function was 0).
+	/* Replace pointers in the jump tables with the offsets of the 
+	 * destination instructions (i.e. the addresses relocated as if the 
+	 * start address of the function was 0). */
+	fill_jump_tables(func);
 	
 	// TODO: Create the temporary buffer and place the code there.
 	// TODO: During that process, add relocations for the nodes with 
 	// iprel_addr != 0 to func->relocs as well as for those with 
 	// needs_addr32_reloc.
-	
-	// TODO: output the total size of the instumented code somewhere
-	// as well as the total size of the init_text and core_text areas.
 	
 	// TODO: replace this stub with a real instrumentation.
 	return stub_do_instrument(func, ir);
