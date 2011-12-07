@@ -120,22 +120,33 @@ node_map_lookup(unsigned long orig_addr)
 }
 /* ====================================================================== */
 
-//static int 
-//add_relocation(struct kedr_ifunc *func, ??? struct kedr_ir_node *node, 
-//	int rtype, void *destination)
-//{
-//	struct kedr_reloc *reloc;
-//	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
-//	
-//	if (reloc == NULL)
-//		return -ENOMEM;
-//	
-//	reloc->offset = ???;
-//	reloc->dest = destination;
-//	list_add_tail(&reloc->list, &func->relocs);
-//	
-//	return 0;
-//}
+/* If a relocation should be created for the given node, this function
+ * does so and adds the relocation to the list of relocations in 'func'. 
+ * The type of the relocation is inferred from the node. */
+static int 
+add_relocation(struct kedr_ifunc *func, struct kedr_ir_node *node)
+{
+	struct kedr_reloc *reloc = NULL;
+	
+	if (node->iprel_addr == 0 && !node->needs_addr32_reloc)
+		return 0; /* nothing to do */
+		
+	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
+	if (reloc == NULL)
+		return -ENOMEM;
+	
+	reloc->offset = node->offset;
+	if (node->iprel_addr != 0) {
+		reloc->rtype = KEDR_RELOC_IPREL;
+		reloc->dest = (void *)node->iprel_addr;
+	}
+	else /* node->needs_addr32_reloc */ {
+		reloc->rtype = KEDR_RELOC_ADDR32;
+	}
+	
+	list_add_tail(&reloc->list, &func->relocs);
+	return 0;
+}
 /* ====================================================================== */
 
 /* Nonzero if 'addr' is the address of some location in the "init" area of 
@@ -519,11 +530,11 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 	list_add_tail(&jtable->list, &func->jump_tables);
 	
 	//<>
-	pr_info("[DBG] Found jump table with %u entries at %p "
+	/*pr_info("[DBG] Found jump table with %u entries at %p "
 		"referred to by a jmp at %pS\n",
 		jtable->num,
 		(void *)jtable->addr, 
-		(void *)node->orig_addr);
+		(void *)node->orig_addr);*/
 	//<>
 	return 0;
 }
@@ -986,37 +997,37 @@ ir_mark_blocks(struct kedr_ifunc *func, struct list_head *ir)
 
 //<>
 /* TODO: remove when the instrumentation mechanism is prepared. */
-static int
-stub_do_instrument(struct kedr_ifunc *func, struct list_head *ir)
-{
-	u32 *poffset;
-	struct kedr_reloc *reloc;
-	
-	/* For now, the instrumented instance will contain only a jump to 
-	 * the fallback function to check the mechanism. */
-	func->tbuf = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
-	if (func->tbuf == NULL)
-		return -ENOMEM;
-	
-	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
-	if (reloc == NULL) {
-		kfree(func->tbuf);
-		func->tbuf = NULL;
-		return -ENOMEM;
-	}
-	reloc->rtype = KEDR_RELOC_IPREL;
-	reloc->offset = 0; /* The insn is at the beginning of the buffer */
-	reloc->dest = func->fallback;
-	list_add_tail(&reloc->list, &func->relocs);
-	
-	func->i_size = KEDR_SIZE_JMP_REL32;
-	
-	*(u8 *)func->tbuf = KEDR_OP_JMP_REL32;
-	poffset = (u32 *)((unsigned long)func->tbuf + 1);
-	*poffset = 0; /* to be relocated during deployment */
-	
-	return 0;
-}
+//static int
+//stub_do_instrument(struct kedr_ifunc *func, struct list_head *ir)
+//{
+//	u32 *poffset;
+//	struct kedr_reloc *reloc;
+//	
+//	/* For now, the instrumented instance will contain only a jump to 
+//	 * the fallback function to check the mechanism. */
+//	func->tbuf = kzalloc(KEDR_SIZE_JMP_REL32, GFP_KERNEL);
+//	if (func->tbuf == NULL)
+//		return -ENOMEM;
+//	
+//	reloc = kzalloc(sizeof(struct kedr_reloc), GFP_KERNEL);
+//	if (reloc == NULL) {
+//		kfree(func->tbuf);
+//		func->tbuf = NULL;
+//		return -ENOMEM;
+//	}
+//	reloc->rtype = KEDR_RELOC_IPREL;
+//	reloc->offset = 0; /* The insn is at the beginning of the buffer */
+//	reloc->dest = func->fallback;
+//	list_add_tail(&reloc->list, &func->relocs);
+//	
+//	func->i_size = KEDR_SIZE_JMP_REL32;
+//	
+//	*(u8 *)func->tbuf = KEDR_OP_JMP_REL32;
+//	poffset = (u32 *)((unsigned long)func->tbuf + 1);
+//	*poffset = 0; /* to be relocated during deployment */
+//	
+//	return 0;
+//}
 //<>
 
 #ifdef CONFIG_X86_64
@@ -1137,9 +1148,9 @@ ir_choose_base_register(struct kedr_ifunc *func, struct list_head *ir)
 	BUG_ON(base == KEDR_REG_NONE); /* we should have chosen something */
 	
 	//<>
-	pr_warning("[DBG] allowed_base_mask = 0x%08x; "
+	/*pr_warning("[DBG] allowed_base_mask = 0x%08x; "
 		"chosen: %d (usage count: %u)\n",
-		allowed_base_mask, base, usage_count);
+		allowed_base_mask, base, usage_count);*/
 	//<>
 	return base;
 }
@@ -1434,6 +1445,52 @@ fill_jump_tables(struct kedr_ifunc *func)
 	}
 }
 
+/* Creates the temporary buffer and places the instrumented code there.
+ * During that process, relocation records are created for the nodes with 
+ * iprel_addr != 0 to func->relocs as well as for those with 
+ * needs_addr32_reloc. 
+ * The function sets 'func->i_size'. */
+static int
+generate_code(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	size_t size_of_code;
+	u8 *buf;
+	int ret = 0;
+	
+	BUG_ON(list_empty(ir));
+	
+	/* Determine the size of the code: the offset of the last 
+	 * instruction + the length of that instruction. */
+	node = list_entry(ir->prev, struct kedr_ir_node, list);
+	size_of_code = (size_t)node->offset + (size_t)node->insn.length;
+	BUG_ON(size_of_code == 0);
+	
+	/* [NB] If an error occurs, we need not bother and delete relocation
+	 * records created so far as well as 'func->tbuf'. All these data 
+	 * will be deleted at once when 'func' is deleted (see 
+	 * ifunc_destroy()). */
+		
+	func->tbuf = kzalloc(size_of_code, GFP_KERNEL);
+	if (func->tbuf == NULL)
+		return -ENOMEM;
+	
+	buf = (u8 *)func->tbuf;
+	list_for_each_entry(node, ir, list) {
+		size_t len = node->insn.length;
+		memcpy(buf, &node->insn_buffer[0], len);
+		
+		ret = add_relocation(func, node);
+		if (ret < 0)
+			return ret;
+		
+		buf += len;
+	}
+	
+	func->i_size = (unsigned long)size_of_code;
+	return 0;
+}
+
 /* Using the IR created before, performs the instrumentation. */
 static int
 do_instrument(struct kedr_ifunc *func, struct list_head *ir)
@@ -1615,13 +1672,9 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	 * start address of the function was 0). */
 	fill_jump_tables(func);
 	
-	// TODO: Create the temporary buffer and place the code there.
-	// TODO: During that process, add relocations for the nodes with 
-	// iprel_addr != 0 to func->relocs as well as for those with 
-	// needs_addr32_reloc.
-	
-	// TODO: replace this stub with a real instrumentation.
-	return stub_do_instrument(func, ir);
+	ret = generate_code(func, ir);
+	/* [NB] IR will be destroyed by instrument_function(). */
+	return ret;
 }
 /* ====================================================================== */
 
@@ -1995,7 +2048,7 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 		goto out;
 
 	//<>
-	if (strcmp(func->name, target_function) == 0) {
+	/*if (strcmp(func->name, target_function) == 0) {
 		struct kedr_ir_node *node;
 		debug_util_print_string("Code in IR:\n");
 		list_for_each_entry(node, &kedr_ir, list) {
@@ -2018,7 +2071,7 @@ instrument_function(struct kedr_ifunc *func, struct module *mod)
 			}
 			debug_util_print_string("\n");
 		}
-	}
+	}*/
 	//<>
 
 out:

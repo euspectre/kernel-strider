@@ -923,12 +923,15 @@ deploy_instrumented_function(struct kedr_ifunc *func)
 	}
 	
 	//<>
-	// For debugging: output the address of the instrumented function.
-	// gdb -c /proc/kcore can be used to view the code of that function,
-	// use 'disas /r <start_addr>,<end_addr>' for that.
+	/* For debugging: output the address of the instrumented function.
+	 * gdb -c /proc/kcore can be used to view the code of that function,
+	 * use 'disas /r <start_addr>,+<size>' for that. */
 	debug_util_print_string(func->name);
-	debug_util_print_u64((u64)(unsigned long)(func->i_addr), " %llx, ");
-	debug_util_print_u64((u64)(func->i_size), "size: %llx\n");
+	debug_util_print_u64((u64)(unsigned long)(func->i_addr), 
+		" 0x%llx, ");
+	debug_util_print_u64((u64)(func->i_size), "size: 0x%llx; ");
+	debug_util_print_u64((u64)(unsigned long)(func->fallback), 
+		"fallback at 0x%llx\n");
 	//<>
 }
 
@@ -1005,6 +1008,8 @@ kedr_process_target(struct module *mod)
 {
 	struct kedr_ifunc *f;
 	int ret = 0;
+	unsigned long size;
+	unsigned long i_size;
 	
 	BUG_ON(mod == NULL);
 	
@@ -1017,19 +1022,28 @@ kedr_process_target(struct module *mod)
 	list_for_each_entry(f, &ifuncs, list) {
 		//<>
 		pr_info("[sample] "
-"module: \"%s\", processing function \"%s\" "
-"(address is %p, size is %lu; fallback is at %p)\n",
-		module_name(mod),
-		f->name,
-		f->addr,
-		f->size,
-		f->fallback);
+			"module: \"%s\", processing function \"%s\" "
+			"(address is %p, size is %lu)\n",
+			module_name(mod), f->name, f->addr, f->size);
 		//<>
 	
 		ret = do_process_function(f, mod);
 		if (ret != 0)
 			return ret;
 	}
+	
+	/* Calculate the total size of the original functions (for 
+	 * statistics). At this point, the size of each original function
+	 * without padding should be known. */
+	size = 0;
+	i_size = 0;
+	list_for_each_entry(f, &ifuncs, list) {
+		size += f->size;
+		i_size += f->i_size;
+	}
+	pr_info("[sample] Total size of the functions before "
+		"instrumentation (bytes): %lu, after: %lu\n",
+		size, i_size);		
 	
 	ret = create_detour_buffer();
 	if (ret != 0)

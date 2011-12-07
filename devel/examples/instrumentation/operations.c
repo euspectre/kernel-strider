@@ -4,6 +4,11 @@
  * here. */
 
 #include <linux/kernel.h>
+#include <linux/hardirq.h>	/* in_interrupt() */
+#include <linux/smp.h>		/* smp_processor_id() */
+#include <linux/sched.h>	/* current */
+#include <linux/slab.h>
+#include <linux/string.h>
 
 #include "operations.h"
 #include "primary_storage.h"
@@ -113,7 +118,15 @@ static __used void __func ## _holder(void) 	\
 }
 /* ====================================================================== */
 
-// TODO: implement the operations
+// TODO: implement the operations as needed 
+/* ====================================================================== */
+
+static unsigned long
+get_current_thread_id(void)
+{
+	return (in_interrupt() 	? (unsigned long)smp_processor_id() 
+				: (unsigned long)current);
+}
 
 /* The operations that can be used in the instrumented code.
  * These functions are static because they should only be called only via 
@@ -122,17 +135,42 @@ static __used void __func ## _holder(void) 	\
 static __used unsigned long
 kedr_process_function_entry(unsigned long orig_func)
 {
-	// TODO
-	return /*<>*/ 0; 
+	struct kedr_primary_storage *ps;
+	ps = kzalloc(sizeof(struct kedr_primary_storage), GFP_ATOMIC);
+	if (ps == NULL) {
+		pr_err("[sample] Failed to allocate storage for the data "
+			"to be collected from \"%pf\" function.\n",
+			(void *)orig_func);
+		return 0;
+	}
+	
+	ps->orig_func = orig_func;
+	ps->tid = get_current_thread_id();
+	
+	//<>
+	/*pr_info("[DBG] (tid=0x%lx) Entry: \"%pf\" (0x%lx), ps=0x%lx\n",
+		ps->tid, (void *)orig_func, orig_func, (unsigned long)ps);*/
+	//<>
+	
+	// TODO: other actions if needed
+	return (unsigned long)ps; 
 }
 KEDR_DEFINE_WRAPPER(kedr_process_function_entry);
 
 static __used void
 kedr_process_function_exit(unsigned long ps)
 {
-	/*struct kedr_primary_storage *pstorage = 
-		(struct kedr_primary_storage *)ps;*/
-	// TODO
+	struct kedr_primary_storage *storage = 
+		(struct kedr_primary_storage *)ps;
+	
+	//<>
+	/*pr_info("[DBG] (tid=0x%lx) Exit: \"%pf\" (0x%lx), ps=0x%lx\n",
+		storage->tid, (void *)storage->orig_func,
+			 storage->orig_func, ps);*/
+	//<>
+	
+	// TODO: other actions if needed
+	kfree(storage);
 	return; 
 }
 KEDR_DEFINE_WRAPPER(kedr_process_function_exit);
@@ -140,10 +178,23 @@ KEDR_DEFINE_WRAPPER(kedr_process_function_exit);
 static __used void
 kedr_process_block_end(unsigned long ps)
 {
-	/*struct kedr_primary_storage *pstorage = 
-		(struct kedr_primary_storage *)ps;*/
-
-	// TODO
+	struct kedr_primary_storage *storage = 
+		(struct kedr_primary_storage *)ps;
+	
+	//<>
+	//pr_info("[DBG] (tid=0x%lx) Block end, ps=0x%lx\n", storage->tid, ps);
+	//<>
+	
+	// TODO: flush data
+	// TODO: other actions if needed
+	
+	/* Reinitialize the storage. */
+	memset(&storage->mem_record[0], 0, 
+		KEDR_MEM_NUM_RECORDS * sizeof(struct kedr_mem_record));
+	storage->read_mask = 0;
+	storage->write_mask = 0;
+	storage->lock_mask = 0;
+	storage->dest_addr = 0;
 	return; 
 }
 KEDR_DEFINE_WRAPPER(kedr_process_block_end);
@@ -151,8 +202,13 @@ KEDR_DEFINE_WRAPPER(kedr_process_block_end);
 static __used unsigned long
 kedr_lookup_replacement(unsigned long addr)
 {
-	// TODO
-	return /*<>*/ addr; /* by default, do not replace the call address */
+	//<>
+	//pr_info("[DBG] replacement lookup for 0x%lx\n", addr);
+	//<>
+	
+	// TODO: in a full-fledged system, it may be necessary to look up
+	// the replacement for the function at addr 'addr' here.
+	return addr; /* by default, do not replace the call address */
 }
 KEDR_DEFINE_WRAPPER(kedr_lookup_replacement);
 

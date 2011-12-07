@@ -53,10 +53,13 @@ struct kedr_ir_node
 	 * This field remains 0 if the node represents something else. 
 	 * 
 	 * [NB] Although 'dest_addr' is available, 'iprel_addr' is necessary
-	 * too. The former is 0 for the instructions with RIP-relative 
-	 * addressing and is generally used to process control transfer 
-	 * instructions when spliting the code into blocks. The latter is 
-	 * mainly used to prepare relocation of the instrumented code. */
+	 * too. For example, the former is 0 for the instructions with 
+	 * IP-relative addressing and is generally used to process control 
+	 * transfer instructions when spliting the code into blocks. 
+	 * The latter is mainly used to prepare relocation of the 
+	 * instrumented code. Among other things, 'iprel_addr' is 0 for the
+	 * control transfer instructions without IP-relative addressing 
+	 * (e.g. 'ret', 'int'). */
 	unsigned long iprel_addr; 
 	
 	/* During the instrumentation, the instruction may be replaced with
