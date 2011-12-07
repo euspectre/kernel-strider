@@ -931,9 +931,17 @@ kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
  * relocation. It is the offset of the jump destination from the end of 
  * that 'mov' instruction.
  * 
- * Code:
+ * Code for jmp <disp32>:
  *	mov <dest32>, <offset_dest_addr>(%base)
- * 	<op> <disp_end>
+ * 	jmp <disp_end>
+ * 
+ * Code for jcc <disp32>:
+ *	j<not cc> go_on
+ *	mov <dest32>, <offset_dest_addr>(%base)	# same as above
+ * 	jmp <disp_end> 				# same as above
+ * go_on:
+ *	# NB> <dest_addr> remains 0 in the storage if the jump is not taken.
+ * 
  * <disp_end> is a displacement of the position just past the end of what
  * the last instruction of the block transforms to. A "block_end" handler
  * will be placed there that will dispatch the jump properly.
@@ -947,30 +955,60 @@ kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node,
 	struct kedr_ir_node *end_node, u8 base)
 {
 	int err = 0;
-	struct list_head *item = ref_node->first->list.prev;
-	struct list_head *first_item;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct kedr_ir_node *first = NULL;
+	struct kedr_ir_node *node_jnotcc = NULL;
+	struct kedr_ir_node *node_mov = NULL;
+	u8 cc;
 	
 	BUG_ON(ref_node->jump_past_last == 0);
 	
-	first_item = kedr_mk_mov_value32_to_slot(0, base, 
+	/* First, create and add the node for 'mov'. */
+	node_mov = kedr_ir_node_create();
+	if (node_mov == NULL)
+		return -ENOMEM;
+	list_add(&node_mov->list, insert_after);
+	kedr_mk_mov_value32_to_slot(0, base, 
 		(u32)offsetof(struct kedr_primary_storage, dest_addr),
-		item, 0, &err);
-	if (err != 0) {
-		warn_fail(ref_node);
-		return err;
-	}
-	ref_node->first = 
-		list_entry(first_item, struct kedr_ir_node, list);
-	ref_node->first->needs_addr32_reloc = 1;
-	
-	/* Set 'dest_inner' for the node with MOV to be able to properly 
+		&node_mov->list, 1, &err);
+		
+	/* Set 'dest_inner' for the node with 'mov' to be able to properly 
 	 * relocate imm32 there later. */
-	ref_node->first->dest_inner = ref_node->dest_inner;
+	node_mov->dest_inner = ref_node->dest_inner;
+	node_mov->needs_addr32_reloc = 1;
+	first = node_mov;
 	
-	/* Change the destination of the jump: it will go to the code 
-	 * handling the end of the block (i.e. past 'end_node'). */
-	ref_node->dest_inner = end_node;
-	return 0;
+	/* If it was a conditional jump originally, place 'j<not cc>' before
+	 * 'mov'. */
+	if (ref_node->insn.opcode.bytes[0] != 0xe9) {
+		struct insn *insn = &ref_node->insn;
+		
+		/* It must be jcc near. */
+		BUG_ON(insn->opcode.bytes[0] != 0x0f || 
+			(insn->opcode.bytes[1] & 0xf0) != 0x80);
+		
+		/* Prepare the condition code for the inverted condition. */
+		cc = insn->opcode.bytes[1] & 0x0f;
+		cc ^= 1;
+		
+		node_jnotcc = kedr_ir_node_create();
+		if (node_jnotcc == NULL)
+			return -ENOMEM;
+		list_add(&node_jnotcc->list, insert_after);
+		kedr_mk_jcc(cc, ref_node, &node_jnotcc->list, 1, &err);
+		node_jnotcc->jump_past_last = 1;
+		
+		first = node_jnotcc;
+	}
+	
+	/* Replace the original jump with a jump to the end of the block. */
+	kedr_mk_jmp_to_inner(end_node, &ref_node->list, 1, &err);
+	/* 'jump_past_last' remains 1, which is what we need. */
+	ref_node->first = first;
+	
+	if (err != 0)
+		warn_fail(ref_node);
+	return err;
 }
 
 /* A helper function that generates the code given below to record the 
@@ -1096,7 +1134,7 @@ kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	 * the least significant bit to invert the condition (see Intel's 
 	 * manual vol 2B, "B.1.4.7 Condition Test (tttn) Field"). */
 	BUG_ON(insn->opcode.nbytes == 0);
-	cc = insn->opcode.bytes[insn->opcode.nbytes - 1] & 0x0F;
+	cc = insn->opcode.bytes[insn->opcode.nbytes - 1] & 0x0f;
 	cc ^= 1;
 	
 	node_jcc = kedr_ir_node_create();
