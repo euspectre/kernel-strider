@@ -918,6 +918,15 @@ is_insn_xlat(struct kedr_ir_node *node)
 	/* XLAT: D7 */
 	return (opcode[0] == 0xd7);
 }
+
+static int
+is_insn_direct_offset_mov(struct kedr_ir_node *node)
+{
+	u8 *opcode = node->insn.opcode.bytes;
+	
+	/* Direct memory offset MOVs: A0-A3 */
+	return (opcode[0] >= 0xa0 && opcode[0] <= 0xa3);
+}
 /* ====================================================================== */
 
 /* If the current instruction is a control transfer instruction, determine
@@ -1606,6 +1615,12 @@ do_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			update_read_mask(node, num, &read_mask);
 			update_write_mask(node, num, &write_mask);
 			ret = kedr_handle_type_e_and_m(node, base, num);
+			++num;
+		}
+		else if (is_insn_direct_offset_mov(node)) {
+			update_read_mask(node, num, &read_mask);
+			update_write_mask(node, num, &write_mask);
+			ret = kedr_handle_direct_offset_mov(node, base, num);
 			++num;
 		}
 		else if (is_insn_type_xy(node))

@@ -1650,4 +1650,68 @@ kedr_handle_type_xy(struct kedr_ir_node *ref_node, u8 base, u8 num)
 	
 	return err;
 }
+
+/* Processing memory accesses for direct memory offset MOVs (opcodes A0-A3).
+ * 
+ * Apply this before the instruction sequence.
+ * Code:
+ * 	mov  <orig_pc32>, <offset_recN_pc>(%base)
+ *	mov  <size>, <offset_recN_mem_size>(%base)
+ *	mov  <addr32>, <offset_recN_mem_addr>(%base)
+ *
+ * <addr32> - the lower 32 bits of the address of the memory location to be
+ * accessed. 
+ * [NB] On x86-64, <addr32> is sign-extended to 64 bits when written to
+ * the primary storage. This introduces a possibility to confuse two 
+ * addresses having the same lower 32 bits. This can not happen when the 
+ * target module accesses its own data, the data of another module or of the 
+ * kernel proper: according to Documentation/x86/x86_64/mm.txt, the kernel
+ * proper is mapped within the region [ffffffff80000000, ffffffffa0000000), 
+ * the modules - within [ffffffffa0000000, fffffffffff00000). The confusion
+ * may occur only if a module uses direct offset MOVs to access both 
+ * some data inside of [ffffffff80000000, fffffffffff00000) and some data
+ * outside of that region and the lower 32 bits of the addresses are the 
+ * same. This seems to be unlikely. In addition, direct offset MOVs do not
+ * seem to be used very often in the modules on x86-64, so let us neglect 
+ * that unlikely deficiency.
+ */
+int
+kedr_handle_direct_offset_mov(struct kedr_ir_node *ref_node, u8 base, 
+	u8 num)
+{
+	int err = 0;
+	struct insn *insn = &ref_node->insn;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	unsigned char opnd_type;
+	
+	/* The address is the argument of with addressing method "O". 
+	 * There must always be such argument. */
+	if (insn->attr.addr_method1 == INAT_AMETHOD_O)
+		opnd_type = insn->attr.opnd_type1;
+	else if (insn->attr.addr_method2 == INAT_AMETHOD_O)
+		opnd_type = insn->attr.opnd_type2;
+	else 
+		BUG();
+	
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)(unsigned long)ref_node->orig_addr, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, pc), insert_after, 0, &err);
+	
+	item = kedr_mk_mov_value32_to_slot((u32)insn->moffset1.value, base, 
+		KEDR_OFFSET_MEM_REC_FIELD(num, addr), item, 0, &err);
+
+	item = kedr_mk_mov_value32_to_slot(
+		(u32)get_operand_size_from_insn_attr(insn, opnd_type), base,
+		KEDR_OFFSET_MEM_REC_FIELD(num, size), item, 0, &err);
+
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	}
+	else
+		warn_fail(ref_node);
+	
+	return err;
+}
 /* ====================================================================== */

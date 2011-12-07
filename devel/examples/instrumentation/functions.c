@@ -926,12 +926,12 @@ deploy_instrumented_function(struct kedr_ifunc *func)
 	/* For debugging: output the address of the instrumented function.
 	 * gdb -c /proc/kcore can be used to view the code of that function,
 	 * use 'disas /r <start_addr>,+<size>' for that. */
-	debug_util_print_string(func->name);
+	/*debug_util_print_string(func->name);
 	debug_util_print_u64((u64)(unsigned long)(func->i_addr), 
 		" 0x%llx, ");
 	debug_util_print_u64((u64)(func->i_size), "size: 0x%llx; ");
 	debug_util_print_u64((u64)(unsigned long)(func->fallback), 
-		"fallback at 0x%llx\n");
+		"fallback at 0x%llx\n");*/
 	//<>
 }
 
