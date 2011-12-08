@@ -6,6 +6,7 @@
 #include <linux/debugfs.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <asm/uaccess.h>
 
@@ -61,11 +62,11 @@ output_buffer_init(struct debug_output_buffer *ob)
 {
 	BUG_ON(ob == NULL);
 
-	ob->buf = (char *)kzalloc(DEBUG_OUTPUT_BUFFER_SIZE, GFP_KERNEL);
+	ob->buf = (char *)vmalloc(DEBUG_OUTPUT_BUFFER_SIZE);
 	if (ob->buf == NULL)
 		return -ENOMEM;
-
-	ob->buf[0] = 0;
+	
+	memset(ob->buf, 0, DEBUG_OUTPUT_BUFFER_SIZE);
 	ob->size = DEBUG_OUTPUT_BUFFER_SIZE;
 	ob->data_len = 0;
 
@@ -80,7 +81,8 @@ output_buffer_destroy(struct debug_output_buffer *ob)
 
 	ob->data_len = 0;
 	ob->size = 0;
-	kfree(ob->buf);
+	vfree(ob->buf);
+	ob->buf = NULL;
 	return;
 }
 
@@ -103,17 +105,19 @@ output_buffer_resize(struct debug_output_buffer *ob, size_t new_size)
 	/* Allocate memory in the multiples of the default size. */
 	size = (new_size / DEBUG_OUTPUT_BUFFER_SIZE + 1) * 
 		DEBUG_OUTPUT_BUFFER_SIZE;
-	p = krealloc(ob->buf, size, GFP_KERNEL | __GFP_ZERO);
+	p = vmalloc(size);
 	if (p == NULL) {
-	/* [NB] If krealloc fails to allocate memory, it should leave the 
-	 * buffer intact, so its previous contents could still be used. */
 		pr_err("[sample] output_buffer_resize: "
 	"not enough memory to resize the output buffer to %zu bytes\n",
 			size);
 		return -ENOMEM;
 	}
-    
-	ob->buf = p;
+	
+	memset(p, 0, size);
+	memcpy(p, ob->buf, ob->size);
+	
+	vfree(ob->buf);
+	ob->buf = (char *)p;
 	ob->size = size;
 
 	return 0;
