@@ -26,7 +26,7 @@ MODULE_SOURCES := \
 	util.c 		\
 	instrument.c	\
 	code_gen.c	\
-	operations.c	\
+	internal_api.c	\
 	sections.c	\
 	ir_handlers.c
 
@@ -39,7 +39,7 @@ MODULE_HEADERS := \
 	util.h		\
 	instrument.h	\
 	code_gen.h	\
-	operations.h	\
+	internal_api.h	\
 	ir.h		\
 	primary_storage.h \
 	sections.h	\
@@ -86,7 +86,7 @@ $(MODULE_NAME)-y := \
 	util.o		\
 	instrument.o	\
 	code_gen.o	\
-	operations.o	\
+	internal_api.o	\
 	sections.o	\
 	ir_handlers.o	\
 	$(ARCH_DIR)/lib/inat.o \

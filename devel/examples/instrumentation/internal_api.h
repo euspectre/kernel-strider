@@ -1,9 +1,9 @@
-/* operations.h - operations provided by the framework to be used in the 
- * instrumented code: processing of function entry and exit, etc.
+/* internal_api.h - operations provided by the framework to be used in 
+ * the instrumented code: processing of function entry and exit, etc.
  * The wrapper functions for these operations are also defined here. */
 
-#ifndef OPERATIONS_H_1810_INCLUDED
-#define OPERATIONS_H_1810_INCLUDED
+#ifndef INTERNAL_API_H_1810_INCLUDED
+#define INTERNAL_API_H_1810_INCLUDED
 
 /* We need to declare the wrappers to be able to use they addresses although
  * their definitions are inside the holders.
@@ -116,4 +116,4 @@ KEDR_DECLARE_WRAPPER(kedr_lookup_replacement);
 KEDR_DECLARE_WRAPPER(kedr_warn_unreachable);
 /* ====================================================================== */
 
-#endif // OPERATIONS_H_1810_INCLUDED
+#endif // INTERNAL_API_H_1810_INCLUDED

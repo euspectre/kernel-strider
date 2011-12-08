@@ -14,7 +14,7 @@
 #include "detour_buffer.h"
 #include "primary_storage.h"
 #include "ir.h"
-#include "operations.h"
+#include "internal_api.h"
 #include "ir_handlers.h"
 
 //<> For debugging only

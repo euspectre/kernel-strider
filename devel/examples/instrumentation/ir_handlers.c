@@ -9,7 +9,7 @@
 #include "primary_storage.h"
 #include "ir.h"
 #include "code_gen.h"
-#include "operations.h"
+#include "internal_api.h"
 #include "util.h"
 
 extern int process_sp_accesses;

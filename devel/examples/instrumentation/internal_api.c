@@ -1,4 +1,4 @@
-/* operations.c - operations provided by the framework to be used in the 
+/* internal_api.c - operations provided by the framework to be used in the 
  * instrumented code: processing of function entry and exit, etc.
  * The wrapper and holder functions for these operations are also defined 
  * here. */
@@ -10,7 +10,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "operations.h"
+#include "internal_api.h"
 #include "primary_storage.h"
 
 /* ====================================================================== */
@@ -130,8 +130,8 @@ get_current_thread_id(void)
 
 /* The operations that can be used in the instrumented code.
  * These functions are static because they should only be called only via 
- * the wrappers. The description of these functions is given in operations.h
- * in the comments for the respective wrappers. */
+ * the wrappers. The description of these functions is given in
+ * internal_api.h in the comments for the respective wrappers. */
 static __used unsigned long
 kedr_process_function_entry(unsigned long orig_func)
 {
