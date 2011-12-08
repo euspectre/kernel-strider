@@ -1021,10 +1021,10 @@ kedr_process_target(struct module *mod)
 	
 	list_for_each_entry(f, &ifuncs, list) {
 		//<>
-		pr_info("[sample] "
+		/*pr_info("[sample] "
 			"module: \"%s\", processing function \"%s\" "
 			"(address is %p, size is %lu)\n",
-			module_name(mod), f->name, f->addr, f->size);
+			module_name(mod), f->name, f->addr, f->size);*/
 		//<>
 	
 		ret = do_process_function(f, mod);

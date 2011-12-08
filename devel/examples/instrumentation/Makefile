@@ -28,7 +28,8 @@ MODULE_SOURCES := \
 	code_gen.c	\
 	internal_api.c	\
 	sections.c	\
-	ir_handlers.c
+	ir_handlers.c	\
+	demo.c
 
 # This is only to specify build dependencies
 MODULE_HEADERS := \
@@ -43,7 +44,8 @@ MODULE_HEADERS := \
 	ir.h		\
 	primary_storage.h \
 	sections.h	\
-	ir_handlers.h
+	ir_handlers.h	\
+	demo.h
 
 # This is only to specify build dependencies
 INSN_ANALYZER_FILES := \
@@ -89,6 +91,7 @@ $(MODULE_NAME)-y := \
 	internal_api.o	\
 	sections.o	\
 	ir_handlers.o	\
+	demo.o		\
 	$(ARCH_DIR)/lib/inat.o \
 	$(ARCH_DIR)/lib/insn.o
 

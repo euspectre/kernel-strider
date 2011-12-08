@@ -12,6 +12,7 @@
 
 #include "internal_api.h"
 #include "primary_storage.h"
+#include "demo.h"
 
 /* ====================================================================== */
 
@@ -151,6 +152,7 @@ kedr_process_function_entry(unsigned long orig_func)
 	/*pr_info("[DBG] (tid=0x%lx) Entry: \"%pf\" (0x%lx), ps=0x%lx\n",
 		ps->tid, (void *)orig_func, orig_func, (unsigned long)ps);*/
 	//<>
+	kedr_demo_on_function_entry(ps->tid, ps->orig_func);
 	
 	// TODO: other actions if needed
 	return (unsigned long)ps; 
@@ -168,16 +170,50 @@ kedr_process_function_exit(unsigned long ps)
 		storage->tid, (void *)storage->orig_func,
 			 storage->orig_func, ps);*/
 	//<>
+	kedr_demo_on_function_exit(storage->tid, storage->orig_func);
 	
 	// TODO: other actions if needed
 	kfree(storage);
 	return; 
 }
 KEDR_DEFINE_WRAPPER(kedr_process_function_exit);
-		
+
+static int
+is_only_read_event(struct kedr_primary_storage *ps, int index)
+{
+	unsigned long bit_mask = 1 << index;
+	return ((ps->read_mask & bit_mask) && !(ps->write_mask & bit_mask));
+}
+
+static int
+is_only_write_event(struct kedr_primary_storage *ps, int index)
+{
+	unsigned long bit_mask = 1 << index;
+	return ((ps->write_mask & bit_mask) && !(ps->read_mask & bit_mask));
+}
+
+static int
+is_unlocked_update_event(struct kedr_primary_storage *ps, int index)
+{
+	unsigned long bit_mask = 1 << index;
+	return ((ps->write_mask & bit_mask) && 
+		(ps->read_mask & bit_mask) &&
+		!(ps->lock_mask & bit_mask));
+}
+
+static int
+is_locked_update_event(struct kedr_primary_storage *ps, int index)
+{
+	unsigned long bit_mask = 1 << index;
+	return ((ps->write_mask & bit_mask) && 
+		(ps->read_mask & bit_mask) &&
+		(ps->lock_mask & bit_mask));
+}
+
 static __used void
 kedr_process_block_end(unsigned long ps)
 {
+	int i;
 	struct kedr_primary_storage *storage = 
 		(struct kedr_primary_storage *)ps;
 	
@@ -185,7 +221,38 @@ kedr_process_block_end(unsigned long ps)
 	//pr_info("[DBG] (tid=0x%lx) Block end, ps=0x%lx\n", storage->tid, ps);
 	//<>
 	
-	// TODO: flush data
+	/* "Flush" the data to the output system */
+	for (i = 0; i < KEDR_MEM_NUM_RECORDS; ++i) {
+		struct kedr_mem_record *rec = &storage->mem_record[i];
+		if (rec->pc == 0)
+			continue; /* This memory access did not happen. */
+			
+		if (is_only_read_event(storage, i)) {
+			kedr_demo_on_mem_read(storage->tid, rec->pc, 
+				rec->addr, rec->size);
+		}
+		else if (is_only_write_event(storage, i)) {
+			kedr_demo_on_mem_write(storage->tid, rec->pc, 
+				rec->addr, rec->size);
+		}
+		else if (is_unlocked_update_event(storage, i)) {
+			/* first read, then write */
+			kedr_demo_on_mem_read(storage->tid, rec->pc, 
+				rec->addr, rec->size);
+			kedr_demo_on_mem_write(storage->tid, rec->pc, 
+				rec->addr, rec->size);
+		}
+		else if (is_locked_update_event(storage, i)) {
+			kedr_demo_on_mem_locked_update(storage->tid, rec->pc, 
+				rec->addr, rec->size);
+		}
+		else { /* Weird. Neither read nor write according to the 
+			* masks. Looks like our bug. */
+			WARN_ON_ONCE(1); 
+		}
+					
+	}
+	
 	// TODO: other actions if needed
 	
 	/* Reinitialize the storage. */

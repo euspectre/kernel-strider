@@ -20,6 +20,7 @@
 #include "debug_util.h"
 #include "detour_buffer.h"
 #include "sections.h"
+#include "demo.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -116,17 +117,6 @@ on_module_load(struct module *mod)
 	/* Clear previous debug data */
 	debug_util_clear();
 	
-	//<> [DBG]
-	/*{
-		struct kedr_section *s;
-		pr_info("[DBG] List of sections for \"%s\" module:\n", 
-			module_name(mod));
-		list_for_each_entry(s, section_list, list) {
-			pr_info("[DBG] %s at 0x%lx\n", s->name, s->addr);
-		}
-	}*/
-	//<> [/DBG]
-	
 	/* Initialize everything necessary to process the target module */
 	ret = kedr_init_function_subsystem(mod);
 	if (ret) {
@@ -141,6 +131,13 @@ on_module_load(struct module *mod)
 		pr_err("[sample] "
 	"Error occured while processing \"%s\". Code: %d\n",
 			module_name(mod), ret);
+		goto out_cleanup_func;
+	}
+	
+	ret = kedr_demo_init(mod);
+	if (ret) {
+		pr_err("[sample] "
+	"Failed to initialize \"demo\" subsystem. Code: %d\n", ret);
 		goto out_cleanup_func;
 	}
 	return;
@@ -169,6 +166,7 @@ on_module_unload(struct module *mod)
 	
 	if (!module_get_failed) {
 		// TODO: cleanup what is left (if anything)
+		kedr_demo_fini(mod);
 		kedr_cleanup_function_subsystem();
 		module_put(THIS_MODULE);
 	}
