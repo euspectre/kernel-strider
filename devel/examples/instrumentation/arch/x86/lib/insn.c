@@ -1273,4 +1273,28 @@ insn_is_string_op(struct insn *insn)
 		(opcode >= 0xaa && opcode <= 0xaf) /* LODS, STOS, SCAS */ );
 }
 
+/** 
+ * insn_is_locked_op() - Check if the instruction is a locked operation.
+ * @insn:	&struct insn containing the instruction
+ *
+ * The function returns nonzero if the instruction is XCHG reg,mem or has 
+ * LOCK prefix, 0 otherwise.
+ * 
+ * For details, see Intel Software Developer's Manual vol.3A, section 
+ * 8.1, "Locked Atomic Operations".
+ *
+ * If necessary, the function decodes the instruction up to (and including) 
+ * Mod R/M byte first. */
+int 
+insn_is_locked_op(struct insn *insn)
+{
+	u8 opcode; 
+	u8 mod;
 
+	insn_get_modrm(insn); 
+	opcode = insn->opcode.bytes[0];
+	mod = (u8)X86_MODRM_MOD(insn->modrm.value);
+	
+	return (insn_has_prefix(insn, 0xf0) ||
+		((opcode == 0x86 || opcode == 0x87) && mod != 3));
+}

@@ -324,10 +324,9 @@ extern int insn_is_string_op(struct insn *insn);
 /* Nonzero if the instruction has the given legacy or mandatory prefix. */
 extern int insn_has_prefix(struct insn *insn, insn_byte_t prefix);
 
-/* Nonzero if the instruction has LOCK prefix, 0 otherwise. */
-static inline int insn_is_locked_op(struct insn *insn)
-{
-	return insn_has_prefix(insn, 0xf0);
-}
+/* Nonzero if the instruction is a locked operation, 0 otherwise. 
+ * XCHG reg, mem and the instructions with LOCK prefix are considered 
+ * locked operations */
+extern int insn_is_locked_op(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */
