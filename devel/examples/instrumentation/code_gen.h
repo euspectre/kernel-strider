@@ -83,18 +83,22 @@ kedr_mk_load_reg_from_spill_slot(u8 reg, u8 base, struct list_head *item,
 	int in_place, int *err);
 
 /* 'lea <expr>, %reg'
- * <expr> is the addressing expression taken (constructed) from src->insn 
- * as is. */
+ * <expr> is the addressing expression taken (constructed) from 
+ * 'src_node->insn' as is. 
+ * [NB] If <expr> uses IP-relative addressing, the resulting node will have 
+ * 'iprel_addr' set to the same address as in the source node. */
 struct list_head *
-kedr_mk_lea_expr_reg(struct insn *src, u8 reg, struct list_head *item, 
-	int in_place, int *err);
+kedr_mk_lea_expr_reg(struct kedr_ir_node *src_node, u8 reg, 
+	struct list_head *item, int in_place, int *err);
 
 /* 'mov <expr>, %reg'
- * <expr> is the addressing expression taken (constructed) from src->insn 
- * as is. */
+ * <expr> is the addressing expression taken (constructed) from 
+ * 'src_node->insn' as is. 
+ * [NB] If <expr> uses IP-relative addressing, the resulting node will have 
+ * 'iprel_addr' set to the same address as in the source node. */
 struct list_head *
-kedr_mk_mov_expr_reg(struct insn *src, u8 reg, struct list_head *item, 
-	int in_place, int *err);
+kedr_mk_mov_expr_reg(struct kedr_ir_node *src_node, u8 reg, 
+	struct list_head *item, int in_place, int *err);
 
 /* push %reg */
 struct list_head *

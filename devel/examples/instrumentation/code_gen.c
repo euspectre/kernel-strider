@@ -234,14 +234,17 @@ kedr_mk_load_reg_from_spill_slot(u8 reg, u8 base, struct list_head *item,
 
 /* 'mov <expr>, %reg' or 'lea <expr>, %reg', depending on 'is_lea'.
  * <expr> is the addressing expression taken (constructed) from src->insn 
- * as is. */
+ * as is. 
+ * [NB] If <expr> uses IP-relative addressing, the resulting node will have
+ * 'iprel_addr' set to the same value as in 'src_node'. */
 static struct list_head *
-mk_mov_lea_expr_reg(struct insn *src, u8 reg, int is_lea,
+mk_mov_lea_expr_reg(struct kedr_ir_node *src_node, u8 reg, int is_lea,
 	struct list_head *item, int in_place, int *err)
 {
 	struct kedr_ir_node *node;
 	u8 *pos;
 	unsigned long disp;
+	struct insn *src = &src_node->insn;
 
 	/* The original instruction must have been decoded by now. */
 	BUG_ON(src->length == 0); 
@@ -289,8 +292,7 @@ mk_mov_lea_expr_reg(struct insn *src, u8 reg, int is_lea,
 	 * destination address (the same as for 'src') in the node. */
 	if (insn_rip_relative(src)) {
 		disp = 0;
-		node->iprel_addr = (unsigned long)X86_ADDR_FROM_OFFSET(
-			src->kaddr, src->length, src->displacement.value);
+		node->iprel_addr = src_node->iprel_addr;
 	}
 #endif
 	 
@@ -310,18 +312,18 @@ mk_mov_lea_expr_reg(struct insn *src, u8 reg, int is_lea,
 
 /* lea <expr>, %reg */
 struct list_head *
-kedr_mk_lea_expr_reg(struct insn *src, u8 reg,
+kedr_mk_lea_expr_reg(struct kedr_ir_node *src_node, u8 reg,
 	struct list_head *item, int in_place, int *err)
 {
-	return mk_mov_lea_expr_reg(src, reg, 1, item, in_place, err);
+	return mk_mov_lea_expr_reg(src_node, reg, 1, item, in_place, err);
 }
 
 /* mov <expr>, %reg */
 struct list_head *
-kedr_mk_mov_expr_reg(struct insn *src, u8 reg, struct list_head *item, 
-	int in_place, int *err)
+kedr_mk_mov_expr_reg(struct kedr_ir_node *src_node, u8 reg, 
+	struct list_head *item, int in_place, int *err)
 {
-	return mk_mov_lea_expr_reg(src, reg, 0, item, in_place, err);
+	return mk_mov_lea_expr_reg(src_node, reg, 0, item, in_place, err);
 }
 
 /* push %reg */

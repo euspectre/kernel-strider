@@ -213,7 +213,7 @@ mk_eval_addr_to_reg(struct kedr_ir_node *ref_node, u8 base, u8 wreg,
 			err);
 	}
 	
-	item = kedr_mk_mov_expr_reg(&ref_node->insn, wreg, item, 0, err);
+	item = kedr_mk_mov_expr_reg(ref_node, wreg, item, 0, err);
 	if (base_is_used) {
 		item = kedr_mk_mov_reg_to_reg(treg, base, item, 0, err);
 		item = kedr_mk_load_reg_from_spill_slot(treg, base, item, 0,
@@ -468,7 +468,7 @@ kedr_handle_jmp_indirect_inner(struct kedr_ir_node *ref_node, u8 base)
 	item = kedr_mk_store_reg_to_spill_slot(treg, base, item, 0, &err);
 	item = kedr_mk_mov_reg_to_reg(base, treg, item, 0, &err);
 	item = kedr_mk_load_reg_from_spill_slot(base, treg, item, 0, &err);
-	item = kedr_mk_mov_expr_reg(&ref_node->insn, wreg, item, 0, &err);
+	item = kedr_mk_mov_expr_reg(ref_node, wreg, item, 0, &err);
 	item = kedr_mk_mov_reg_to_reg(treg, base, item, 0, &err);
 	item = kedr_mk_load_reg_from_spill_slot(treg, base, item, 0, &err);
 	item = kedr_mk_push_reg(wreg, item, 0, &err);
@@ -1084,11 +1084,11 @@ mk_record_access_common(struct kedr_ir_node *node, u8 base, u8 num,
 		item = kedr_mk_mov_reg_to_reg(base, wreg, item, 0, err);
 		item = kedr_mk_load_reg_from_spill_slot(base, wreg, item, 0,
 			err);
-		item = kedr_mk_lea_expr_reg(&node->insn, base, item, 0, err);
+		item = kedr_mk_lea_expr_reg(node, base, item, 0, err);
 		item = kedr_mk_xchg_reg_reg(base, wreg, item, 0, err);
 	}
 	else {
-		item = kedr_mk_lea_expr_reg(&node->insn, wreg, item, 0, err);
+		item = kedr_mk_lea_expr_reg(node, wreg, item, 0, err);
 	}
 	
 	item = kedr_mk_mov_value32_to_slot(
