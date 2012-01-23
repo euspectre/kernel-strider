@@ -1,0 +1,13 @@
+﻿Kernel Strider
+--------------
+Kernel Strider project aims to provide the tools to collect data about the operation of Linux kernel modules (device drivers, file system modules, etc.) in runtime. Among other things, it should allow recording memory accesses and function calls that the target kernel module makes and passing the collected data to user space for further processing. 
+
+To achieve this, relatively lightweight binary instrumentation facilities for kernel mode code are developed. 
+
+One of many possible usage areas for Kernel Strider is providing data for offline data race detectors. This should allow detecting the concurrency issues of this kind in kernel modules. 
+
+Currently, Kernel Strider is intended for systems with x86 architecture, both 32- and 64-bit. 
+
+Project site: http://code.google.com/p/kernel-strider/
+
+Some of the technologies and tools that are to be developed in this project may later be incorporated in KEDR framework (http://code.google.com/p/kedr/)
