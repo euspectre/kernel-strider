@@ -1,6 +1,7 @@
 # List of include files that do not need configuring and should be 
 # copied to the build tree as is.
 set(KEDR_INCLUDE_FILES_SRC
+	kedr_mem/core_api.h
 # TODO
 )
 
