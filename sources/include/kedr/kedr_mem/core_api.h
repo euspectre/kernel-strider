@@ -14,8 +14,8 @@ enum kedr_memory_event_type {
  *	user_data - the pointer passed during registration
  *	target_module - the target module
  *	tid - ID of the relevant thread
- *	func - address if the original function
- *	data - additional pointer heeded when recording memory events
+ *	func - address of the original function
+ *	data - additional pointer needed when recording memory events
  *	num_events - number of the memory events to record
  *	pc - "program counter", the address in the original code 
  *		corresponding to the event
@@ -48,11 +48,25 @@ struct kedr_event_handlers
 	/* [NB] The handlers listed below can be executed in atomic context,
 	 * so they must be written appropriately. */
 		
-	/* Function entry & exit */
+	/* Function entry & exit. The handlers are called just after the 
+	 * entry and just before the exit, respectively. */
 	void (*on_function_entry)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long func);
 	void (*on_function_exit)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long func);
+	
+	/* Function call events. The handlers are called before and after 
+	 * the instruction performing the function call, respectively. 
+	 * In this case, 'pc' is the address of the corresponding 
+	 * instruction in the original code. Note that it is not the 
+	 * return address for that function call. 
+	 * Unlike function entry/exit events, the call events are generated 
+	 * both for the calls to the functions defined in the target module 
+	 * and for the calls to the external functions. */
+	void (*on_call_pre)(struct kedr_event_handlers *eh, 
+		unsigned long tid, unsigned long pc, unsigned long func);
+	void (*on_call_post)(struct kedr_event_handlers *eh, 
+		unsigned long tid, unsigned long pc, unsigned long func);
 	
 	/* Memory events: read & write 
 	 * These handlers are called as follows (when the block of 
