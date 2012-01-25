@@ -296,7 +296,6 @@ message (STATUS "Creating \"kedr_gen\" - done")
 #######################################################################
 
 add_subdirectory(core)
-add_subdirectory(i13n)
 add_subdirectory(functions)
 add_subdirectory(output)
 
