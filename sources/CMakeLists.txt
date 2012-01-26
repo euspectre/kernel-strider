@@ -136,7 +136,7 @@ check_module_build()
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.
-check_stack_trace()
+#check_stack_trace()
 
 #######################################################################
 # kedr_gen (this time - for building KEDR itself)
