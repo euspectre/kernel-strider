@@ -34,9 +34,13 @@ enum kedr_memory_event_type {
  */
 
 /* [NB] If a field of this structure is NULL, that means the corresponding
- *  handler is not set. It is OK to leave some fields as NULL. */
+ * handler is not set. It is OK to leave some fields as NULL, 
+ * except 'owner'.*/
 struct kedr_event_handlers
 {
+	/* The module providing the handlers. */
+	struct module *owner;
+	
 	/* Target module: loading and unloading 
 	 * [NB] Unlike all other handlers, these two are executed in a 
 	 * non-atomic context*/
