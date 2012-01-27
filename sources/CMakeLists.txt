@@ -133,6 +133,9 @@ check_kernel_version(2 6 32)
 # Check if kernel modules can be built on this system
 check_module_build()
 
+# Check support for module unloading
+check_module_unload()
+
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.

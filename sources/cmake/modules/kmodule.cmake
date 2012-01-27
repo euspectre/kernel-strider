@@ -464,4 +464,23 @@ macro(check_kfree_rcu)
 	endif (DEFINED HAVE_KFREE_RCU)
 	message(STATUS "${check_kfree_rcu_message}")
 endmacro(check_kfree_rcu)
+
+# Check if module unloading is supported on this system.
+macro(check_module_unload)
+	set(check_module_unload_message 
+		"Checking if unloading of kernel modules is supported"
+	)
+	message(STATUS "${check_module_unload_message}")
+	kmodule_try_compile(module_unload_impl 
+		"${CMAKE_BINARY_DIR}/check_module_unload"
+		"${kmodule_test_sources_dir}/check_module_unload/module.c"
+	)
+	if (module_unload_impl)
+		message(STATUS "${check_module_unload_message} - yes")
+	else (module_unload_impl)
+		message(FATAL_ERROR "Unloading of kernel modules is not"
+			" supported on this system. "
+		)
+	endif (module_unload_impl)
+endmacro(check_module_unload)
 ############################################################################
