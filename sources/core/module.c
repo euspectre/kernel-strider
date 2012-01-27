@@ -18,6 +18,8 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 
+#include <kedr/kedr_mem/core_api.h>
+
 #include "config.h"
 
 MODULE_AUTHOR("Eugene A. Shatokhin");

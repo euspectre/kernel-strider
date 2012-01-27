@@ -1,7 +1,7 @@
 # TODO
 
 # Create the core kernel module.
-set(kmodule_name "kernel_strider")
+set(kmodule_name "kedr_mem_core")
 kbuild_add_module(${kmodule_name}
 	"module.c"
 )

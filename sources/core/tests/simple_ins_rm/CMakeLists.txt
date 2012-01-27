@@ -8,6 +8,6 @@ configure_file (
 )
 
 # A simple test checking insertion and removal of the module.
-kedr_test_add_script (core.basics.01 
+kedr_test_add_script (mem_core.basics.01 
     ins_rm.sh
 )
