@@ -1,3 +1,5 @@
+/* core_api.h: API provided by the core of our system. */
+
 #ifndef CORE_API_H_1049_INCLUDED
 #define CORE_API_H_1049_INCLUDED
 
@@ -183,13 +185,36 @@ struct kedr_event_handlers
 		unsigned long child_tid);
 };
 
-/* Registers the output system with the core.
- * Returns 0 on success, a negative error code on failure. */
+/* Registers the set of event handlers with the core. 
+ * Returns 0 on success, a negative error code on failure.
+ *
+ * [NB] The structure pointed to by 'eh' must live and remain the same until 
+ * kedr_unregister_event_handlers() is called for it.
+ *
+ * No more than one set of handlers can be registered at any given moment. 
+ * That is, it is not allowed to register a set of event handlers if some
+ * set of event handlers is already registered. The function will return
+ * -EINVAL in this case.
+ * 
+ * If some (or even all) handlers specified in 'eh' are NULL, this is OK. It
+ * means that the provider of the handlers is not interested in handling the
+ * respective events. 
+ *
+ * 'eh->owner' must be the module providing the handlers. 
+ * 
+ * [NB] The function cannot be called in atomic context. 
+ * In addition, the function cannot be called while the target module is 
+ * loaded. */
 int 
-kedr_register_output_system(struct kedr_event_handlers *eh);
+kedr_register_event_handlers(struct kedr_event_handlers *eh);
 
-/* Unregisters the output system. */
+/* Unregisters the event handlers. 'eh' should be the same pointer as it was 
+ * passed to kedr_register_event_handlers(). 
+ * 
+ * [NB] The function cannot be called in atomic context. 
+ * In addition, the function cannot be called while the target module is 
+ * loaded. */
 void 
-kedr_unregister_output_system(struct kedr_event_handlers *eh);
+kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
 
 #endif /* CORE_API_H_1049_INCLUDED */

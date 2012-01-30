@@ -10,6 +10,7 @@ kbuild_add_module(${kmodule_name}
 	"tid.c"
 
 # Headers
+	"core_impl.h"
 	"tid.h"
 )
 ########################################################################
