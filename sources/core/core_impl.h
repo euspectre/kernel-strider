@@ -13,7 +13,4 @@ struct module;
 /* The current set of event handlers. */
 extern struct kedr_event_handlers *eh_current;
 
-/* The kernel module under analysis (NULL if not loaded). */
-//extern struct module *target_module;
-
 #endif // CORE_IMPL_H_1628_INCLUDED
