@@ -3,14 +3,9 @@
 #ifndef CORE_API_H_1049_INCLUDED
 #define CORE_API_H_1049_INCLUDED
 
-struct module;
+#include <kedr/object_types.h>
 
-enum kedr_memory_event_type {
-	KEDR_ET_MREAD,		/* read from memory */
-	KEDR_ET_MWRITE,		/* write to memory */
-	KEDR_ET_MUPDATE		/* update of memory */
-	/* [NB] Not necessarily locked update */
-};
+struct module;
 
 /* The meaning of the arguments:
  *	user_data - the pointer passed during registration
@@ -93,7 +88,7 @@ struct kedr_event_handlers
 	void (*on_memory_event)(struct kedr_event_handlers *eh, 
 		unsigned long tid, 
 		unsigned long pc, unsigned long addr, unsigned long size, 
-		unsigned long memory_event_type,
+		enum kedr_memory_event_type type,
 		void *data);
 	
 	/* Memory barriers (pre & post handlers) */
@@ -105,7 +100,7 @@ struct kedr_event_handlers
 	void (*on_locked_op_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
 		unsigned long addr, unsigned long size, 
-		unsigned long memory_event_type, void *data);
+		enum kedr_memory_event_type type, void *data);
 	
 	/* MB2: I/O operations that access memory */
 	void (*on_io_mem_op_pre)(struct kedr_event_handlers *eh, 
@@ -115,17 +110,17 @@ struct kedr_event_handlers
 	void (*on_io_mem_op_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
 		unsigned long addr, unsigned long size, 
-		unsigned long memory_event_type, void *data);
+		enum kedr_memory_event_type type, void *data);
 	
 	/* MB3: Other kinds of memory barriers including I/O operations 
 	 * that do not access memory */
 	void (*on_memory_barrier_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long barrier_type);
+		enum kedr_barrier_type type);
 	
 	void (*on_memory_barrier_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long barrier_type);
+		enum kedr_barrier_type type);
 	
 	/* Alloc/free events */
 	void (*on_alloc_pre)(struct kedr_event_handlers *eh, 
@@ -145,31 +140,31 @@ struct kedr_event_handlers
 	/* Lock/unlock events */
 	void (*on_lock_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long lock_id, unsigned long lock_type);
+		unsigned long lock_id, enum kedr_lock_type type);
 	void (*on_lock_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long lock_id, unsigned long lock_type);
+		unsigned long lock_id, enum kedr_lock_type type);
 
 	void (*on_unlock_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long lock_id, unsigned long lock_type);
+		unsigned long lock_id, enum kedr_lock_type type);
 	void (*on_unlock_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long lock_id, unsigned long lock_type);
+		unsigned long lock_id, enum kedr_lock_type type);
 	
 	/* Signal/wait events */
 	void (*on_signal_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long obj_id, unsigned long obj_type);
+		unsigned long obj_id, enum kedr_sw_object_type type);
 	void (*on_signal_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long obj_id, unsigned long obj_type);
+		unsigned long obj_id, enum kedr_sw_object_type type);
 	void (*on_wait_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long obj_id, unsigned long obj_type);
+		unsigned long obj_id, enum kedr_sw_object_type type);
 	void (*on_wait_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
-		unsigned long obj_id, unsigned long obj_type);
+		unsigned long obj_id, enum kedr_sw_object_type type);
 	
 	/* Thread create / thread join events */
 	void (*on_thread_create_pre)(struct kedr_event_handlers *eh, 
