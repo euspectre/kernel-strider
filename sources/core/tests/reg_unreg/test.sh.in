@@ -1,7 +1,7 @@
 #!/bin/sh
 
 ########################################################################
-# This test checks API for registering and de-registering event handlers..
+# This test checks API for registering and de-registering event handlers.
 # 
 # Usage: 
 #   sh test.sh <scenario_number>
@@ -14,8 +14,8 @@
 #   2 - attempt to register a set of handlers while another set is already 
 # registered.
 #
-# Loading of the payload module must succeed in each scenario. The result
-# of  the test is output via "test_passed" parameter (see sysfs).
+# Loading of the test module must succeed in each scenario. The result
+# of  the test is output via "test_failed" parameter (see sysfs).
 ########################################################################
 
 ########################################################################
@@ -54,7 +54,7 @@ cleanupAll()
 }
 
 ########################################################################
-# doTest() - preform the actual testing
+# doTest() - perform the actual testing
 ########################################################################
 doTest()
 {
