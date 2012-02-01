@@ -1,0 +1,183 @@
+#!/bin/sh
+
+########################################################################
+# This test checks if "target_loaded" and "target_about_to_unload" events
+# are reported by the core correctly. That is, it checks if the 
+# corresponding callbacks are called when appropriate and with correct 
+# arguments.
+# 
+# Usage: 
+#   sh test.sh
+#
+# See the description of the parameters of test_module (module.c) for 
+# details.
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+    if test ! -f "${CORE_MODULE}"; then
+        printf "The core module is missing: ${CORE_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TEST_MODULE}"; then
+        printf "The test module is missing: ${TEST_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TARGET_MODULE}"; then
+        printf "The target module is missing: ${TARGET_MODULE}\n"
+        exit 1
+    fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+    cd "${WORK_DIR}"
+    
+    lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TARGET_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TEST_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${CORE_MODULE_NAME}"
+    fi
+}
+
+########################################################################
+# checkIndicators()
+# Check if the values of the test module's parameters ("indicators") match
+# the expected ones, report failure if not.
+#   $1 - the expected value of 'called_load_cb';
+#   $2 - the expected value of 'called_unload_cb'
+# The expected value of 'arg_check_failed' is always 0.
+########################################################################
+checkIndicators()
+{
+    BAD_ARG=$(cat "${PARAM_FILE_BAD_ARG}")
+    if test "t${BAD_ARG}" != "t0"; then
+        printf "The callback has received incorrect arguments.\n"
+        printf "See the system log for details.\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    LOAD_CB=$(cat "${PARAM_FILE_LOAD}")
+    if test "t${LOAD_CB}" != "t$1"; then
+        printf "called_load_cb is \"${LOAD_CB}\" but should be \"$1\"\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    UNLOAD_CB=$(cat "${PARAM_FILE_UNLOAD}")
+    if test "t${UNLOAD_CB}" != "t$2"; then
+        printf "called_unload_cb is \"${UNLOAD_CB}\" but should be \"$2\"\n"
+        cleanupAll
+        exit 1
+    fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+    /sbin/insmod "${CORE_MODULE}" target_name="${TARGET_MODULE_NAME}" || exit 1
+
+    /sbin/insmod "${TEST_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    for pp in "${PARAM_FILE_LOAD}" "${PARAM_FILE_UNLOAD}" "${PARAM_FILE_BAD_ARG}"; do
+        if test ! -e "${pp}"; then
+            printf "Parameter file does not exist: ${pp}\n"
+            cleanupAll
+            exit 1
+        fi
+    done
+    
+    printf "Checking the initial values of the indicators...\n"
+    checkIndicators 0 0
+
+    printf "Checking \"target_loaded\" event...\n"
+    /sbin/insmod "${TARGET_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    # 'called_load_cb' should be 1, 'called_unload_cb' should be 0
+    checkIndicators 1 0
+    
+    printf "Checking \"target_about_to_unload\" event...\n"
+    /sbin/rmmod "${TARGET_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    
+    # 'called_load_cb' should be 0, 'called_unload_cb' should be 1
+    checkIndicators 0 1
+    
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TEST_MODULE_NAME="test_load_unload"
+TEST_MODULE="test_module/${TEST_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="test_target"
+TARGET_MODULE="target/${TARGET_MODULE_NAME}.ko"
+
+PARAM_DIR="/sys/module/${TEST_MODULE_NAME}/parameters"
+PARAM_FILE_LOAD="${PARAM_DIR}/called_load_cb"
+PARAM_FILE_UNLOAD="${PARAM_DIR}/called_unload_cb"
+PARAM_FILE_BAD_ARG="${PARAM_DIR}/arg_check_failed"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Test module: ${TEST_MODULE}\n"
+printf "Test module: ${TARGET_MODULE}\n"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
