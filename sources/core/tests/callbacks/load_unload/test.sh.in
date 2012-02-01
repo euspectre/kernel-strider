@@ -127,6 +127,21 @@ doTest()
     # 'called_load_cb' should be 1, 'called_unload_cb' should be 0
     checkIndicators 1 0
     
+    # Check that the module providing the callbacks ("test module") can not 
+    # be unloaded when the target is in memory.
+    printf "The following 'rmmod' command is expected to fail.\n"
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -eq 0; then
+        printf "The test module (the owner of the callbacks) "
+        printf "should have been locked by the core for the time the "
+        printf "target module is in memory. It seems, it was not locked "
+        printf "because the test was able to unload the test module.\n"
+        cleanupAll
+        exit 1
+    fi
+    printf "The error above was expected, continuing the test...\n"
+    
+    # OK, now unload the target...
     printf "Checking \"target_about_to_unload\" event...\n"
     /sbin/rmmod "${TARGET_MODULE_NAME}"
     if test $? -ne 0; then
@@ -134,7 +149,6 @@ doTest()
         cleanupAll
         exit 1
     fi
-    
     
     # 'called_load_cb' should be 0, 'called_unload_cb' should be 1
     checkIndicators 0 1

@@ -66,8 +66,8 @@ static int handle_module_notifications = 0;
 /* A mutex to protect the data related to the target module. */
 static DEFINE_MUTEX(target_mutex);
 
-/* This flag indicates whether try_module_get() failed for our module in
- * on_module_load(). */
+/* This flag indicates whether try_module_get() failed for the owner of the
+ * currently used set of callbacks in on_module_load(). */
 static int module_get_failed = 0;
 /* ====================================================================== */
 
@@ -129,15 +129,19 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh)
 {
 	BUG_ON(eh == NULL || eh->owner == NULL);
 	
-	if (mutex_lock_killable(&target_mutex) != 0) {
-		pr_warning(KEDR_MSG_PREFIX 
-		"kedr_unregister_event_handlers(): failed to lock mutex\n");
-		return;
-	}
+	/* [NB] mutex_lock_killable() is not suitable here because we must
+	 * lock the mutex anyway. The handlers must be restored to their 
+	 * defaults even if their owner did something wrong. 
+	 * If this mutex_lock() call hangs because some other code has taken 
+	 * 'target_mutex' forever, it is our bug anyway and reboot will probably 
+	 * be necessary among other things. It seems safer to let it hang than
+	 * to allow the owner of the event handlers go away while these handlers
+	 * might be in use. */
+	mutex_lock(&target_mutex);
 	
 	if (target_module_loaded()) {
 		pr_warning(KEDR_MSG_PREFIX 
-		"Unable to unregister event handlers: target module is "
+		"Attempt to unregister event handlers while the target module is "
 		"loaded\n");
 		goto out;
 	}
@@ -148,10 +152,11 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh)
 		"registered\n");
 		goto out;
 	}
-	
-	eh_current = eh_default;
 
-out:	
+out:
+	/* No matter if there were errors detected above or not, restore the
+	 * handlers to their defaults, it is safer anyway. */
+	eh_current = eh_default;
 	mutex_unlock(&target_mutex);
 	return;
 }
@@ -176,7 +181,7 @@ filter_module(const char *module_name)
 static void 
 on_module_load(struct module *mod)
 {
-	int ret = 0;
+	/*int ret = 0;*/
 		
 	pr_info(KEDR_MSG_PREFIX
 		"Target module \"%s\" has just loaded. "
@@ -184,15 +189,24 @@ on_module_load(struct module *mod)
 		module_name(mod), 
 		(mod->init_text_size + mod->core_text_size));
 	
-	/* Prevent our module from unloading when the target is loaded */
-	if (try_module_get(THIS_MODULE) == 0)
+	/* "Lock" the owner of the currently set event handlers in memory, that 
+	 * is, prevent that module from unloading until the target is unloaded.
+	 * Note that our module (THIS_MODULE) will also be "locked": either no
+	 * external set of event handlers have been registered so far and 
+	 * the default set is used - but eh_default->owner is our module and 
+	 * it will be "locked" by try_module_get(). Or the current set of event
+	 * handlers is provided by some other module, which will be locked. But
+	 * that module uses API exported by our module and therefore our module
+	 * will not be unloadable too until that set of handlers is 
+	 * unregistered. */
+	if (try_module_get(eh_current->owner) == 0)
 	{
 		pr_err(KEDR_MSG_PREFIX
 			"try_module_get() failed for the module \"%s\".\n",
-			module_name(THIS_MODULE));
+			module_name(eh_current->owner));
 		module_get_failed = 1;
 		
-		/* If we failed to lock our module in memory, we should not
+		/* If we failed to lock the module in memory, we should not
 		 * instrument or otherwise affect the target module. */
 		return;
 	}
@@ -249,7 +263,10 @@ on_module_unload(struct module *mod)
 			eh_current->on_target_about_to_unload(eh_current, 
 				mod);
 		
-		module_put(THIS_MODULE);
+		/* Release the module, which is our module if no other set of event 
+		 * handlers were registered or the owner of these handlers
+		 * otherwise. */
+		module_put(eh_current->owner);
 	}
 	module_get_failed = 0; /* reset the flag */
 }
