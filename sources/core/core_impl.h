@@ -4,6 +4,7 @@
 #define CORE_IMPL_H_1628_INCLUDED
 
 #include <kedr/kedr_mem/core_api.h>
+#include <kedr/asm/insn.h> /* instruction analysis facilities */
 
 struct module;
 
