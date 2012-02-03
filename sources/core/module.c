@@ -20,9 +20,9 @@
 #include <linux/mutex.h>
 
 #include <kedr/kedr_mem/core_api.h>
+#include <kedr/kedr_mem/local_storage.h>
 
 #include "core_impl.h"
-
 #include "config.h"
 /* ====================================================================== */
 
@@ -69,6 +69,29 @@ static DEFINE_MUTEX(target_mutex);
 /* This flag indicates whether try_module_get() failed for the owner of the
  * currently used set of callbacks in on_module_load(). */
 static int module_get_failed = 0;
+/* ====================================================================== */
+
+static struct kedr_local_storage *
+default_alloc_ls(struct kedr_ls_allocator *al)
+{
+	return (struct kedr_local_storage *)kzalloc(
+		sizeof(struct kedr_local_storage), GFP_ATOMIC);
+}
+
+static void 
+default_free_ls(struct kedr_ls_allocator *al, 
+	struct kedr_local_storage *ls)
+{
+	kfree(ls);
+	return;
+}
+
+static struct kedr_ls_allocator default_ls_allocator = {
+	.alloc_ls = default_alloc_ls,
+	.free_ls  = default_free_ls,
+};
+
+struct kedr_ls_allocator *ls_allocator = &default_ls_allocator;
 /* ====================================================================== */
 
 /* Non-zero if some set of event handlers has already been registered, 
@@ -334,6 +357,50 @@ struct notifier_block detector_nb = {
 	 * work first and only then instrument the resulting code of 
 	 * the target module. */
 };
+/* ====================================================================== */
+
+void
+kedr_set_ls_allocator(struct kedr_ls_allocator *al)
+{
+	int ret = 0;
+	
+	/* Because we need to check 'target_module' and update the allocator
+	 * atomically w.r.t. the loading of the target module, we should
+	 * lock 'target_mutex'. 
+	 * It is only allowed to change the allocator if the target module
+	 * is not loaded: different allocators can be incompatible with 
+	 * each other. If the local storage has been allocated by a given 
+	 * allocator, it must be freed by the same allocator. */
+	ret = mutex_lock_killable(&target_mutex);
+	if (ret != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX
+		"kedr_set_ls_allocator(): failed to lock target_mutex\n");
+		goto out;
+	}
+
+	if (target_module_loaded()) {
+		pr_warning(KEDR_MSG_PREFIX
+	"Attempt to change local storage allocator while the target "
+	"is loaded. The allocator will not be changed.\n");
+		goto out_unlock;
+	}
+	
+	ls_allocator = (al == NULL) ? &default_ls_allocator : al;
+	
+out_unlock:	
+	mutex_unlock(&target_mutex);
+out:
+	return;
+}
+EXPORT_SYMBOL(kedr_set_ls_allocator);
+
+struct kedr_ls_allocator *
+kedr_get_ls_allocator(void)
+{
+	return ls_allocator;
+}
+EXPORT_SYMBOL(kedr_get_ls_allocator);
 /* ====================================================================== */
 
 static int __init

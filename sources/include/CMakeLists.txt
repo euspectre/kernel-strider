@@ -3,8 +3,10 @@
 # [NB] When you add a header to the "include" subtree of the source 
 # tree, do not forget to add it to the list below.
 set(KEDR_INCLUDE_FILES_SRC
-	kedr_mem/core_api.h
 	object_types.h
+	kedr_mem/core_api.h
+	kedr_mem/local_storage.h
+	kedr_mem/block_info.h
 )
 
 # Copy the headers from the src tree into the build tree

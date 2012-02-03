@@ -11,6 +11,8 @@ kbuild_include_directories(
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
+set(TOP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include/kedr")
+
 kbuild_add_module(${KMODULE_NAME}
 # Sources:
 	"module.c"
@@ -27,18 +29,29 @@ kbuild_add_module(${KMODULE_NAME}
     "${ARCH_DIR}/include/kedr/asm/inat.h"
     "${ARCH_DIR}/include/kedr/asm/inat_types.h"
     "${ARCH_DIR}/include/kedr/asm/insn.h"
+
+# The headers that can be used by other components (specify the headers
+# here for CMake to create a dependency of the core module on these).
+	"${TOP_INCLUDE_DIR}/object_types.h"
+	"${TOP_INCLUDE_DIR}/kedr_mem/core_api.h"
+	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
+	"${TOP_INCLUDE_DIR}/kedr_mem/block_info.h"
 )
 
+# Generate the table with the information about the machine instructions
+# in the form of the C language structures.
 add_custom_command(
-	OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib/inat-tables.h"
-	COMMAND LC_ALL=C awk -f "${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/tools/gen-insn-attr-x86.awk"
-		"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/lib/x86-opcode-map.txt" >
+	OUTPUT 
+		"${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib/inat-tables.h"
+	COMMAND 
+		LC_ALL=C awk -f 
+		"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/tools/gen-insn-attr-x86.awk"
+		"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/lib/x86-opcode-map.txt" > 
 		"${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib/inat-tables.h"
 	DEPENDS 
 		"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/lib/x86-opcode-map.txt"
 		"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/tools/gen-insn-attr-x86.awk"
-	)
-
+)
 ########################################################################
 
 kedr_install_kmodule(${KMODULE_NAME})
