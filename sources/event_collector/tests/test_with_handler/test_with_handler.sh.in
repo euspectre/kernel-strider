@@ -1,0 +1,57 @@
+#!/bin/sh
+
+event_collector_module="@CMAKE_CURRENT_BINARY_DIR@/../../@event_collector_module_name@.ko"
+core_stub_module="@CMAKE_CURRENT_BINARY_DIR@/../core_stub/@core_stub_module_name@.ko"
+handler_stub_module="@CMAKE_CURRENT_BINARY_DIR@/../handler_stub/@handler_stub_module_name@.ko"
+
+test_module="@CMAKE_CURRENT_BINARY_DIR@/@KMODULE_NAME@.ko"
+
+# Initialize
+if ! /sbin/insmod "$core_stub_module"; then
+    printf "Cannot load core stub module.\n"
+    exit 1
+fi
+
+if ! /sbin/insmod "$event_collector_module"; then
+    printf "Cannot load event collector module.\n"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! /sbin/insmod "$handler_stub_module"; then
+    printf "Cannot load handler stub module.\n"
+    /sbin/rmmod "$event_collector_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+
+# Test
+if ! /sbin/insmod "$test_module"; then
+    printf "Cannot load test module or error occures during test.\n"
+    /sbin/rmmod "$handler_stub_module"
+    /sbin/rmmod "$event_collector_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! /sbin/rmmod "$test_module"; then
+    printf "Cannot unload test module.\n"
+    exit 1
+fi
+
+# Finalize
+if ! /sbin/rmmod "$handler_stub_module"; then
+    printf "Cannot unload handler stub module.\n"
+    exit 1
+fi
+
+if ! /sbin/rmmod "$event_collector_module"; then
+    printf "Cannot unload event collector module.\n"
+    exit 1
+fi
+
+if ! /sbin/rmmod "$core_stub_module"; then
+    printf "Cannot unload core stub module.\n"
+    exit 1
+fi

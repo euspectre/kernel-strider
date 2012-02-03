@@ -300,9 +300,11 @@ message (STATUS "Creating \"kedr_gen\" - done")
 
 add_subdirectory(core)
 add_subdirectory(functions)
-add_subdirectory(output)
 
-add_subdirectory(converter)
+add_subdirectory(event_collector)
+#add_subdirectory(output)
+
+#add_subdirectory(converter)
 
 add_subdirectory(include)
 
