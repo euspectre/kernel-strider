@@ -1,0 +1,107 @@
+#!/bin/sh
+
+########################################################################
+# This test checks API for the allocators of the local storage.
+# 
+# Usage: 
+#   sh test.sh 
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+    if test ! -f "${CORE_MODULE}"; then
+        printf "The core module is missing: ${CORE_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TEST_MODULE}"; then
+        printf "The test module is missing: ${TEST_MODULE}\n"
+        exit 1
+    fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+    cd "${WORK_DIR}"
+    
+    lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TEST_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${CORE_MODULE_NAME}"
+    fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+    /sbin/insmod "${CORE_MODULE}" || exit 1
+
+    /sbin/insmod "${TEST_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the test module\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    OUT_PARAM_FILE="/sys/module/${TEST_MODULE_NAME}/parameters/test_failed"
+    if test ! -e "${OUT_PARAM_FILE}"; then
+        printf "Parameter file does not exist: ${OUT_PARAM_FILE}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    # Save the result to be analyzed below
+    TEST_FAILED=$(cat "${OUT_PARAM_FILE}")
+
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+    
+    # Check the saved result
+    printf "Test result (0 - passed, other value - failed): ${TEST_FAILED}\n"
+    if test "t${TEST_FAILED}" != "t0"; then
+        exit 1
+    fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TEST_MODULE_NAME="test_ls_allocator"
+TEST_MODULE="test_module/${TEST_MODULE_NAME}.ko"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Test module: ${TEST_MODULE}\n"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
