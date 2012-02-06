@@ -7,10 +7,18 @@
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/asm/insn.h> /* instruction analysis facilities */
 
-struct module;
-
 /* The prefix for diagnostic messages. */
+#ifndef KEDR_MSG_PREFIX
 #define KEDR_MSG_PREFIX "[kedr_mem_core] "
+#endif
+
+/* Name of the directory to be created in debugfs for the core */
+#define KEDR_DEBUGFS_DIR "@KEDR_MEM_CORE_DEBUGFS_DIR@"
+
+/* The file in the directory for the core in debugfs where the helper
+ * script should write the information about the sections of the target
+ * module. */
+#define KEDR_SECTIONS_FILE "@KEDR_MEM_CORE_SECTIONS_FILE@"
 
 /* The current set of event handlers. */
 extern struct kedr_event_handlers *eh_current;

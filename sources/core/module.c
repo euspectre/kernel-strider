@@ -18,11 +18,13 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
+#include <linux/debugfs.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 
 #include "core_impl.h"
+#include "sections.h"
 #include "config.h"
 /* ====================================================================== */
 
@@ -30,12 +32,7 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
-/* Path to the helper script that obtains the list of sections of a target 
- * module */
-//#define KEDR_UMH_GET_SECTIONS KEDR_UM_HELPER_PATH "/kedr_get_sections.sh"
-/* ====================================================================== */
-
-/* Name of the module to analyze, an empty name will match no module */
+/* Name of the module to analyze. An empty name will match no module */
 char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
 /* ====================================================================== */
@@ -69,6 +66,11 @@ static DEFINE_MUTEX(target_mutex);
 /* This flag indicates whether try_module_get() failed for the owner of the
  * currently used set of callbacks in on_module_load(). */
 static int module_get_failed = 0;
+/* ====================================================================== */
+
+/* A directory for the core in debugfs. */
+static struct dentry *debugfs_dir_dentry = NULL;
+const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
 /* ====================================================================== */
 
 static struct kedr_local_storage *
@@ -420,7 +422,26 @@ core_init_module(void)
 	 * system. */
 	eh_current = eh_default;
 	
-	/* TODO: if something else needs to be initialized, do it before 
+	/* Create the directory for the core in debugfs */
+	debugfs_dir_dentry = debugfs_create_dir(debugfs_dir_name, NULL);
+	if (IS_ERR(debugfs_dir_dentry)) {
+		pr_warning(KEDR_MSG_PREFIX "debugfs is not supported\n");
+		ret = -ENODEV;
+		goto out_free_eh;
+	}
+
+	if (debugfs_dir_dentry == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"failed to create a directory in debugfs\n");
+		ret = -EINVAL;
+		goto out_free_eh;
+	}
+	
+	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
+	if (ret != 0)
+		goto out_rmdir;
+	
+	/* [NB] If something else needs to be initialized, do it before 
 	 * registering our callbacks with the notification system.
 	 * Do not forget to re-check labels in the error path after that. */
 	
@@ -430,7 +451,7 @@ core_init_module(void)
 	{
 		pr_warning(KEDR_MSG_PREFIX 
 			"Failed to lock module_mutex\n");
-		goto out_free_eh;
+		goto out_cleanup_sections;
 	}
     
 	ret = register_module_notifier(&detector_nb);
@@ -476,6 +497,12 @@ out_unreg_notifier:
 out_unlock:
 	mutex_unlock(&module_mutex);
 
+out_cleanup_sections:
+	kedr_cleanup_section_subsystem();
+
+out_rmdir:
+	debugfs_remove(debugfs_dir_dentry);
+
 out_free_eh:
 	kfree(eh_default);
 	return ret;
@@ -486,11 +513,14 @@ core_exit_module(void)
 {
 	pr_info(KEDR_MSG_PREFIX "Cleaning up\n");
 	
-	/* Unregister notifications before cleaning up the rest. */
+	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
+	
+	kedr_cleanup_section_subsystem();
 	
 	// TODO: more cleanup here
 	
+	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
 	return;
 }

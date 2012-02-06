@@ -1,6 +1,20 @@
 # Create the core kernel module.
 set(KMODULE_NAME "kedr_mem_core")
 
+# Name of the directory to be created in debugfs for this component
+# of the system.
+set(KEDR_MEM_CORE_DEBUGFS_DIR "${KMODULE_NAME}")
+
+# The file in ${KEDR_MEM_CORE_DEBUGFS_DIR} directory where the helper
+# script should write the information about the sections of the target
+# module.
+set(KEDR_MEM_CORE_SECTIONS_FILE "sections") 
+
+configure_file (
+	"${CMAKE_CURRENT_SOURCE_DIR}/core_impl.h.in"
+	"${CMAKE_CURRENT_BINARY_DIR}/core_impl.h"
+)
+
 set(ARCH_DIR "arch/${KEDR_ARCH}")
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/include/kedr/asm)
@@ -17,10 +31,12 @@ kbuild_add_module(${KMODULE_NAME}
 # Sources:
 	"module.c"
 	"tid.c"
+	"sections.c"
 
 # Headers
 	"core_impl.h"
 	"tid.h"
+	"sections.h"
 
 # Instruction decoder: sources and headers
     "${ARCH_DIR}/lib/inat.c"
@@ -55,6 +71,10 @@ add_custom_command(
 ########################################################################
 
 kedr_install_kmodule(${KMODULE_NAME})
+########################################################################
+
+# User-mode helpers
+add_subdirectory(um_helpers)
 ########################################################################
 
 # Tests
