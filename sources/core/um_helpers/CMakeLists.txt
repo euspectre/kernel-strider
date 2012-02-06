@@ -7,8 +7,11 @@ configure_file (
 )
 
 # Installation instructions for user-mode helpers.
-# [NB] List the helper scripts in KEDR_UM_HELPERS.
-set(KEDR_UM_HELPERS kedr_get_sections.sh)
+# Note that the relative paths are interpreted w.r.t. the current 
+# source directory.
+set(KEDR_UM_HELPERS 
+	"${CMAKE_CURRENT_BINARY_DIR}/kedr_get_sections.sh"
+)
 
 install(PROGRAMS ${KEDR_UM_HELPERS} 
 	DESTINATION ${KEDR_INSTALL_PREFIX_EXEC})
