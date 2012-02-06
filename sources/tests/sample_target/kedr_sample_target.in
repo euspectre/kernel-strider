@@ -1,0 +1,39 @@
+#!/bin/sh
+module="@KMODULE_NAME@"
+device="cfake"
+
+if test $# -eq 0; then
+    echo "'load' or 'unload' command should be specified."
+    exit 1
+fi
+current_dir=`dirname $0`
+command="$1"
+shift
+
+case $command in
+load)
+    mode="666"
+
+    # Invoke insmod with all arguments we got
+    # and use a pathname, as insmod doesn't look in . by default
+    /sbin/insmod ${current_dir}/${module}.ko $* || exit 1
+    
+    # It seems, udev does not always create the device nodes instantly,
+    # so wait a little if necessary.
+    if ! test -c /dev/${device}0; then
+        sleep 0.5
+    fi
+
+    # Udev should have created the device nodes, no need for mknod
+    chmod $mode  /dev/${device}*
+    ;;
+unload)
+    # Invoke rmmod with all arguments we got
+    # The device nodes will be removed automatically
+    /sbin/rmmod $module $* || exit 1
+    ;;
+*)
+    echo "Incorrect command '$command' is specified. Should be 'load' or 'unload'"
+    exit 1
+esac
+
