@@ -9,6 +9,7 @@
 
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 MODULE_AUTHOR("Andrey Tsyvarev");
 MODULE_LICENSE("GPL");
