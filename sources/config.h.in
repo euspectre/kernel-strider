@@ -1,10 +1,12 @@
-// How many arguments takes ring_buffer_consume()
+/* How many arguments ring_buffer_consume() takes */
 #cmakedefine RING_BUFFER_CONSUME_HAS_3_ARGS
 #cmakedefine RING_BUFFER_CONSUME_HAS_4_ARGS
-// How to create module parameter with callbacks
+
+/* How to create module parameter with callbacks */
 #cmakedefine MODULE_PARAM_CREATE_USE_OPS_STRUCT
 #cmakedefine MODULE_PARAM_CREATE_USE_OPS
 
+/* The path where the user-mode helper scripts are to be installed */
 #ifndef KEDR_UM_HELPER_PATH
-#define KEDR_UM_HELPER_PATH "@KEDR_INSTALL_PREFIX_EXEC@"
+#define KEDR_UM_HELPER_PATH "@KEDR_UM_HELPER_PATH@"
 #endif

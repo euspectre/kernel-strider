@@ -125,6 +125,10 @@ else(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 #######################################################################
+# The path where the user-mode helper scripts are to be installed
+set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
+
+#######################################################################
 # Perform basic checks
 
 # Check if we use kernel version 2.6.32 or newer
