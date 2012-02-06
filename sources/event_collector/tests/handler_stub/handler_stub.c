@@ -2,6 +2,8 @@
 
 #include "handler_stub_api.h"
 
+#include <linux/slab.h> /* kmalloc */
+
 #include <linux/module.h>
 
 MODULE_AUTHOR("Andrey Tsyvarev");
