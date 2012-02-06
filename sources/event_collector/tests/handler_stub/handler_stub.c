@@ -77,16 +77,16 @@ handler_stub_get_msg_type(struct execution_message_base* msg, int size)
         }
     break;
 /* Checker for simple message type(when type imply size) */
-#define CASE_SIMPLE_TYPE(msuff, ssuff)                          \
-    case execution_message_type_##msuff:                         \
-        if(size < sizeof(struct execution_message_##ssuff))       \
-        {                                                       \
-            pr_err("Incorrect size of message of type '%s':"    \
-                "should be %d, but it is %d.",                  \
-                "execution_message_type_"#msuff,                \
-                sizeof(struct execution_message_##ssuff), size);  \
-            return execution_message_type_invalid;              \
-        }                                                       \
+#define CASE_SIMPLE_TYPE(msuff, ssuff)                                  \
+    case execution_message_type_##msuff:                                \
+        if(size < sizeof(struct execution_message_##ssuff))             \
+        {                                                               \
+            pr_err("Incorrect size of message of type '%s':"            \
+                "should be %d, but it is %d.",                          \
+                "execution_message_type_"#msuff,                        \
+                (int)sizeof(struct execution_message_##ssuff), size);   \
+            return execution_message_type_invalid;                      \
+        }                                                               \
     break
     
     CASE_SIMPLE_TYPE(lma, lma);

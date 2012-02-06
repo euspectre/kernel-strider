@@ -12,7 +12,7 @@ typedef unsigned long addr_t;
 
 #include <linux/module.h>
 
-#include "kedr/object_types.h"
+#include "kedr/object_types.h" /* memory access types, lock types...*/
 
 struct execution_event_collector;
 

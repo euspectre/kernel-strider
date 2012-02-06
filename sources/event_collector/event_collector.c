@@ -1,14 +1,21 @@
 #include "kedr/event_collector/event_collector.h"
 #include "kedr/event_collector/event_handler.h"
 
-#include "kedr/kedr_mem/core_api.h"
+/* implements 'kedr_event_handler' */
+#include "kedr/kedr_mem/core_api.h" 
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 
-#include <linux/percpu.h>
+/* 
+ * Use per-cpu variable for store state in
+ * execution_event_memory_accesses_begin().
+ */
+#include <linux/percpu.h> 
 
-#include "trace_buffer.h"
+#include <linux/slab.h> /* kmalloc */
+
+#include "trace_buffer.h" /* use trace buffer for collect message */
 
 MODULE_AUTHOR("Tsyvarev Andrey");
 MODULE_LICENSE("GPL");

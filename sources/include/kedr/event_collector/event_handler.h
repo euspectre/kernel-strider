@@ -7,7 +7,6 @@
 #define EVENT_HANDLER_H
 
 #include "kedr/event_collector/event_collector.h" /* only for types */
-#include "kedr/object_types.h"
 
 struct trace_buffer;
 
