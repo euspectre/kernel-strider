@@ -1,0 +1,220 @@
+#!/bin/sh
+
+########################################################################
+# This test checks "Sections" subsystem. A custom kernel module uses that
+# subsystem to obtain the names and addresses of the sections for a sample
+# target module. The results are output via debugfs and them compared to 
+# the section information exported via sysfs. 
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+    if test ! -f "${TEST_MODULE}"; then
+        printf "The test module is missing: ${TEST_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TARGET_MODULE}"; then
+        printf "The core module is missing: ${CORE_MODULE}\n"
+        exit 1
+    fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+    cd "${WORK_DIR}"
+    
+    lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TARGET_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TEST_MODULE_NAME}"
+    fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+    /sbin/insmod "${TEST_MODULE}" target_name="${TARGET_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to load the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    /sbin/insmod "${TARGET_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    test_failed_param="/sys/module/${TEST_MODULE_NAME}/parameters/test_failed"
+    if test ! -e "${test_failed_param}"; then
+        printf "File does not exist: ${test_failed_param}\n"
+        cleanupAll
+        exit 1
+    fi
+    test_failed=$(cat "${test_failed_param}")
+    if test "t${test_failed}" != "t0"; then
+        printf "An error was detected by the test module, "
+        printf "see the system log for details\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    sysfs_mod_dir="/sys/module/${TARGET_MODULE_NAME}/sections"
+    if test ! -d "${sysfs_mod_dir}"; then
+        printf "No directory in sysfs for the sections of \"${TARGET_MODULE_NAME}\"\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    expected_file="${TMP_DIR}/expected"
+    actual_file="${TMP_DIR}/actual"
+    tmp_file="${TMP_DIR}/tmp"
+    
+    rm -f "${expected_file}" "${actual_file}" "${tmp_file}"
+    
+    # Get the correct (expected) section info from sysfs
+    for ss in ${sysfs_mod_dir}/* ${sysfs_mod_dir}/.*; do
+    	if test -f ${ss}; then
+    		# Get the contents of the section file. It is expected to be
+    		# a single hexadecimal value, possibly prefixed with "0x".
+    		# In addition, remove leading and trailing blanks.
+    		saddr=$(cat ${ss} | sed -e 's/\(^[[:blank:]]*|[[:blank:]]*$\)//')
+    		if test -z "${saddr}"; then
+    			printf "Failed to read ${ss} or the file does not contain a section address.\n"
+                cleanupAll
+    			exit 1
+    		fi
+    		
+    		# If the address does not have '0x' prefix, add it.
+            echo "${saddr}" | grep -E '^0x' > /dev/null
+            if test $? -eq 1; then
+                saddr="0x${saddr}"
+            fi
+    		
+    		printf "$(basename ${ss}) ${saddr}\n" >> "${tmp_file}"
+            if test $? -ne 0; then
+                printf "Failed to write to ${tmp_file}.\n"
+                cleanupAll
+    			exit 1
+            fi 
+    	fi
+    done
+
+    # Sort the data before comparison
+    cat "${tmp_file}" | sort > "${expected_file}"
+    
+    # Get the data actually obtained by "Sections" subsystem
+    mkdir -p "${DEBUGFS_DIR}"
+    if test $? -ne 0; then
+        printf "Failed to create directory ${DEBUGFS_DIR}.\n"
+        cleanupAll
+		exit 1
+    fi 
+    
+    mount -t debugfs none "${DEBUGFS_DIR}"
+    if test $? -ne 0; then
+        printf "Failed to mount debugfs to ${DEBUGFS_DIR}.\n"
+        cleanupAll
+		exit 1
+    fi
+    
+    cat "${OUTPUT_FILE}" | sort > "${actual_file}"
+    ret_status=$?
+    umount "${DEBUGFS_DIR}"
+    
+    if test ${ret_status} -ne 0; then
+        printf "Failed to read from ${OUTPUT_FILE} "
+        printf "and write the data to ${actual_file}.\n"
+        cleanupAll
+		exit 1
+    fi
+    
+    # Unload the modules
+    /sbin/rmmod "${TARGET_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    # Check the results
+    sh "${COMPARE_SCRIPT}" "${expected_file}" "${actual_file}"
+    if test $? -eq 0; then
+        printf "The data obtained by \"Sections\" subsystem "
+        printf "match the expected data.\n"
+    else
+        printf "Error occurred during the comparison or the data obtained "
+        printf "by \"Sections\" subsystem differ from the expected data.\n"
+        cleanupAll
+        exit 1
+    fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+# [NB] Must not be the same as in kedr_get_sections.sh!
+TMP_DIR="@KEDR_INSTALL_PREFIX_TEMP@/test_sections"
+
+# The directory for the test module in debugfs and the file where that 
+# module outputs the data.
+DEBUGFS_DIR="${TMP_DIR}/debug"
+OUTPUT_FILE="${DEBUGFS_DIR}/@KEDR_MEM_CORE_DEBUGFS_DIR@/output"
+
+TARGET_MODULE_NAME="kedr_sample_target"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
+
+TEST_MODULE_NAME="test_sections"
+TEST_MODULE="test_module/${TEST_MODULE_NAME}.ko"
+
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+checkPrereqs
+
+printf "Target module: ${TARGET_MODULE}\n"
+printf "Test module: ${TEST_MODULE}\n"
+
+rm -rf "${TMP_DIR}"
+mkdir -p "${TMP_DIR}"
+if test $? -ne 0; then
+    printf "Failed to create directory for the temporaries: ${TMP_DIR}\n"
+    cleanupAll
+    exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+rm -rf "${TMP_DIR}"
+exit 0
