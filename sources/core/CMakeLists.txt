@@ -1,6 +1,9 @@
 # Create the core kernel module.
 set(KMODULE_NAME "kedr_mem_core")
 
+# A prefix for the messages output to the system log
+set(KEDR_MSG_PREFIX "[kedr_mem_core] ")
+
 # Name of the directory to be created in debugfs for this component
 # of the system.
 set(KEDR_MEM_CORE_DEBUGFS_DIR "${KMODULE_NAME}")

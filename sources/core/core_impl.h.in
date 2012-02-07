@@ -9,7 +9,7 @@
 
 /* The prefix for diagnostic messages. */
 #ifndef KEDR_MSG_PREFIX
-#define KEDR_MSG_PREFIX "[kedr_mem_core] "
+#define KEDR_MSG_PREFIX "@KEDR_MSG_PREFIX@"
 #endif
 
 /* Name of the directory to be created in debugfs for the core */
