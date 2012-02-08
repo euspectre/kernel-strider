@@ -25,7 +25,7 @@ set(KEDR_VERSION_SUFFIX "-devel" CACHE STRING
 #set(KEDR_VERSION_SUFFIX "" CACHE STRING
 	"Version suffix, a string that should be appended to the version"
 )
-set(KEDR_VERSION 
+set(KEDR_PACKAGE_VERSION 
 "${KEDR_VERSION_MAJOR}.${KEDR_VERSION_MINOR}.${KEDR_VERSION_MICRO}${KEDR_VERSION_SUFFIX}"
 )
 
@@ -319,9 +319,11 @@ add_subdirectory(tools)
 kedr_test_add_subdirectory(tests)
 #######################################################################
 
-configure_file("${CMAKE_SOURCE_DIR}/config.h.in" "${CMAKE_BINARY_DIR}/config.h")
+configure_file("${CMAKE_SOURCE_DIR}/config.h.in" 
+	"${CMAKE_BINARY_DIR}/config.h")
 message(STATUS "Creating config.h - done")
 #######################################################################
 
-message (STATUS "Configured ${KEDR_PACKAGE_NAME} version ${KEDR_VERSION}")
+message(STATUS 
+	"Configured ${KEDR_PACKAGE_NAME} version ${KEDR_PACKAGE_VERSION}")
 #######################################################################

@@ -10,3 +10,7 @@
 #ifndef KEDR_UM_HELPER_PATH
 #define KEDR_UM_HELPER_PATH "@KEDR_UM_HELPER_PATH@"
 #endif
+
+/* Name and version of the package */
+#define KEDR_PACKAGE_NAME "@KEDR_PACKAGE_NAME@"
+#define KEDR_PACKAGE_VERSION "@KEDR_PACKAGE_VERSION@"

@@ -410,7 +410,9 @@ core_init_module(void)
 {
 	int ret = 0;
 	
-	pr_info(KEDR_MSG_PREFIX "Initializing\n");
+	pr_info(KEDR_MSG_PREFIX 
+	"Initializing (" KEDR_PACKAGE_NAME " version " KEDR_PACKAGE_VERSION 
+	")\n");
 	
 	eh_default = (struct kedr_event_handlers *)kzalloc(
 		sizeof(struct kedr_event_handlers), GFP_KERNEL);
