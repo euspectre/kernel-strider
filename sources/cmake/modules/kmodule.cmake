@@ -337,7 +337,7 @@ endmacro(check_stack_trace)
 # Set cache variable RING_BUFFER_IMPLEMENTED according to this checking.
 function(check_ring_buffer)
 	set(check_ring_buffer_message 
-		"Checking if ring buffer is implemented by the kernel"
+		"Checking if ring buffer is implemented in the kernel"
 	)
 	message(STATUS "${check_ring_buffer_message}")
 	if (DEFINED RING_BUFFER_IMPLEMENTED)
@@ -351,11 +351,11 @@ function(check_ring_buffer)
 		)
 		if (ring_buffer_implemented_impl)
 			set(RING_BUFFER_IMPLEMENTED "yes" CACHE INTERNAL
-				"Whether ring buffer is implemented by the kernel"
+				"Whether ring buffer is implemented in the kernel"
 			)
 		else (ring_buffer_implemented_impl)
 			set(RING_BUFFER_IMPLEMENTED "no" CACHE INTERNAL
-				"Whether ring buffer is implemented by the kernel"
+				"Whether ring buffer is implemented in the kernel"
 			)
 		endif (ring_buffer_implemented_impl)
 				
@@ -366,10 +366,12 @@ function(check_ring_buffer)
 	message(STATUS "${check_ring_buffer_message}")
 	
 	if (NOT RING_BUFFER_IMPLEMENTED)
-		message("\n[WARNING]\n Ring buffer is not supported by the system.\n"
-			"This make tracing in KEDR unavailable, so call monitoring will also do not work."
-			"If this is not acceptable, you could rebuild the kernel with\n"
-			"CONFIG_RING_BUFFER set to \"y\" and then reconfigure and rebuild KEDR.\n")
+		message(FATAL_ERROR
+			"\n[WARNING]\n Ring buffer functionality is not supported by "
+			"the kernel (CONFIG_RING_BUFFER is not set in the kernel "
+			"config file).\n"
+			"Ring buffer support is needed for the components collecting "
+			"the data obtained by the core. \n")
 	endif (NOT RING_BUFFER_IMPLEMENTED)
 
 endfunction(check_ring_buffer)
@@ -465,22 +467,39 @@ macro(check_kfree_rcu)
 	message(STATUS "${check_kfree_rcu_message}")
 endmacro(check_kfree_rcu)
 
-# Check if module unloading is supported on this system.
-macro(check_module_unload)
-	set(check_module_unload_message 
-		"Checking if unloading of kernel modules is supported"
+# Check if the required kernel parameters are set in the kernel 
+# configuration.
+macro(check_kernel_config)
+	set(check_kernel_config_message 
+		"Checking the basic configuration of the kernel"
 	)
-	message(STATUS "${check_module_unload_message}")
-	kmodule_try_compile(module_unload_impl 
-		"${CMAKE_BINARY_DIR}/check_module_unload"
-		"${kmodule_test_sources_dir}/check_module_unload/module.c"
-	)
-	if (module_unload_impl)
-		message(STATUS "${check_module_unload_message} - yes")
-	else (module_unload_impl)
-		message(FATAL_ERROR "Unloading of kernel modules is not"
-			" supported on this system. "
+	message(STATUS "${check_kernel_config_message}")
+	if (DEFINED KERNEL_CONFIG_OK)
+		message(STATUS "${check_kernel_config_message} [cached] - ok")
+	else (DEFINED KERNEL_CONFIG_OK)
+		kmodule_try_compile(kernel_config_impl 
+			"${CMAKE_BINARY_DIR}/check_kernel_config"
+			"${kmodule_test_sources_dir}/check_kernel_config/module.c"
 		)
-	endif (module_unload_impl)
-endmacro(check_module_unload)
+		if (kernel_config_impl)
+			set(KERNEL_CONFIG_OK "yes" CACHE INTERNAL
+				"Are the necessary basic kernel configuration parameters set?"
+			)
+			message(STATUS "${check_kernel_config_message} - ok")
+		else (kernel_config_impl)
+			message(FATAL_ERROR 
+				"Some of the required configuration parameters of the kernel "
+				"are not set. Please check the configuration file for the "
+				"kernel.\n"
+				"The following parameters should be set:\n"
+				"\tCONFIG_X86_32 or CONFIG_X86_64 (system architecture)\n"
+				"\tCONFIG_MODULES (loadable module support)\n"
+				"\tCONFIG_MODULE_UNLOAD (module unloading support)\n"
+				"\tCONFIG_SYSFS (sysfs support)\n"
+				"\tCONFIG_DEBUG_FS (debugfs support)\n"
+				"\tCONFIG_KALLSYMS (loading of kernel symbols in the kernel image)\n"
+			)
+		endif (kernel_config_impl)
+	endif (DEFINED KERNEL_CONFIG_OK) # TODO
+endmacro(check_kernel_config)
 ############################################################################
