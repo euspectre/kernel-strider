@@ -3,11 +3,6 @@ set(KMODULE_TEST_NAME "test_sections")
 set(KEDR_MSG_PREFIX "[kedr_test_sections] ")
 set(KEDR_UM_HELPER_PATH "${CMAKE_CURRENT_BINARY_DIR}")
 
-configure_file("${CMAKE_SOURCE_DIR}/core/core_impl.h.in"
-	"${CMAKE_CURRENT_BINARY_DIR}/core_impl.h"
-	@ONLY
-)
-
 configure_file("${CMAKE_SOURCE_DIR}/config.h.in"
 	"${CMAKE_CURRENT_BINARY_DIR}/config.h"
 	@ONLY
