@@ -35,11 +35,13 @@ kbuild_add_module(${KMODULE_NAME}
 	"module.c"
 	"tid.c"
 	"sections.c"
+	"module_ms_alloc.c"
 
 # Headers
 	"core_impl.h"
 	"tid.h"
 	"sections.h"
+	"module_ms_alloc.h"
 
 # Instruction decoder: sources and headers
     "${ARCH_DIR}/lib/inat.c"

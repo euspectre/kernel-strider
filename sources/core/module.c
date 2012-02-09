@@ -23,9 +23,11 @@
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 
-#include "core_impl.h"
-#include "sections.h"
 #include "config.h"
+#include "core_impl.h"
+
+#include "sections.h"
+#include "module_ms_alloc.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -443,6 +445,10 @@ core_init_module(void)
 	if (ret != 0)
 		goto out_rmdir;
 	
+	ret = kedr_init_module_ms_alloc();
+	if (ret != 0)
+		goto out_cleanup_sections;
+	
 	/* [NB] If something else needs to be initialized, do it before 
 	 * registering our callbacks with the notification system.
 	 * Do not forget to re-check labels in the error path after that. */
@@ -453,7 +459,7 @@ core_init_module(void)
 	{
 		pr_warning(KEDR_MSG_PREFIX 
 			"Failed to lock module_mutex\n");
-		goto out_cleanup_sections;
+		goto out_cleanup_alloc;
 	}
     
 	ret = register_module_notifier(&detector_nb);
@@ -499,6 +505,9 @@ out_unreg_notifier:
 out_unlock:
 	mutex_unlock(&module_mutex);
 
+out_cleanup_alloc:
+	kedr_cleanup_module_ms_alloc();
+	
 out_cleanup_sections:
 	kedr_cleanup_section_subsystem();
 
@@ -518,6 +527,7 @@ core_exit_module(void)
 	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
 	
+	kedr_cleanup_module_ms_alloc();
 	kedr_cleanup_section_subsystem();
 	
 	// TODO: more cleanup here
