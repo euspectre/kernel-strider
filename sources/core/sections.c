@@ -40,10 +40,21 @@ const char *debug_data_name = KEDR_SECTIONS_FILE;
 
 #define KEDR_SECTION_BUFFER_SIZE 4096
 static char *section_buffer = NULL;
-static DEFINE_MUTEX(section_mutex);
 
-/* The list of struct kedr_section instances. */
-static LIST_HEAD(sections);
+/* This mutex is used to serialize accesses to the section buffer. */
+static DEFINE_MUTEX(section_buffer_mutex);
+
+/* This mutex is used to serialize execution of kedr_get_sections(). 
+ * It is possible for that function to execute for different modules at the
+ * same time, so we need to make sure it has completed a request before 
+ * processing another one. 
+ * Among other things, this serializes the execution of the user-mode
+ * helper script, i.e., no more than one instance of the script can be 
+ * executing at the same time. This is why 'section_buffer_mutex' alone 
+ * is not enough. We cannot keep it locked while the helper script is 
+ * running because that mutex should also be taken in write() file 
+ * operation. */
+static DEFINE_MUTEX(section_mutex);
 /* ====================================================================== */
 
 /* A convenience macro to define variable of type struct file_operations
@@ -84,7 +95,7 @@ debug_write_common(struct file *filp, const char __user *buf, size_t count,
 	if (sb == NULL) 
 		return -EINVAL;
 	
-	if (mutex_lock_killable(&section_mutex) != 0)
+	if (mutex_lock_killable(&section_buffer_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX "debug_write_common: "
 			"got a signal while trying to acquire a mutex.\n");
@@ -119,13 +130,13 @@ debug_write_common(struct file *filp, const char __user *buf, size_t count,
 	}
 	sb[pos + count] = '\0';
 	
-	mutex_unlock(&section_mutex);
+	mutex_unlock(&section_buffer_mutex);
 
 	*f_pos += count;
 	return count;
 
 out:
-	mutex_unlock(&section_mutex);
+	mutex_unlock(&section_buffer_mutex);
 	return ret;
 }
 
@@ -190,8 +201,7 @@ kedr_section_create(const char *name_beg, size_t len, unsigned long addr)
 	struct kedr_section *sec;
 	char *sec_name;
 	
-	sec = (struct kedr_section *)kzalloc(sizeof(struct kedr_section),
-		GFP_KERNEL);
+	sec = kzalloc(sizeof(*sec), GFP_KERNEL);
 	if (sec == NULL)
 		return NULL;
 	
@@ -213,18 +223,6 @@ kedr_section_destroy(struct kedr_section *sec)
 		return;
 	kfree(sec->name);
 	kfree(sec);
-}
-
-static void
-clear_section_list(void)
-{
-	struct kedr_section *sec;
-	struct kedr_section *tmp;
-	
-	list_for_each_entry_safe(sec, tmp, &sections, list) {
-		list_del(&sec->list);
-		kedr_section_destroy(sec);
-	}
 }
 
 int 
@@ -259,25 +257,23 @@ kedr_cleanup_section_subsystem(void)
 	if (data_file != NULL)
 		debugfs_remove(data_file);
 	
-	clear_section_list();	
 	kfree(section_buffer);
 	section_buffer = NULL;
 }
 
 static int 
-reset_section_subsystem(void)
+reset_section_buffer(void)
 {
 	BUG_ON(section_buffer == NULL);
-	if (mutex_lock_killable(&section_mutex) != 0)
+	if (mutex_lock_killable(&section_buffer_mutex) != 0)
 	{
-		pr_warning(KEDR_MSG_PREFIX "kedr_reset_section_subsystem: "
+		pr_warning(KEDR_MSG_PREFIX "reset_section_buffer: "
 			"got a signal while trying to acquire a mutex.\n");
 		return -EINTR;
 	}
 	
-	clear_section_list();
 	memset(section_buffer, 0, KEDR_SECTION_BUFFER_SIZE);
-	mutex_unlock(&section_mutex);
+	mutex_unlock(&section_buffer_mutex);
 	return 0;
 }
 
@@ -304,12 +300,12 @@ is_valid_section_address(unsigned long addr, struct module *mod)
  * The data format is expected to be as follows:
  *   <name> <hex_address>[ <name> <hex_address>...], for example:
  *   .text 0xffc01234 .data 0xbaadf00d
- * The function must be called with section_mutex locked. 
+ * The function must be called with 'section_buffer_mutex' locked. 
  * [NB] If an error occurs we don't need to free the items of the section 
  * list created so far. They will be freed when resetting or cleaning up 
  * the subsystem anyway. */
 static int 
-parse_section_data(struct module *mod)
+parse_section_data(struct module *mod, struct list_head *sections)
 {
 	const char *ws = " \t\n\r";
 	size_t pos;
@@ -357,32 +353,40 @@ parse_section_data(struct module *mod)
 		sec = kedr_section_create(&section_buffer[pos], len, addr);
 		if (sec == NULL)
 			return -ENOMEM;
-		list_add_tail(&sec->list, &sections);
+		list_add_tail(&sec->list, sections);
 		
 		pos = (addr_end - section_buffer) + num;
 	}
 	return 0;
 }
 
-struct list_head *
-kedr_get_sections(struct module *mod)
+int
+kedr_get_sections(struct module *mod, struct list_head *sections)
 {
 	int ret = 0;
 	char *target_name;
+	
 	BUG_ON(section_buffer == NULL);
 	BUG_ON(mod == NULL);
+	BUG_ON(sections == NULL);
+	BUG_ON(!list_empty(sections));
+	
+	if (mutex_lock_killable(&section_mutex) != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX "kedr_get_sections: "
+			"got a signal while trying to acquire a mutex.\n");
+		return -EINTR;
+	}
 	
 	target_name = module_name(mod);
 	
-	ret = reset_section_subsystem();
+	ret = reset_section_buffer();
 	if (ret != 0)
-		return ERR_PTR(ret);
-	
-	BUG_ON(!list_empty(&sections));
+		goto out;
 	
 	ret = kedr_run_um_helper(target_name);
 	if (ret != 0)
-		return ERR_PTR(ret);
+		goto out;
 	
 	/* By this moment, the information about the sections must be in 
 	 * section buffer. Lock the mutex to make sure we see the buffer in
@@ -394,14 +398,15 @@ kedr_get_sections(struct module *mod)
 	 * anyway. 
 	 * [NB] We copy the names of the sections because the contents of 
 	 * the buffer may change after we release the mutex. */
-	if (mutex_lock_killable(&section_mutex) != 0)
+	if (mutex_lock_killable(&section_buffer_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX "kedr_get_sections: "
 			"got a signal while trying to acquire a mutex.\n");
-		return ERR_PTR(-EINTR);
+		ret = -EINTR;
+		goto out;
 	}
 	
-	ret = parse_section_data(mod);
+	ret = parse_section_data(mod, sections);
 	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX
 		"Failed to parse section data for \"%s\" module.\n",
@@ -409,21 +414,38 @@ kedr_get_sections(struct module *mod)
 		pr_warning(KEDR_MSG_PREFIX
 		"The buffer contains the following: %s\n",
 			section_buffer);
-		goto out;
+		kedr_release_sections(sections); /* just in case */
+		goto out_unlock;
 	}
 	
-	if (list_empty(&sections)) {
+	if (list_empty(sections)) {
 		pr_warning(KEDR_MSG_PREFIX
-		"no section information found for \"%s\" module.\n",
+		"No section information found for \"%s\" module.\n",
 			target_name);
 		ret = -EINVAL;
-		goto out;
+		goto out_unlock;
 	}
 	
+	mutex_unlock(&section_buffer_mutex);
 	mutex_unlock(&section_mutex);
-	return &sections;
+	return 0;
+
+out_unlock:
+	mutex_unlock(&section_buffer_mutex);
 out:
 	mutex_unlock(&section_mutex);
-	return ERR_PTR(ret);
+	return ret;
+}
+
+void
+kedr_release_sections(struct list_head *sections)
+{
+	struct kedr_section *sec;
+	struct kedr_section *tmp;
+	
+	list_for_each_entry_safe(sec, tmp, sections, list) {
+		list_del(&sec->list);
+		kedr_section_destroy(sec);
+	}
 }
 /* ====================================================================== */

@@ -70,23 +70,21 @@ static int
 do_collect_data(void)
 {
 	int ret = 0;
-	struct list_head *section_list = NULL;
 	struct kedr_section *sec;
 	char one_char[1]; /* for the 1st call to snprintf */
 	char *buf = NULL;
 	const char *fmt = "%s 0x%lx\n";
 	int len;
+	LIST_HEAD(sections);
 	
-	section_list = kedr_get_sections(target_module);
-	BUG_ON(section_list == NULL);
-	if (IS_ERR(section_list)) {
+	ret = kedr_get_sections(target_module, &sections);
+	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX
 	"Failed to obtain names and addresses of the target's sections.\n");
-		ret = (int)PTR_ERR(section_list);
 		goto out;
 	}
 	
-	list_for_each_entry(sec, section_list, list) {
+	list_for_each_entry(sec, &sections, list) {
 		len = snprintf(&one_char[0], 1, fmt, sec->name, sec->addr);
 		buf = (char *)kzalloc(len + 1, GFP_KERNEL);
 		if (buf == NULL) {
@@ -101,6 +99,9 @@ do_collect_data(void)
 		kfree(buf);
 	}
 out:
+	/* kedr_release_sections() will empty the list and destroy its
+	 * elements. */
+	kedr_release_sections(&sections);
 	return ret;
 }
 /* ====================================================================== */

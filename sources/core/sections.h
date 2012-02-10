@@ -44,12 +44,19 @@ struct kedr_section
 };
 
 /* Finds the loaded ELF sections of the given kernel module.
- * The function returns the head of the list of sections on success, 
- * ERR_PTR(-errno) on error. The function never returns NULL.
- * The list of sections is valid until the section subsystem is cleaned up 
- * or this function is called the next time.
- * Do not attempt to modify the list, it is owned by this subsystem. */
-struct list_head *
-kedr_get_sections(struct module *mod);
+ * 'sections' list must be empty when passed to this function.
+ * If successful, the function creates the appropriate instances of 
+ * struct kedr_section, adds them to 'sections' list and returns 0. 
+ * In case of a failure, -errno is returned and 'sections' list will remain
+ * unchanged (i.e. empty). 
+ * 
+ * The list of sections is not intended to be modified. When it is no longer
+ * needed, call kedr_release_sections() for it. */
+int
+kedr_get_sections(struct module *mod, struct list_head *sections);
+
+/* Empty the list and properly delete the elements it contains. */
+void
+kedr_release_sections(struct list_head *sections);
 
 #endif // SECTIONS_H_1141_INCLUDED
