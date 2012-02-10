@@ -8,4 +8,5 @@ add_subdirectory(reg_unreg)
 add_subdirectory(callbacks)
 add_subdirectory(ls_allocator)
 add_subdirectory(sections)
+add_subdirectory(module_ms_alloc)
 ########################################################################

@@ -29,7 +29,10 @@ kedr_cleanup_module_ms_alloc(void);
  * the kernel modules and the kernel proper. This simplifies handling of 
  * RIP-relative addressing on x86-64 and handling of the common near 
  * jumps and calls as well).
- * [NB] The allocated memory is not guaranteed to be zeroed. */
+ * 
+ * The allocated memory is not guaranteed to be zeroed. 
+ * 
+ * The function cannot be used in atomic context. */
 void *
 kedr_module_alloc(unsigned long size);
 
