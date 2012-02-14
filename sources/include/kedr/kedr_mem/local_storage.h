@@ -142,12 +142,16 @@ struct kedr_local_storage
  * 
  * 7. If the allocator is implemented in a different module rather than in 
  * the core itself, that module should remain live while the target module
- * is live in memory. The core does not enforce this automatically. 
+ * is live in memory. 
  * 
  * 8. Both alloc_ls() and free_ls() should be thread-safe. That is, these 
  * functions can be called at any moment by any number of threads. */
+struct module;
 struct kedr_ls_allocator
 {
+	/* The module that provides the allocator. */
+	struct module *owner;
+	
 	/* Allocate an instance of struct kedr_local_storage, zero memory
 	 * occupied by it and return a pointer to it. NULL is returned if
 	 * the allocation fails. */

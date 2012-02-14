@@ -51,6 +51,7 @@ null_free_ls(struct kedr_ls_allocator *al,
 }
 
 static struct kedr_ls_allocator null_allocator = {
+	.owner = THIS_MODULE,
 	.alloc_ls = null_alloc_ls,
 	.free_ls  = null_free_ls,
 };

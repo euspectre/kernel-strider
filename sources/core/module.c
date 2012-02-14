@@ -64,15 +64,127 @@ static int handle_module_notifications = 0;
 
 /* A mutex to protect the data related to the target module. */
 static DEFINE_MUTEX(target_mutex);
-
-/* This flag indicates whether try_module_get() failed for the owner of the
- * currently used set of callbacks in on_module_load(). */
-static int module_get_failed = 0;
 /* ====================================================================== */
 
 /* A directory for the core in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
 const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
+/* ====================================================================== */
+
+/* "Provider" support */
+/* A provider is a component that provides its functions to the core 
+ * (e.g. event handlers, allocators, other kinds of callbacks). 
+ * Currently, each such provider has a distinct role, see enum
+ * kedr_provider_role below.
+ * The core itself is a provider, the one used by default. 
+ * The core locks each provider in memory for the time the target is in 
+ * memory. If it fails to lock one or more providers this way, it must not
+ * instrument or affect the target in any other way. 
+ * 
+ * Operations with the collection of providers (set, reset, lock, unlock) 
+ * except its initialization as well as with 'providers_locked' should be 
+ * performed with 'target_mutex' locked. This way, these operations will be 
+ * atomic w.r.t. the loading / unloading of the target. */
+enum kedr_provider_role
+{
+	/* Provides: event handlers */
+	KEDR_PR_EVENT_HANDLERS = 0,
+	
+	/* Provides: alloc/free routines for local storage */
+	KEDR_PR_LS_ALLOCATOR,
+	
+	/* TODO: add more roles here if necessary */
+	
+	/* The number of provider roles, keep this item last. */
+	KEDR_PR_NUM_ROLES
+};
+
+static struct module *providers[KEDR_PR_NUM_ROLES];
+
+/* Nonzero if all required providers are locked in memory, 0 if they
+ * are not. Note that in the current implementation, either all or no 
+ * providers are locked. */
+static int providers_locked = 0;
+
+/* Set the provider with the given role. 
+ * May be called only if the providers are not locked by lock_providers().*/
+static void 
+set_provider(struct module *m, enum kedr_provider_role role)
+{
+	BUG_ON(m == NULL);
+	BUG_ON(providers_locked != 0);
+	providers[role] = m;
+}
+
+/* Reset the provider with the given role to the default. 
+ * May be called only if the providers are not locked by lock_providers().*/
+static void 
+reset_provider(enum kedr_provider_role role)
+{
+	BUG_ON(providers_locked != 0);
+	providers[role] = THIS_MODULE;
+}
+
+/* Try to lock all the providers in memory. The function returns 0 if 
+ * successful, an error code otherwise. After the call to this function,
+ * either all the providers are locked or none of them is locked.
+ *
+ * "Locked" means that a provider is marked as used and cannot be unloaded
+ * from memory (see try_module_get()).
+ *
+ * Note that our module (THIS_MODULE) will be locked in memory anyway. 
+ * Either no external provider has been registered so far and the default
+ * one (our module) is used and will therefore be locked by try_module_get()
+ * in this function. Or an external provider is set for at least one role 
+ * and that provider will be locked. But it uses the API exported by our 
+ * module and therefore our module will not be unloadable too at least until
+ * all providers are unregistered. 
+ *
+ * For each successful call to this function, there should be a call to 
+ * unlock_providers() somewhere. Locking the providers already locked 
+ * with lock_providers() is not allowed. */
+static int 
+lock_providers(void)
+{
+	int ret = 0;
+	int i;
+	int k;
+	
+	BUG_ON(providers_locked != 0);
+	
+	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i) {
+		if (try_module_get(providers[i]) == 0) {
+			pr_err(KEDR_MSG_PREFIX
+			"try_module_get() failed for the module \"%s\".\n",
+			module_name(providers[i]));
+			ret = -ENODEV;
+			break;
+		}
+	}
+	
+	if (ret != 0) {
+		/* Unlock the modules we might have been locked before the
+		 * failed one (#i). */
+		 for (k = 0; k < i; ++k)
+			module_put(providers[k]);
+		 return ret;
+	}
+	
+	providers_locked = 1;
+	return 0;
+}
+
+/* Unlock the providers (see module_put()). Double unlock is not allowed. */
+static void 
+unlock_providers(void)
+{
+	int i;
+	BUG_ON(providers_locked == 0);
+	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i)
+		module_put(providers[i]);
+	
+	providers_locked = 0;
+}
 /* ====================================================================== */
 
 static struct kedr_local_storage *
@@ -142,6 +254,7 @@ kedr_register_event_handlers(struct kedr_event_handlers *eh)
 	}
 	
 	eh_current = eh;
+	set_provider(eh->owner, KEDR_PR_EVENT_HANDLERS);
 	mutex_unlock(&target_mutex);
 	return 0; /* success */
 
@@ -160,16 +273,16 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh)
 	 * lock the mutex anyway. The handlers must be restored to their 
 	 * defaults even if their owner did something wrong. 
 	 * If this mutex_lock() call hangs because some other code has taken 
-	 * 'target_mutex' forever, it is our bug anyway and reboot will probably 
-	 * be necessary among other things. It seems safer to let it hang than
-	 * to allow the owner of the event handlers go away while these handlers
-	 * might be in use. */
+	 * 'target_mutex' forever, it is our bug anyway and reboot will 
+	 * probably be necessary among other things. It seems safer to let
+	 * it hang than to allow the owner of the event handlers go away
+	 * while these handlers might be in use. */
 	mutex_lock(&target_mutex);
 	
 	if (target_module_loaded()) {
 		pr_warning(KEDR_MSG_PREFIX 
-		"Attempt to unregister event handlers while the target module is "
-		"loaded\n");
+		"Attempt to unregister event handlers while the target "
+		"module is loaded\n");
 		goto out;
 	}
 	
@@ -184,6 +297,7 @@ out:
 	/* No matter if there were errors detected above or not, restore the
 	 * handlers to their defaults, it is safer anyway. */
 	eh_current = eh_default;
+	reset_provider(KEDR_PR_EVENT_HANDLERS);
 	mutex_unlock(&target_mutex);
 	return;
 }
@@ -216,25 +330,9 @@ on_module_load(struct module *mod)
 		module_name(mod), 
 		(mod->init_text_size + mod->core_text_size));
 	
-	/* "Lock" the owner of the currently set event handlers in memory, that 
-	 * is, prevent that module from unloading until the target is unloaded.
-	 * Note that our module (THIS_MODULE) will also be "locked": either no
-	 * external set of event handlers have been registered so far and 
-	 * the default set is used - but eh_default->owner is our module and 
-	 * it will be "locked" by try_module_get(). Or the current set of event
-	 * handlers is provided by some other module, which will be locked. But
-	 * that module uses API exported by our module and therefore our module
-	 * will not be unloadable too until that set of handlers is 
-	 * unregistered. */
-	if (try_module_get(eh_current->owner) == 0)
-	{
-		pr_err(KEDR_MSG_PREFIX
-			"try_module_get() failed for the module \"%s\".\n",
-			module_name(eh_current->owner));
-		module_get_failed = 1;
-		
-		/* If we failed to lock the module in memory, we should not
-		 * instrument or otherwise affect the target module. */
+	if (lock_providers() != 0) {
+		/* If we failed to lock the providers in memory, we 
+		 * should not instrument or otherwise affect the target. */
 		return;
 	}
 	
@@ -281,21 +379,22 @@ on_module_unload(struct module *mod)
 		"Target module \"%s\" is going to unload.\n",
 		module_name(mod));
 	
-	if (!module_get_failed) {
-		// TODO: cleanup what is left (if anything)
-		/*kedr_cleanup_function_subsystem();*/
-		
-		/* Call the event handler, if set. */
-		if (eh_current->on_target_about_to_unload != NULL)
-			eh_current->on_target_about_to_unload(eh_current, 
-				mod);
-		
-		/* Release the module, which is our module if no other set of event 
-		 * handlers were registered or the owner of these handlers
-		 * otherwise. */
-		module_put(eh_current->owner);
-	}
-	module_get_failed = 0; /* reset the flag */
+	/* If we failed to lock the providers in memory when the target had
+	 * just loaded, we did not initialize the corresponding subsystems
+	 * and did not instrument the target either. So, nothing to 
+	 * clean up. */
+	if (!providers_locked)
+		return;
+	
+	// TODO: cleanup what is left (if anything)
+	/*kedr_cleanup_function_subsystem();*/
+	
+	/* Call the event handler, if set. */
+	if (eh_current->on_target_about_to_unload != NULL)
+		eh_current->on_target_about_to_unload(eh_current, 
+			mod);
+	
+	unlock_providers();
 }
 
 /* A callback function to handle loading and unloading of a module. 
@@ -390,8 +489,15 @@ kedr_set_ls_allocator(struct kedr_ls_allocator *al)
 		goto out_unlock;
 	}
 	
-	ls_allocator = (al == NULL) ? &default_ls_allocator : al;
-	
+	if (al != NULL) {
+		ls_allocator = al;
+		set_provider(al->owner, KEDR_PR_LS_ALLOCATOR);
+	}
+	else {
+		ls_allocator = &default_ls_allocator;
+		reset_provider(KEDR_PR_LS_ALLOCATOR);
+	}
+		
 out_unlock:	
 	mutex_unlock(&target_mutex);
 out:
@@ -405,6 +511,15 @@ kedr_get_ls_allocator(void)
 	return ls_allocator;
 }
 EXPORT_SYMBOL(kedr_get_ls_allocator);
+/* ====================================================================== */
+
+static void __init
+init_providers(void)
+{
+	int i;
+	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i)
+		providers[i] = THIS_MODULE;
+}
 /* ====================================================================== */
 
 static int __init
@@ -425,6 +540,8 @@ core_init_module(void)
 	/* Initialize 'eh_current' before registering with the notification 
 	 * system. */
 	eh_current = eh_default;
+	
+	init_providers();
 	
 	/* Create the directory for the core in debugfs */
 	debugfs_dir_dentry = debugfs_create_dir(debugfs_dir_name, NULL);
