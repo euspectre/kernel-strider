@@ -9,4 +9,3 @@ kedr_test_add_script (mem_core.callbacks.load_unload.01
 )
 
 add_subdirectory (test_module)
-add_subdirectory (target)

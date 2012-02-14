@@ -43,7 +43,7 @@ int arg_check_failed = 0;
 module_param(arg_check_failed, int, S_IRUGO);
 
 /* The expected name of the target module. */
-static const char *target_name = "test_target";
+static const char *target_name = "kedr_sample_target";
 
 /* ====================================================================== */
 
