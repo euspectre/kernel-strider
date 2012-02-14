@@ -5,8 +5,9 @@ kbuild_include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_subdirectory(simple_ins_rm)
 add_subdirectory(reg_unreg)
-add_subdirectory(callbacks)
 add_subdirectory(ls_allocator)
+add_subdirectory(providers)
+add_subdirectory(callbacks)
 add_subdirectory(sections)
 add_subdirectory(module_ms_alloc)
 ########################################################################

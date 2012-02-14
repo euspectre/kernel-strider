@@ -1,10 +1,14 @@
 #!/bin/sh
 
 ########################################################################
-# This test checks API for the allocators of the local storage.
+# This test checks if the provider module is unloadable while the target
+# is in memory.
 # 
 # Usage: 
-#   sh test_basics.sh 
+#   sh test_unload.sh <test_module>
+#
+# The test expects to find the test module (provider) in the subdirectory
+# with the same name as that module.
 ########################################################################
 
 ########################################################################
@@ -22,6 +26,11 @@ checkPrereqs()
         printf "The test module is missing: ${TEST_MODULE}\n"
         exit 1
     fi
+    
+    if test ! -f "${TARGET_MODULE}"; then
+        printf "The target module is missing: ${TARGET_MODULE}\n"
+        exit 1
+    fi
 }
 
 ########################################################################
@@ -30,6 +39,11 @@ checkPrereqs()
 cleanupAll()
 {
     cd "${WORK_DIR}"
+    
+    lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TARGET_MODULE_NAME}"
+    fi
     
     lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
@@ -47,7 +61,7 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-    /sbin/insmod "${CORE_MODULE}" || exit 1
+    /sbin/insmod "${CORE_MODULE}" target_name="${TARGET_MODULE_NAME}" || exit 1
 
     /sbin/insmod "${TEST_MODULE}"
     if test $? -ne 0; then
@@ -56,15 +70,33 @@ doTest()
         exit 1
     fi
     
-    OUT_PARAM_FILE="/sys/module/${TEST_MODULE_NAME}/parameters/test_failed"
-    if test ! -e "${OUT_PARAM_FILE}"; then
-        printf "Parameter file does not exist: ${OUT_PARAM_FILE}\n"
+    /sbin/insmod "${TARGET_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
         cleanupAll
         exit 1
     fi
 
-    # Save the result to be analyzed below
-    TEST_FAILED=$(cat "${OUT_PARAM_FILE}")
+    # Check that the module providing the callbacks ("test module") can not 
+    # be unloaded when the target is in memory.
+    printf "The following 'rmmod' command is expected to fail.\n"
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -eq 0; then
+        printf "The test module (the owner of the callbacks) "
+        printf "should have been locked by the core for the time the "
+        printf "target module is in memory. It seems, it was not locked "
+        printf "because the test was able to unload the test module.\n"
+        cleanupAll
+        exit 1
+    fi
+    printf "The error above was expected, continuing the test...\n"
+    
+    /sbin/rmmod "${TARGET_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
 
     /sbin/rmmod "${TEST_MODULE_NAME}"
     if test $? -ne 0; then
@@ -74,12 +106,6 @@ doTest()
     fi
 
     /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
-    
-    # Check the saved result
-    printf "Test result (0 - passed, other value - failed): ${TEST_FAILED}\n"
-    if test "t${TEST_FAILED}" != "t0"; then
-        exit 1
-    fi
 }
 
 ########################################################################
@@ -87,16 +113,25 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
+if test $# -ne 1; then
+    printf "Usage:\n\tsh $0 <test_module>\n"
+    exit 1
+fi
+
 CORE_MODULE_NAME="@CORE_MODULE_NAME@"
 CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
 
-TEST_MODULE_NAME="test_ls_allocator"
-TEST_MODULE="test_module/${TEST_MODULE_NAME}.ko"
+TEST_MODULE_NAME="$1"
+TEST_MODULE="${TEST_MODULE_NAME}/${TEST_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="kedr_sample_target"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
 
 checkPrereqs
 
 printf "Core module: ${CORE_MODULE}\n"
 printf "Test module: ${TEST_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
 
 doTest
 
