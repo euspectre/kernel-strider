@@ -143,6 +143,15 @@ check_kernel_config()
 # Check if the ring buffer functionality is available
 check_ring_buffer()
 
+# readelf can also be necessary when building and testing the package
+message (STATUS "Checking for readelf")
+find_program (READELF readelf)
+if (READELF)
+	message (STATUS "Checking for readelf - ${READELF}")
+else (READELF)
+	message (FATAL_ERROR "readelf is not found")
+endif (READELF)
+
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.
