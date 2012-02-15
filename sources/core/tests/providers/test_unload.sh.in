@@ -61,7 +61,9 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-    /sbin/insmod "${CORE_MODULE}" target_name="${TARGET_MODULE_NAME}" || exit 1
+    /sbin/insmod "${CORE_MODULE}" \
+        target_name="${TARGET_MODULE_NAME}" \
+        umh_dir="@KEDR_UMH_DIR@" || exit 1
 
     /sbin/insmod "${TEST_MODULE}"
     if test $? -ne 0; then

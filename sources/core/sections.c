@@ -28,9 +28,11 @@
 #include "config.h"
 /* ====================================================================== */
 
-/* The path to a helper script that should obtain the addresses of the 
- * sections from sysfs. */
-#define KEDR_HELPER_SCRIPT_PATH KEDR_UM_HELPER_PATH "/kedr_get_sections.sh"
+/* Name and the full path to a helper script that should obtain the
+ * addresses of the sections from sysfs. */
+#define KEDR_HELPER_SCRIPT_NAME "kedr_get_sections.sh"
+static char *umh_script = NULL;
+static char umh_filename_part[] = "/" KEDR_HELPER_SCRIPT_NAME;
 /* ====================================================================== */
 
 /* The file in debugfs to be used by the user-mode helper to pass the 
@@ -150,13 +152,16 @@ kedr_run_um_helper(char *target_name)
 	int ret = 0;
 	unsigned int ret_status = 0;
 	
-	char *argv[] = {"/bin/sh", KEDR_HELPER_SCRIPT_PATH, NULL, NULL};
+	char *argv[] = {"/bin/sh", NULL, NULL, NULL};
 	static char *envp[] = {
 		"HOME=/",
 		"TERM=linux",
 		"PATH=/sbin:/bin:/usr/sbin:/usr/bin", NULL};
-	argv[2] = target_name;
 	
+	BUG_ON(umh_script == NULL);
+	argv[1] = umh_script;
+	argv[2] = target_name;
+			
 	/* Invoke our shell script with the target name as a parameter and
 	 * wait for its completion. */
 	ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
@@ -169,7 +174,7 @@ kedr_run_um_helper(char *target_name)
 	if (ret_status != 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 			"Failed to execute %s, status is 0x%x\n",
-			KEDR_HELPER_SCRIPT_PATH,
+			umh_script,
 			ret_status);
 		return -EINVAL;
 	}
@@ -177,15 +182,14 @@ kedr_run_um_helper(char *target_name)
 	ret >>= 8;
 	if (ret != 0) {
 		if (ret == 127) 
-			pr_warning(KEDR_MSG_PREFIX KEDR_HELPER_SCRIPT_PATH
-				" is missing.\n");
+			pr_warning(KEDR_MSG_PREFIX "%s is missing.\n", 
+				umh_script);
 		else 
 			pr_warning(KEDR_MSG_PREFIX
-			"The helper failed (" KEDR_HELPER_SCRIPT_PATH 
-			"), error code: %d. "
+			"The helper failed (%s), error code: %d. "
 			"See the comments in that helper script "  
 			"for the description of this error code.\n", 
-				ret);
+				umh_script, ret);
 		return -EINVAL;
 	}
 	
@@ -229,11 +233,22 @@ int
 kedr_init_section_subsystem(struct dentry *debugfs_dir)
 {
 	int ret = 0;
+	size_t len = 0;
 	
-	section_buffer = (char *)kzalloc(KEDR_SECTION_BUFFER_SIZE, 
+	len = strlen(umh_dir);
+	umh_script = kzalloc(len + ARRAY_SIZE(umh_filename_part) + 1,
 		GFP_KERNEL);
-	if (section_buffer == NULL)
+	if (umh_script == NULL)
 		return -ENOMEM;
+	strncpy(umh_script, umh_dir, len);
+	strncpy(&umh_script[len], umh_filename_part, 
+		ARRAY_SIZE(umh_filename_part));
+	
+	section_buffer = kzalloc(KEDR_SECTION_BUFFER_SIZE, GFP_KERNEL);
+	if (section_buffer == NULL) {
+		ret = -ENOMEM;
+		goto out_free_path;
+	}
 
 	data_file = debugfs_create_file(debug_data_name, 
 		S_IWUSR | S_IWGRP, debugfs_dir, NULL, &fops_wo);
@@ -248,6 +263,11 @@ kedr_init_section_subsystem(struct dentry *debugfs_dir)
 
 out_free_sb:
 	kfree(section_buffer);
+	section_buffer = NULL;
+
+out_free_path:
+	kfree(umh_script);
+	umh_script = NULL;
 	return ret;
 }
 
@@ -259,6 +279,9 @@ kedr_cleanup_section_subsystem(void)
 	
 	kfree(section_buffer);
 	section_buffer = NULL;
+	
+	kfree(umh_script);
+	umh_script = NULL;
 }
 
 static int 

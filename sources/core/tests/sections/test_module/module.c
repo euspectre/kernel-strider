@@ -27,7 +27,9 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
+#include "config.h"
 #include "core_impl.h"
+
 #include "debug_util.h"
 #include "sections.h"
 /* ====================================================================== */
@@ -39,6 +41,11 @@ MODULE_LICENSE("GPL");
 /* Name of the module to analyze. An empty name will match no module */
 char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
+
+/* Path where the user-mode helper scripts are located. Normally, the user
+ * would not change it, it is mainly for testing purposes. */
+char *umh_dir = KEDR_UM_HELPER_PATH;
+module_param(umh_dir, charp, S_IRUGO);
 
 /* "test_failed" - test result, 0 - passed, any other value - failed */
 int test_failed = 1; /* failed by default */

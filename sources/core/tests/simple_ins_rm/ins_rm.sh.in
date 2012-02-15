@@ -4,17 +4,17 @@
 # A simple test checking that the core module can be inserted into the 
 # kernel and removed from there.
 ########################################################################
-KEDR_MODULE="@CORE_MODULE_DIR@/@CORE_MODULE_NAME@.ko"
-printf "Core module: ${KEDR_MODULE}\n"
+CORE_MODULE="@CORE_MODULE_DIR@/@CORE_MODULE_NAME@.ko"
+printf "Core module: ${CORE_MODULE}\n"
 
-if test ! -f "${KEDR_MODULE}"; then
-    printf "The core module is missing: ${KEDR_MODULE}\n"
+if test ! -f "${CORE_MODULE}"; then
+    printf "The core module is missing: ${CORE_MODULE}\n"
     
     # test failed
     exit 1
 fi
 
-/sbin/insmod "${KEDR_MODULE}"
+/sbin/insmod "${CORE_MODULE}" target_name="unused"
 if test $? -ne 0; then
     printf "Failed to load the core module\n"
     exit 1

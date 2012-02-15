@@ -47,7 +47,7 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-    /sbin/insmod "${CORE_MODULE}" || exit 1
+    /sbin/insmod "${CORE_MODULE}" target_name="unused" || exit 1
 
     /sbin/insmod "${TEST_MODULE}"
     if test $? -ne 0; then

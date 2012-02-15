@@ -1,0 +1,152 @@
+#!/bin/sh
+
+########################################################################
+# This test checks the basic functionality of the core to some extent. 
+# A target module will be loaded a given number of times (<num_repeat>)
+# while the core is loaded. Simple operations will be done with the 
+# character devices serviced by the target to see if it works correctly 
+# even when instrumented.
+# 
+# Usage: 
+#   sh test.sh <num_repeat>
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+    if test ! -f "${CORE_MODULE}"; then
+        printf "The core module is missing: ${CORE_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TARGET_MODULE}"; then
+        printf "The target module is missing: ${TARGET_MODULE}\n"
+        exit 1
+    fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+    cd "${WORK_DIR}"
+    
+    lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        sh "${TARGET_CONTROL_SCRIPT}" unload
+    fi
+    
+    lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${CORE_MODULE_NAME}"
+    fi
+}
+
+########################################################################
+# checkReadWrite() - a simple read/write test.
+# Usage:
+#   checkReadWrite <device_file> <string>
+#
+# The function writes the string ($2) to the device file ($1) serviced
+# by the target module then reads from that file and compare the result 
+# with the original string.
+########################################################################
+checkReadWrite()
+{
+    device_file="$1"
+    target_str="$2"
+    
+    printf "${target_str}" > "${device_file}"
+    if test $? -ne 0; then
+        printf "Failed to write to ${device_file}\n"
+        cleanupAll
+        exit 1
+    fi 
+    
+    result_str=$(cat "${device_file}")
+    if test "t${result_str}" != "t${target_str}"; then
+        printf "The data read from ${device_file} differ from the data written to it\n"
+        printf "Written: \"${target_str}\"\n"
+        printf "Read: \"${result_str}\"\n"
+        cleanupAll
+        exit 1
+    fi
+}
+
+########################################################################
+# processTarget() - load the target module and see if it works OK, at 
+# least when doing simple operations.
+########################################################################
+processTarget()
+{
+    sh "${TARGET_CONTROL_SCRIPT}" load
+    if test $? -ne 0; then
+        printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    checkReadWrite "/dev/cfake0" "Pack my box with five dozen liquor jugs."
+    checkReadWrite "/dev/cfake1" "A quick brown fox jumps over the lazy dog."
+    
+    sh "${TARGET_CONTROL_SCRIPT}" unload
+    if test $? -ne 0; then
+        printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+    /sbin/insmod "${CORE_MODULE}" \
+        target_name="${TARGET_MODULE_NAME}" \
+        umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+    ii=0
+    while test ${ii} -lt ${NUM_REPEAT}; do
+        processTarget
+        ii=$((${ii}+1))
+    done
+
+    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 1; then
+    printf "Usage:\n\tsh $0 <num_repeat>\n"
+    exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+NUM_REPEAT="$1"
+
+TARGET_MODULE_NAME="kedr_sample_target"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
+TARGET_CONTROL_SCRIPT="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

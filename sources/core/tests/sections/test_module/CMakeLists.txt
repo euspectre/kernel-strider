@@ -13,7 +13,8 @@ configure_file("${CMAKE_SOURCE_DIR}/core/core_impl.h.in"
 	@ONLY
 )
 
-configure_file("${CMAKE_SOURCE_DIR}/core/um_helpers/kedr_get_sections.sh.in"
+configure_file(
+	"${CMAKE_SOURCE_DIR}/core/um_helpers/kedr_get_sections.sh.in"
 	"${CMAKE_CURRENT_BINARY_DIR}/kedr_get_sections.sh"
 	@ONLY
 )

@@ -9,7 +9,7 @@ struct dentry;
 struct module;
 
 /* Initialize the subsystem. This function should be called during the 
- * initialization of the module. 
+ * initialization of the core. 
  * The function may create files in debugfs, so the directory for our system
  * should be created in there before the function is called. 
  * The corresponding dentry should be passed to the function as a parameter.
@@ -20,7 +20,7 @@ int
 kedr_init_section_subsystem(struct dentry *debugfs_dir);
 
 /* Cleanup the subsystem. This function should be called during the cleanup
- * of the module, before the directory for our system is removed from 
+ * of the core, before the directory for our system is removed from 
  * debugfs. 
  * 
  * The caller must ensure that no other function from this sybsystem is 
@@ -50,8 +50,12 @@ struct kedr_section
  * In case of a failure, -errno is returned and 'sections' list will remain
  * unchanged (i.e. empty). 
  * 
- * The list of sections is not intended to be modified. When it is no longer
- * needed, call kedr_release_sections() for it. */
+ * The list head pointed to by 'sections' should be initialized before 
+ * this function is called.
+ *
+ * The list of sections is not intended to be modified by the caller. When 
+ * it is no longer needed, call kedr_release_sections() for it to clean it
+ * up properly. */
 int
 kedr_get_sections(struct module *mod, struct list_head *sections);
 

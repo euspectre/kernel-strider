@@ -26,4 +26,8 @@ extern struct kedr_event_handlers *eh_current;
 /* The current allocator for local storage instances */
 extern struct kedr_ls_allocator *ls_allocator;
 
+/* Path where the user-mode helper scripts are located. Normally, the user
+ * would not change it, it is mainly for testing purposes. */
+extern char *umh_dir;
+
 #endif // CORE_IMPL_H_1628_INCLUDED

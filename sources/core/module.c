@@ -16,6 +16,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/debugfs.h>
@@ -28,6 +29,7 @@
 
 #include "sections.h"
 #include "module_ms_alloc.h"
+#include "i13n.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -37,6 +39,11 @@ MODULE_LICENSE("GPL");
 /* Name of the module to analyze. An empty name will match no module */
 char *target_name = "";
 module_param(target_name, charp, S_IRUGO);
+
+/* Path where the user-mode helper scripts are located. Normally, the user
+ * would not change it, it is mainly for testing purposes. */
+char *umh_dir = KEDR_UM_HELPER_PATH;
+module_param(umh_dir, charp, S_IRUGO);
 /* ====================================================================== */
 
 static struct kedr_event_handlers *eh_default = NULL;
@@ -71,20 +78,29 @@ static struct dentry *debugfs_dir_dentry = NULL;
 const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
 /* ====================================================================== */
 
+/* The instrumentation object. NULL if the instrumentation failed or was not
+ * performed. */
+static struct kedr_i13n *i13n = NULL;
+/* ====================================================================== */
+
 /* "Provider" support */
 /* A provider is a component that provides its functions to the core 
  * (e.g. event handlers, allocators, other kinds of callbacks). 
  * Currently, each such provider has a distinct role, see enum
  * kedr_provider_role below.
  * The core itself is a provider, the one used by default. 
- * The core locks each provider in memory for the time the target is in 
- * memory. If it fails to lock one or more providers this way, it must not
- * instrument or affect the target in any other way. 
+ *
+ * The core increases the usage count for each provider with 
+ * try_module_get() for the time the instrumented target is in memory. 
+ * If it fails to "lock" one or more providers this way, it must not 
+ * instrument the target. If the instrumentation failed or has not been 
+ * performed yet ('i13n' is NULL), the providers must remain "unlocked" (at 
+ * least, their usage count set by our module should remain 0).
  * 
- * Operations with the collection of providers (set, reset, lock, unlock) 
- * except its initialization as well as with 'providers_locked' should be 
- * performed with 'target_mutex' locked. This way, these operations will be 
- * atomic w.r.t. the loading / unloading of the target. */
+ * Operations with the collection of providers (set, reset, get, put) 
+ * except its initialization should be performed with 'target_mutex' locked. 
+ * This way, these operations will be atomic w.r.t. the loading / unloading 
+ * of the target. */
 enum kedr_provider_role
 {
 	/* Provides: event handlers */
@@ -101,57 +117,51 @@ enum kedr_provider_role
 
 static struct module *providers[KEDR_PR_NUM_ROLES];
 
-/* Nonzero if all required providers are locked in memory, 0 if they
- * are not. Note that in the current implementation, either all or no 
- * providers are locked. */
-static int providers_locked = 0;
-
 /* Set the provider with the given role. 
- * May be called only if the providers are not locked by lock_providers().*/
+ * Must not be called if the target module has already been instrumented. 
+ * As this function is called with 'target_mutex' locked, it can either see
+ * the target completely instrumented (i13n != NULL) and the providers 
+ * already "locked" in memory or it can see the providers unlocked. Only in
+ * the latter case, it is allowed to use this function. */
 static void 
 set_provider(struct module *m, enum kedr_provider_role role)
 {
 	BUG_ON(m == NULL);
-	BUG_ON(providers_locked != 0);
+	BUG_ON(i13n != NULL);
 	providers[role] = m;
 }
 
 /* Reset the provider with the given role to the default. 
- * May be called only if the providers are not locked by lock_providers().*/
+ * Must not be called if the target module has already been instrumented. */
 static void 
 reset_provider(enum kedr_provider_role role)
 {
-	BUG_ON(providers_locked != 0);
+	BUG_ON(i13n != NULL);
 	providers[role] = THIS_MODULE;
 }
 
-/* Try to lock all the providers in memory. The function returns 0 if 
- * successful, an error code otherwise. After the call to this function,
- * either all the providers are locked or none of them is locked.
+/* Try to increase usage count for each of the providers and therefore make
+ * their modules unloadable. The function returns 0 if successful, an error 
+ * code otherwise. After the call to this function, the usage count is 
+ * incremented either for all of the providers (on success) or for none of
+ * them (on failure).
  *
- * "Locked" means that a provider is marked as used and cannot be unloaded
- * from memory (see try_module_get()).
- *
- * Note that our module (THIS_MODULE) will be locked in memory anyway. 
+ * Note that our module (THIS_MODULE) will be unloadable from memory anyway. 
  * Either no external provider has been registered so far and the default
- * one (our module) is used and will therefore be locked by try_module_get()
- * in this function. Or an external provider is set for at least one role 
- * and that provider will be locked. But it uses the API exported by our 
+ * one (our module) is used and processed by by try_module_get() in this 
+ * function. Or an external provider is set for at least one role 
+ * and that provider will be "locked". But it uses the API exported by our 
  * module and therefore our module will not be unloadable too at least until
  * all providers are unregistered. 
  *
  * For each successful call to this function, there should be a call to 
- * unlock_providers() somewhere. Locking the providers already locked 
- * with lock_providers() is not allowed. */
+ * providers_put() somewhere. */
 static int 
-lock_providers(void)
+providers_get(void)
 {
 	int ret = 0;
 	int i;
 	int k;
-	
-	BUG_ON(providers_locked != 0);
-	
 	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i) {
 		if (try_module_get(providers[i]) == 0) {
 			pr_err(KEDR_MSG_PREFIX
@@ -169,21 +179,16 @@ lock_providers(void)
 			module_put(providers[k]);
 		 return ret;
 	}
-	
-	providers_locked = 1;
 	return 0;
 }
 
-/* Unlock the providers (see module_put()). Double unlock is not allowed. */
+/* Unlock the providers (see module_put()). */
 static void 
-unlock_providers(void)
+providers_put(void)
 {
 	int i;
-	BUG_ON(providers_locked == 0);
 	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i)
 		module_put(providers[i]);
-	
-	providers_locked = 0;
 }
 /* ====================================================================== */
 
@@ -322,53 +327,44 @@ filter_module(const char *module_name)
 static void 
 on_module_load(struct module *mod)
 {
-	/*int ret = 0;*/
-		
-	pr_info(KEDR_MSG_PREFIX
-		"Target module \"%s\" has just loaded. "
-		"Estimated size of the code areas (in bytes): %u\n",
-		module_name(mod), 
-		(mod->init_text_size + mod->core_text_size));
+	BUG_ON(i13n != NULL);
 	
-	if (lock_providers() != 0) {
+	pr_info(KEDR_MSG_PREFIX
+		"Target module \"%s\" has just loaded.\n",
+		module_name(mod));
+	
+	if (providers_get() != 0) {
 		/* If we failed to lock the providers in memory, we 
 		 * should not instrument or otherwise affect the target. */
+		return;
+	}
+
+	i13n = kedr_i13n_process_module(mod);
+	BUG_ON(i13n == NULL);
+	if (IS_ERR(i13n)) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to instrument module \"%s\". Error code: %d\n",
+			module_name(mod), (int)PTR_ERR(i13n));
+		i13n = NULL;
+		
+		/* Instrumentation failed, no need to keep the providers in
+		 * memory in this case. The target module will run 
+		 * unmodified anyway. */
+		providers_put();
 		return;
 	}
 	
 	/* Call the event handler, if set. */
 	if (eh_current->on_target_loaded != NULL)
 		eh_current->on_target_loaded(eh_current, mod);
-	
-	/* Initialize everything necessary to process the target module */
-	/*ret = kedr_init_function_subsystem(mod);
-	if (ret) {
-		pr_err(KEDR_MSG_PREFIX
-	"Failed to initialize function subsystem. Error code: %d\n",
-			ret);
-		goto out;
-	}
-	
-	ret = kedr_process_target(mod);
-	if (ret) {
-		pr_err(KEDR_MSG_PREFIX
-	"Error occured while processing \"%s\". Code: %d\n",
-			module_name(mod), ret);
-		goto out_cleanup_func;
-	}*/
 	return;
-	
-/*out_cleanup_func: 
-	kedr_cleanup_function_subsystem();
-out:	
-	return;*/
 }
 
 /* on_module_unload() handles unloading of the target module. This function 
  * is called after the cleanup function of the latter has completed and the
  * module loader is about to unload that module.
  *
-  * Note that this function must be called with 'target_mutex' locked.
+ * Note that this function must be called with 'target_mutex' locked.
  *
  * [NB] This function is called even if the initialization of the target
  * module fails. */
@@ -380,21 +376,20 @@ on_module_unload(struct module *mod)
 		module_name(mod));
 	
 	/* If we failed to lock the providers in memory when the target had
-	 * just loaded, we did not initialize the corresponding subsystems
-	 * and did not instrument the target either. So, nothing to 
-	 * clean up. */
-	if (!providers_locked)
+	 * just loaded or failed to perform the instrumentation then, the 
+	 * target module worked unchanged and usage count of the providers
+	 * was not modified. Nothing to clean up in this case. */
+	if (i13n == NULL)
 		return;
-	
-	// TODO: cleanup what is left (if anything)
-	/*kedr_cleanup_function_subsystem();*/
 	
 	/* Call the event handler, if set. */
 	if (eh_current->on_target_about_to_unload != NULL)
 		eh_current->on_target_about_to_unload(eh_current, 
 			mod);
 	
-	unlock_providers();
+	kedr_i13n_cleanup(i13n);
+	i13n = NULL; /* prepare for the next instrumentation session */
+	providers_put();
 }
 
 /* A callback function to handle loading and unloading of a module. 
@@ -530,6 +525,12 @@ core_init_module(void)
 	pr_info(KEDR_MSG_PREFIX 
 	"Initializing (" KEDR_PACKAGE_NAME " version " KEDR_PACKAGE_VERSION 
 	")\n");
+	
+	if (target_name[0] == '\0') {
+		pr_warning(KEDR_MSG_PREFIX 
+			"Parameter \"target_name\" must not be empty.\n");
+		return -EINVAL;
+	}
 	
 	eh_default = (struct kedr_event_handlers *)kzalloc(
 		sizeof(struct kedr_event_handlers), GFP_KERNEL);
