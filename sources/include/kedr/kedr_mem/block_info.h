@@ -4,6 +4,8 @@
 #ifndef BLOCK_INFO_H_1607_INCLUDED
 #define BLOCK_INFO_H_1607_INCLUDED
 
+#include <linux/list.h>
+
 /* The data record containing information (known at the instrumentation 
  * phase) about a memory access event. Note that the type of the event 
  * (read, write, update) is not stored here. It should be determined based 
@@ -35,6 +37,9 @@ struct kedr_mem_event
  * of the block should be used in this case, however. */
 struct kedr_block_info
 {
+	/* The list of such structures for a particular function. */
+	struct list_head list;
+	
 	/* Start address of the original function. */
 	unsigned long orig_func;
 	
