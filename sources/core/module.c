@@ -35,6 +35,7 @@
 #include "sections.h"
 #include "module_ms_alloc.h"
 #include "i13n.h"
+#include "hooks.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -113,6 +114,9 @@ enum kedr_provider_role
 	
 	/* Provides: alloc/free routines for local storage */
 	KEDR_PR_LS_ALLOCATOR,
+	
+	/* Provides: hooks for the core */
+	KEDR_PR_HOOKS,
 	
 	/* TODO: add more roles here if necessary */
 	
@@ -213,11 +217,16 @@ default_free_ls(struct kedr_ls_allocator *al,
 }
 
 static struct kedr_ls_allocator default_ls_allocator = {
+	.owner = THIS_MODULE,
 	.alloc_ls = default_alloc_ls,
 	.free_ls  = default_free_ls,
 };
 
 struct kedr_ls_allocator *ls_allocator = &default_ls_allocator;
+/* ====================================================================== */
+
+static struct kedr_core_hooks default_hooks;
+struct kedr_core_hooks *core_hooks = &default_hooks;
 /* ====================================================================== */
 
 /* Non-zero if some set of event handlers has already been registered, 
@@ -490,6 +499,12 @@ kedr_set_ls_allocator(struct kedr_ls_allocator *al)
 	}
 	
 	if (al != NULL) {
+		if (ls_allocator != &default_ls_allocator) {
+			pr_warning(KEDR_MSG_PREFIX
+	"Attempt to set the local storage allocator while a custom "
+	"allocator is still active. The allocator will not be changed.\n");
+			goto out_unlock;
+		}
 		ls_allocator = al;
 		set_provider(al->owner, KEDR_PR_LS_ALLOCATOR);
 	}
@@ -513,6 +528,48 @@ kedr_get_ls_allocator(void)
 EXPORT_SYMBOL(kedr_get_ls_allocator);
 /* ====================================================================== */
 
+void
+kedr_set_core_hooks(struct kedr_core_hooks *hooks)
+{
+	int ret = 0;
+	ret = mutex_lock_killable(&target_mutex);
+	if (ret != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX
+		"kedr_set_core_hooks(): failed to lock target_mutex\n");
+		goto out;
+	}
+
+	if (target_module_loaded()) {
+		pr_warning(KEDR_MSG_PREFIX
+	"Attempt to change the core hooks while the target is loaded. "
+	"The hooks will not be changed.\n");
+		goto out_unlock;
+	}
+	
+	if (hooks != NULL) {
+		if (core_hooks != &default_hooks) {
+			pr_warning(KEDR_MSG_PREFIX
+	"Attempt to set the core hooks while custom hooks are still "
+	"active. The hooks will not be changed.\n");
+			goto out_unlock;
+		}
+		core_hooks = hooks;
+		set_provider(hooks->owner, KEDR_PR_HOOKS);
+	}
+	else {
+		core_hooks = &default_hooks;
+		reset_provider(KEDR_PR_HOOKS);
+	}
+
+out_unlock:	
+	mutex_unlock(&target_mutex);
+out:
+	return;
+}
+EXPORT_SYMBOL(kedr_set_core_hooks);
+/* ====================================================================== */
+
 static void __init
 init_providers(void)
 {
@@ -521,6 +578,25 @@ init_providers(void)
 		providers[i] = THIS_MODULE;
 }
 /* ====================================================================== */
+
+/* Initialize the default handlers, callbacks, hooks, etc., before 
+ * registering with the notification system. */
+static int __init
+init_defaults(void)
+{
+	eh_default = kzalloc(sizeof(*eh_default), GFP_KERNEL);
+	if (eh_default == NULL)
+		return -ENOMEM;
+	
+	eh_default->owner = THIS_MODULE;
+	eh_current = eh_default;
+	
+	memset(&default_hooks, 0, sizeof(default_hooks));
+	default_hooks.owner = THIS_MODULE;
+	
+	init_providers();
+	return 0;
+}
 
 static int __init
 core_init_module(void)
@@ -537,17 +613,12 @@ core_init_module(void)
 		return -EINVAL;
 	}
 	
-	eh_default = (struct kedr_event_handlers *)kzalloc(
-		sizeof(struct kedr_event_handlers), GFP_KERNEL);
-	if (eh_default == NULL)
-		return -ENOMEM;
-	
-	eh_default->owner = THIS_MODULE;
-	/* Initialize 'eh_current' before registering with the notification 
-	 * system. */
-	eh_current = eh_default;
-	
-	init_providers();
+	ret = init_defaults();
+	if (ret != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"Initialization of defaults failed.\n");
+		return ret;
+	}
 	
 	/* Create the directory for the core in debugfs */
 	debugfs_dir_dentry = debugfs_create_dir(debugfs_dir_name, NULL);

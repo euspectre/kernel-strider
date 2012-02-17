@@ -48,6 +48,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"i13n.h"
 	"ifunc.h"
 	"util.h"
+	"hooks.h"
 	"ir.h"
 
 # Instruction decoder: sources and headers

@@ -31,6 +31,7 @@
 #include "module_ms_alloc.h"
 #include "util.h"
 #include "sections.h"
+#include "hooks.h"
 /* ====================================================================== */
 
 /* Common aliases: init and cleanup functions of a module. */
@@ -591,7 +592,9 @@ kedr_get_functions(struct kedr_i13n *i13n)
 	if (ret != 0)
 		return ret;
 	
-	// TODO: call hook if set
+	/* Call the hook if set. */
+	if (core_hooks->on_func_lookup_completed != NULL)
+		core_hooks->on_func_lookup_completed(core_hooks, i13n);
 	return 0;
 }
 

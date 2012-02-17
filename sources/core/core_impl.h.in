@@ -20,11 +20,18 @@
  * module. */
 #define KEDR_SECTIONS_FILE "@KEDR_MEM_CORE_SECTIONS_FILE@"
 
-/* The current set of event handlers. */
+/* The current set of event handlers. Should never be NULL. */
+struct kedr_event_handlers;
 extern struct kedr_event_handlers *eh_current;
 
-/* The current allocator for local storage instances */
+/* The current allocator for local storage instances. 
+ * Should never be NULL. */
+struct kedr_ls_allocator;
 extern struct kedr_ls_allocator *ls_allocator;
+
+/* The current set of core hooks. Should never be NULL. */
+struct kedr_core_hooks;
+extern struct kedr_core_hooks *core_hooks;
 
 /* Path where the user-mode helper scripts are located. Normally, the user
  * would not change it, it is mainly for testing purposes. */

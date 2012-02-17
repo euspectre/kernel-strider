@@ -12,7 +12,12 @@ kedr_test_add_script (mem_core.providers.02
     test_unload.sh "test_ls_alloc"
 )
 
+kedr_test_add_script (mem_core.providers.03
+    test_unload.sh "test_core_hooks"
+)
+
 # TODO: add more tests here as more provider roles are introduced.
 
 add_subdirectory (test_eh)
 add_subdirectory (test_ls_alloc)
+add_subdirectory (test_core_hooks)
