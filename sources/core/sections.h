@@ -53,6 +53,9 @@ struct kedr_section
  * The list head pointed to by 'sections' should be initialized before 
  * this function is called.
  *
+ * If there are no loaded sections found in the given module, the function
+ * returns -EINVAL.
+ *
  * The list of sections is not intended to be modified by the caller. When 
  * it is no longer needed, call kedr_release_sections() for it to clean it
  * up properly. */

@@ -18,16 +18,16 @@ struct kedr_i13n
 	struct list_head sections;
 
 	/* The list of functions to be instrumented. */
-	struct list_head funcs;
+	struct list_head ifuncs;
 
-	/* Number of functions in the target module */
-	unsigned int num_funcs;
+	/* Number of functions to be instrumented. */
+	unsigned int num_ifuncs;
 	
 	/* "Detour" buffer for the target module. The instrumented code of
 	 * the functions will be placed there. It is that code that will 
 	 * actually be executed. A jump to the start of the instrumented
 	 * function will be placed at the beginning of the original
-	 * function, so the rest of the latter  should never be executed. */
+	 * function, so the rest of the latter should never be executed. */
 	void *detour_buffer; 
 
 	/* Memory areas for fallback functions. A fallback function is a 

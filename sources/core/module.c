@@ -11,6 +11,11 @@
  * by the Free Software Foundation.
  ======================================================================== */
 
+/* [NB] The following applies not only to this source file but rather to
+ * all source files in this project. Unless specifically stated, a function 
+ * returning int returns 0 on success and a negative error code on failure.
+ */
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
