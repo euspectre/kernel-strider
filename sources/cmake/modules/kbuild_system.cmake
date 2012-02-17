@@ -20,6 +20,69 @@ set(kbuild_include_dirs)
 # Additional compiler flags for the module
 set(kbuild_cflags)
 
+# Helper for the building kernel module.
+# 
+# Test whether given source file is inside source tree. If it is so,
+# create rule for copy file to same relative location in binary tree.
+# Output variable will contain file's absolute path in binary tree.
+
+function(copy_source_to_binary_tree source new_source_var)
+	is_path_inside_dir(is_in_source ${CMAKE_SOURCE_DIR} "${source}")
+	is_path_inside_dir(is_in_binary ${CMAKE_BINARY_DIR} "${source}")
+	if(is_in_source AND NOT is_in_binary)
+		#special process c-sources in source tree
+		file(RELATIVE_PATH source_rel "${CMAKE_SOURCE_DIR}" "${source}")
+		set(new_source "${CMAKE_BINARY_DIR}/${source_rel}")
+		#add rule for create duplicate..
+		rule_copy_file("${new_source}" "${source}")
+	else(is_in_source AND NOT is_in_binary)
+		set(new_source "${source}")
+	endif(is_in_source AND NOT is_in_binary)
+	set(${new_source_var} "${new_source}" PARENT_SCOPE)
+endfunction(copy_source_to_binary_tree source new_source_var)
+
+# Extract components of the file.
+#
+# file_components(filepath [<component> RESULT_VAR])
+# 
+# For each <component>, set RESULT_VAR to corresponded component of filepath.
+#
+# <component> may be:
+#	- DIR: everything until last '/' (including it) if it is.
+#   - NOTDIR: everything except directory(without '/').
+#	- SUFFIX: last suffix(including '.'), it it is.
+#   - BASENAME: everything without suffix (without '.').
+
+
+function(file_components filepath)
+	set(state "None")
+	foreach(arg ${ARGN})
+		if(arg STREQUAL "DIR")
+			set(state "DIR")
+		elseif(arg STREQUAL "NOTDIR")
+			set(state "NOTDIR")
+		elseif(arg STREQUAL "SUFFIX")
+			set(state "SUFFIX")
+		elseif(arg STREQUAL "BASENAME")
+			set(state "BASENAME")
+		elseif(state STREQUAL "DIR")
+			STRING(REGEX REPLACE "[^/]+$" "" dir ${filepath})
+			set(${arg} "${dir}" PARENT_SCOPE)
+		elseif(state STREQUAL "NOTDIR")
+			STRING(REGEX REPLACE ".*/" "" notdir ${filepath})
+			set(${arg} "${notdir}" PARENT_SCOPE)
+		elseif(state STREQUAL "SUFFIX")
+			STRING(REGEX MATCH "\\..+$" suffix ${filepath})
+			set(${arg} "${suffix}" PARENT_SCOPE)
+		elseif(state STREQUAL "BASENAME")
+			STRING(REGEX REPLACE "\\..+$" "" basename ${filepath})
+			set(${arg} "${basename}" PARENT_SCOPE)
+		else(arg STREQUAL "DIR")
+			message(FATAL "Unexpected argument: ${arg}")
+		endif(arg STREQUAL "DIR")
+	endforeach(arg ${ARGN})
+endfunction(file_components filepath)
+
 # kbuild_add_module(name [sources ..])
 #
 # Build kernel module from sources_files, analogue of add_executable.
@@ -31,9 +94,9 @@ set(kbuild_cflags)
 # Object sources are thouse sources,
 # which may be used in building kernel module externally.
 # Follow types of object sources are supported now:
-# .o: object file, do not require additional preprocessing.
 # .c: c-file.
-# (.S files will be added if required)
+# .o_shipped: shipped file in binary format,
+#             do not require additional preprocessing.
 # 
 # Other sources is treated as only prerequisite of building process.
 #
@@ -65,52 +128,46 @@ function(kbuild_add_module name)
 	#(for clean files, 
 	#for out-of-source builds do not create files in source tree)
 	set(c_sources_noext_abs)
-	#Sources of "o" type, but without extension
-	set(o_sources_noext_abs)
-	foreach(c_source_noext_abs ${c_sources_noext_abs})
-		_kbuild_add_clean_files_c(${c_source_noext_abs} clean_files_list)
-		list(APPEND clean_files_list "${c_source_noext_abs}.o")
-	endforeach(c_source_noext_abs ${c_sources_noext_abs})
-	#sort sources
+	#Sources of "o_shipped" type, but without extension
+	set(shipped_sources_noext_abs)
+	# Sort sources and move them into binary tree if needed
 	foreach(source_abs ${sources_abs})
-		string(REGEX MATCH "(.+)((\\.c)|(\\.o))$" is_obj_source ${source_abs})
-		if(is_obj_source)
-			#real sources
-			set(obj_source_noext_abs ${CMAKE_MATCH_1})
-			if(CMAKE_MATCH_2 STREQUAL ".c")
-				is_path_inside_dir(is_in_source ${CMAKE_SOURCE_DIR} ${source_abs})
-				is_path_inside_dir(is_in_binary ${CMAKE_BINARY_DIR} ${source_abs})
-				if(is_in_source AND NOT is_in_binary)
-					#special process c-sources in source tree
-					file(RELATIVE_PATH c_source_rel ${CMAKE_SOURCE_DIR} ${source_abs})
-					set(c_source_abs_real ${CMAKE_BINARY_DIR}/${c_source_rel})
-					#add rule for create duplicate..
-					rule_copy_file(${c_source_abs_real} ${source_abs})
-					#..and forgot initial file
-					set(source_abs ${c_source_abs_real})
-					#regenerate source without extension
-					string(REGEX REPLACE "(.+)\\.c" "\\1" 
-						obj_source_noext_abs
-						${source_abs})
-				endif(is_in_source AND NOT is_in_binary)
-				list(APPEND c_sources_noext_abs ${obj_source_noext_abs})
-			else(CMAKE_MATCH_2 STREQUAL ".c")
-				list(APPEND o_sources_noext_abs ${obj_source_noext_abs})
-			endif(CMAKE_MATCH_2 STREQUAL ".c")
-		else(is_obj_source)
-			#sources only for DEPENDS
-		endif(is_obj_source)
+		file_components(${source_abs} SUFFIX ext)
+		if(ext STREQUAL ".c" OR ext STREQUAL ".o_shipped")
+			# Real sources
+			# Move source into binary tree, if needed
+			copy_source_to_binary_tree("${source_abs}" source_abs)
+			if(ext STREQUAL ".c")
+				# c-source
+				file_components("${source_abs}" BASENAME c_source_noext_abs)
+				list(APPEND c_sources_noext_abs ${c_source_noext_abs})
+			elseif(ext STREQUAL ".o_shipped")
+				# shipped-source
+				file_components("${source_abs}" BASENAME shipped_source_noext_abs)
+				list(APPEND shipped_sources_noext_abs ${shipped_source_noext_abs})
+			endif(ext STREQUAL ".c")
+		endif(ext STREQUAL ".c" OR ext STREQUAL ".o_shipped")
+		# In any case, add file to depend list
 		list(APPEND depend_files ${source_abs})
 	endforeach(source_abs ${sources_abs})
-	#Object sources relative to current dir
+	# Form relative path of the sources
 	#(for $(module)-y :=)
-	set(obj_sources_noext_rel)
-	foreach(obj_sources_noext_abs
-			${c_sources_noext_abs} ${o_sources_noext_abs})
-		file(RELATIVE_PATH obj_source_noext_rel
-			${CMAKE_CURRENT_BINARY_DIR} ${obj_sources_noext_abs})
-		list(APPEND obj_sources_noext_rel ${obj_source_noext_rel})
-	endforeach(obj_sources_noext_abs)
+	set(c_sources_noext_rel)
+	foreach(c_source_noext_abs ${c_sources_noext_abs})
+		file(RELATIVE_PATH c_source_noext_rel
+			${CMAKE_CURRENT_BINARY_DIR} ${c_source_noext_abs})
+		list(APPEND c_sources_noext_rel ${c_source_noext_rel})
+	endforeach(c_source_noext_abs ${c_sources_noext_abs})
+	
+	set(shipped_sources_noext_rel)
+	foreach(shipped_source_noext_abs ${shipped_sources_noext_abs})
+		file(RELATIVE_PATH shipped_source_noext_rel
+			${CMAKE_CURRENT_BINARY_DIR} ${shipped_source_noext_abs})
+		list(APPEND shipped_sources_noext_rel ${shipped_source_noext_rel})
+	endforeach(shipped_source_noext_abs ${shipped_sources_noext_abs})
+	
+	# Join all sources for determine type of build(simple or not)
+	set(obj_sources_noext_rel ${c_sources_noext_rel} ${shipped_sources_noext_rel})
 
 	if(NOT obj_sources_noext_rel)
 		message(FATAL_ERROR "List of object files for module ${name} is empty.")
@@ -129,116 +186,78 @@ function(kbuild_add_module name)
 		endif(is_objects_contain_name GREATER -1)
 		set(is_build_simple "FALSE")
 	endif(obj_sources_noext_rel STREQUAL ${name})
-	#List of files for deleting in 'make clean'
-	set(clean_files_list)
-	_kbuild_add_clean_files_common(clean_files_list)
-	_kbuild_add_clean_files_module(${name} clean_files_list)
-	foreach(c_source_noext_abs ${c_sources_noext_abs})
-		_kbuild_add_clean_files_c(${c_source_noext_abs} clean_files_list)
-		list(APPEND clean_files_list "${c_source_noext_abs}.o")
-	endforeach(c_source_noext_abs ${c_sources_noext_abs})
-	#Build kbuild file - module string
-	set(obj_string "obj-m := ${name}.o")
-	#Build kbuild file - object sources string
-	if(is_build_simple)
-		set(obj_src_string "")
-	else(is_build_simple)
-		set(obj_src_string "${name}-y := ")
-		foreach(obj ${obj_sources_noext_rel})
-			set(obj_src_string "${obj_src_string} ${obj}.o")
-		endforeach(obj ${obj_sources_noext_rel})
-	endif(is_build_simple)
+
+    # Create kbuild file
+    set(kbuild_file "${CMAKE_CURRENT_BINARY_DIR}/Kbuild")
+    FILE(WRITE "${kbuild_file}")
 
 	# Build kbuild file - compiler flags
-	set(cflags_string "ccflags-y := ")
-    if(kbuild_cflags)
-		foreach(cflag ${kbuild_cflags})
-       		set(cflags_string "${cflags_string} ${cflag}")
-		endforeach(cflag ${kbuild_cflags})
-	endif(kbuild_cflags)
+    if(kbuild_cflags OR kbuild_include_dirs)
+		set(cflags_string)
+		# Common flags
+		if(kbuild_cflags)
+			foreach(cflag ${kbuild_cflags})
+				set(cflags_string "${cflags_string} ${cflag}")
+			endforeach(cflag ${kbuild_cflags})
+		endif(kbuild_cflags)
 
-	# compiler flags - directories
-	if(kbuild_include_dirs)
-		foreach(dir ${kbuild_include_dirs})
-			set(cflags_string "${cflags_string} -I${dir}")
-		endforeach(dir ${kmodule_include_dirs})
-	endif(kbuild_include_dirs)
-    
-    # Configure kbuild file
-	configure_file(${kbuild_this_module_dir}/kbuild_system_files/Kbuild.in
-					${CMAKE_CURRENT_BINARY_DIR}/Kbuild
-					)
+		# Include directories
+		if(kbuild_include_dirs)
+			foreach(dir ${kbuild_include_dirs})
+				set(cflags_string "${cflags_string} -I${dir}")
+			endforeach(dir ${kmodule_include_dirs})
+		endif(kbuild_include_dirs)
+		FILE(APPEND "${kbuild_file}" "ccflags-y := ${cflags_string}\n")
+    endif(kbuild_cflags OR kbuild_include_dirs)
+
+	#Build kbuild file - module string
+	FILE(APPEND "${kbuild_file}" "obj-m := ${name}.o\n")
+
+	#Build kbuild file - object sources string
+	if(NOT is_build_simple)
+		set(obj_src_string)
+		foreach(obj ${c_sources_noext_rel} ${shipped_sources_noext_rel})
+			set(obj_src_string "${obj_src_string} ${obj}.o")
+		endforeach(obj ${c_sources_noext_rel} ${shipped_sources_noext_rel})
+		FILE(APPEND "${kbuild_file}" "${name}-y := ${obj_src_string}\n")
+	endif(NOT is_build_simple)
 	
-    # Create rules, depending on kbuild_use_symbols call
+    # Additional command and dependencies if module use
+    # symbols from other modules
 	if(kbuild_symbol_files)
-    	add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file}
-				COMMAND cat ${kbuild_symbol_files} >> ${symvers_file}
-    			COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE} 
-					-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR} modules
-    			DEPENDS ${depend_files} ${kbuild_symbol_files}
-                )
-	else(kbuild_symbol_files)
-    	add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file}
-    			COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE}
-					-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR} modules
-    			DEPENDS ${depend_files}
-    			)
+		set(symvers_command COMMAND cat ${kbuild_symbol_files} >> ${symvers_file})
+		list(APPEND ${depend_files} ${kbuild_symbol_files})
 	endif(kbuild_symbol_files)
-
-	set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${clean_files_list}")
+	# Create .cmd files for 'shipped' sources - gcc do not create them
+	# automatically for some reason
+	if(shipped_sources_noext_abs)
+		set(cmd_create_command)
+		foreach(shipped_source_noext_abs ${shipped_source_noext_abs})
+			# Parse filename to dir and name(without extension)
+			file_components(${shipped_source_noext_abs} DIR _dir NOTDIR _name)
+			list(APPEND cmd_create_command
+				COMMAND printf "cmd_%s.o := cp -p %s.o_shipped %s.o\\n"
+					"${shipped_source_noext_abs}"
+					"${shipped_source_noext_abs}"
+					"${shipped_source_noext_abs}"
+					> "${_dir}.${_name}.o.cmd")
+		endforeach(shipped_source_noext_abs ${shipped_source_noext_abs})
+	endif(shipped_sources_noext_abs)
+	
+	# Rule for create module
+	add_custom_command(
+		OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file}
+		${cmd_create_command}
+		${symvers_command}
+		COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE} 
+			-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR} modules
+		DEPENDS ${depend_files}
+	)
+	# And clean files
+	_kbuild_module_clean_files(${name}
+		C_SOURCE ${c_sources_noext_abs}
+		SHIPPED_SOURCE ${shipped_sources_noext_abs})
 endfunction(kbuild_add_module name)
-
-# kbuild_add_object(source [dependences..])
-#
-# Build kernel object file from source.
-# These objects may be used for build kernel module.
-
-# Source file- c-file(filename.c), from which object file should be built.
-# This file is treated as file in ${CMAKE_CURRENT_BINARY_DIR} directory.
-# Also, target with name of this file(without extension) is created.
-
-# Only one call of kbuild_add_module or kbuild_add_object
-# is allowed in the CMakeLists.txt.
-function(kbuild_add_object source)
-	# Extract name of file
-	string(REGEX MATCH "^([^/]+)\\.c$" is_correct_filename ${source})
-	if(NOT is_correct_filename)
-		message(FATAL_ERROR "kbuild_add_object: 'source' should be c-file without directory part.")
-	endif(NOT is_correct_filename)
-	set(name ${CMAKE_MATCH_1})
-	set(depend_files "${CMAKE_CURRENT_BINARY_DIR}/${source}" ${ARGN})
-	# Create global rule
-	add_custom_target(${name} ALL
-				DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${name}.o")
-	#Files for clean
-	set(clean_files_list)
-	_kbuild_add_clean_files_common(clean_files_list)
-	_kbuild_add_clean_files_object(clean_files_list)
-	_kbuild_add_clean_files_c(${CMAKE_CURRENT_BINARY_DIR}/${name} clean_files_list)
-	#Build object file - objects str
-	set(objects_string "obj-y := ${name}.o")
-	#Build kbuild file - compiler flags
-	set(cflags_string "ccflags-y := ")
-	#compiler flags - directories
-	if(kbuild_include_dirs)
-		foreach(dir ${kbuild_include_dirs})
-			set(cflags_string "${cflags_string} -I${dir}")
-		endforeach(dir ${kmodule_include_dirs})
-	endif(kbuild_include_dirs)
-	#Configure kbuild file
-	configure_file(${kbuild_this_module_dir}/kbuild_system_files/Kbuild_object.in
-					${CMAKE_CURRENT_BINARY_DIR}/Kbuild
-					)
-	#create rules
-	list(APPEND clean_files_list "${CMAKE_CURRENT_BINARY_DIR}/Module.symvers")
-	add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${name}.o"
-			COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE}
-				-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR}
-			DEPENDS ${depend_files}
-			)
-
-	set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${clean_files_list}")
-endfunction(kbuild_add_object source)
 
 # kbuild_include_directories(dir1 .. dirn)
 macro(kbuild_include_directories)
@@ -263,44 +282,77 @@ macro(kbuild_add_definitions)
 endmacro(kbuild_add_definitions)
 
 # Internal functions
-# List common files, created by kbuild
-macro(_kbuild_add_clean_files_common clean_files_list)
-	list(APPEND ${clean_files_list}
-		"${CMAKE_CURRENT_BINARY_DIR}/.tmp_versions"
-		"${CMAKE_CURRENT_BINARY_DIR}/modules.order" 
-		"${CMAKE_CURRENT_BINARY_DIR}/Module.markers")
-endmacro(_kbuild_add_clean_files_common clean_files_list)
-# List common files, created by kbuild when built only object
-macro(_kbuild_add_clean_files_object clean_files_list)
-	list(APPEND ${clean_files_list}
-		"${CMAKE_CURRENT_BINARY_DIR}/built-in.o"
-		"${CMAKE_CURRENT_BINARY_DIR}/.built-in.o.cmd" 
-		"${CMAKE_CURRENT_BINARY_DIR}/Module.markers")
 
-endmacro(_kbuild_add_clean_files_object clean_files_list)
-# List module name-depended files, created by kbuild
-macro(_kbuild_add_clean_files_module name clean_files_list)
-	foreach(created_file
-		"${name}.o" "${name}.mod.c" "${name}.mod.o"
-		".${name}.ko.cmd" ".${name}.mod.o.cmd" ".${name}.o.cmd")
-		list(APPEND ${clean_files_list}
-			"${CMAKE_CURRENT_BINARY_DIR}/${created_file}")
-	endforeach(created_file
-			"${name}.o" "${name}.mod.c" "${name}.mod.o"
-		".${name}.ko.cmd" ".${name}.mod.o.cmd" ".${name}.o.cmd")
-	string(REPLACE ";" "      " clean_files_list_str ${clean_files_list})
-endmacro(_kbuild_add_clean_files_module module_name clean_files_list)
-# List files, created when kbuild compile c-files into o-files
-macro(_kbuild_add_clean_files_c c_source_noext_abs clean_files_list)
-	string(REGEX MATCH "^(.+/)([^/]+)" _kbuild_correct_filename ${c_source_noext_abs})
-	if(NOT _kbuild_correct_filename)
-		message(FATAL_ERROR "Incorrect format of filename: '${c_source_noext}'")
-	endif(NOT _kbuild_correct_filename)
-	set(_kbuild_dir_part ${CMAKE_MATCH_1})
-	set(_kbuild_name ${CMAKE_MATCH_2})
-	foreach(created_file "${_kbuild_name}.o" ".${_kbuild_name}.o.cmd"
-		".${_kbuild_name}.o.d" #this file is exist in case of unsuccessfull build
-		)
-		list(APPEND ${clean_files_list} "${_kbuild_dir_part}${created_file}")
-	endforeach(created_file "${_kbuild_name}.o" ".${_kbuild_name}.o.cmd")
-endmacro(_kbuild_add_clean_files_c c_source_noext_abs clean_files_list)
+# _kbuild_module_clean_files(module_name
+# 	[C_SOURCE c_source_noext_abs...]
+#	[SHIPPED_SOURCE shipped_source_noext_abs ...])
+#
+# Tell CMake that intermediate files, created by kbuild system,
+# should be cleaned with 'make clean'.
+
+function(_kbuild_module_clean_files module_name)
+	# List common files(names only) for cleaning
+	set(common_files_names
+		"built-in.o"
+		".built-in.o.cmd"
+		"Module.markers")
+	# List module name-depended files(extensions only) for cleaning
+	set(name_files_ext
+		".o"
+		".mod.c"
+		".mod.o")
+	# Same but files started with dot ('.').
+	set(name_files_dot_ext
+		".ko.cmd"
+		".mod.o.cmd"
+		".o.cmd")
+	# List source name-depended files(extensions only) for cleaning
+	set(source_name_files_ext
+		".o")
+	# Same but files started with dot ('.')/
+	set(source_name_files_dot_ext
+		".o.cmd"
+		".o.d")
+	
+	# Now collect all sort of files into list
+	set(files_list)
+
+	foreach(name ${common_files_names})
+		list(APPEND files_list "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+	endforeach(name ${common_files_names})
+	
+	foreach(ext ${name_files_ext})
+		list(APPEND files_list
+			"${CMAKE_CURRENT_BINARY_DIR}/${module_name}${ext}")
+	endforeach(ext ${name_files_ext})
+	
+	foreach(ext ${name_files_dot_ext})
+		list(APPEND files_list
+			"${CMAKE_CURRENT_BINARY_DIR}/.${module_name}${ext}")
+	endforeach(ext ${name_files_ext})
+	
+	# State variable for parse argument list
+	set(state "None")
+	
+	foreach(arg ${ARGN})
+		if(arg STREQUAL "C_SOURCE")
+			set(state "C")
+		elseif(arg STREQUAL "SHIPPED_SOURCE")
+			set(state "SHIPPED")
+		elseif(state STREQUAL "C" OR state STREQUAL "SHIPPED")
+			# Both type of sources are processes similarly
+			# Parse filename to dir and name(without extension)
+			file_components(${arg} DIR dir NOTDIR name)
+			foreach(ext ${source_name_files_ext})
+				list(APPEND files_list "${dir}${name}${ext}")
+			endforeach(ext ${source_name_files_ext})
+			foreach(ext ${source_name_files_dot_ext})
+				list(APPEND files_list "${dir}.${name}${ext}")
+			endforeach(ext ${source_name_files_ext})
+		else(arg STREQUAL "C_SOURCE")
+			message(FATAL "Unexpected argument: ${arg}")
+		endif(arg STREQUAL "C_SOURCE")
+	endforeach(arg ${ARGN})
+	# Tell CMake that given files should be cleaned.
+	set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${files_list}")
+endfunction(_kbuild_module_clean_files module_name)

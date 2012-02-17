@@ -3,8 +3,11 @@
 # Name of the module.
 #
 # Used in unit testing.
-# May be moved upper for integration system testing(as whole).
-set(event_collector_module_name "kedr_event_collector")
+# Also is used for test trace sender module.
+set(event_collector_module_name "kedr_event_collector" CACHE INTERNAL
+	"Name of the event collector module")
+set(event_collector_module_dir "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL
+	"Directory where event collector module is placed")
 
 set(KMODULE_NAME ${event_collector_module_name})
 

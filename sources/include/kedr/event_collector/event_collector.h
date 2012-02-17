@@ -187,7 +187,7 @@ static inline void record_memory_accesses_end(void* key)
 }
 
 /* Shortcat for one memory access */
-void record_memory_access_one(
+static inline void record_memory_access_one(
     tid_t tid, addr_t pc,
     addr_t addr, unsigned long size, enum kedr_memory_event_type type)
 {
