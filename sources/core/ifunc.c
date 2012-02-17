@@ -146,7 +146,7 @@ static void *
 fallback_address(void *orig_addr, void *orig_area, void *fallback_area)
 {
 	return (void *)((unsigned long)fallback_area +
-		((unsigned long)addr - (unsigned long)orig_area));
+		((unsigned long)orig_addr - (unsigned long)orig_area));
 }
 
 /* Prepares the structures needed to instrument the given function.
