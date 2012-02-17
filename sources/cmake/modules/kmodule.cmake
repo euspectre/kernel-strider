@@ -16,29 +16,34 @@ endif (CMAKE_CROSSCOMPILING)
 
 # kmodule_try_compile(RESULT_VAR bindir srcfile
 #           [COMPILE_DEFINITIONS flags]
-#           [OUTPUT_VARIABLE var])
+#           [OUTPUT_VARIABLE var]
+#			[COPY_FILE filename])
 
 # Similar to try_module in simplified form, but compile srcfile as
 # kernel module, instead of user space program.
 
 function(kmodule_try_compile RESULT_VAR bindir srcfile)
-	set(is_compile_definitions_current "FALSE")
-	set(is_output_var_current "FALSE")
 	to_abs_path(src_abs_path "${srcfile}")
+	# State for parse argument list
+	set(state "None")
 	foreach(arg ${ARGN})
 		if(arg STREQUAL "COMPILE_DEFINITIONS")
-			set(is_compile_definitions_current "TRUE")
-			set(is_output_var_current "FALSE")
+			set(state "COMPILE_DEFINITIONS")
 		elseif(arg STREQUAL "OUTPUT_VARIABLE")
-			set(is_compile_definitions_current "FALSE")
-			set(is_output_var_current "TRUE")
-		elseif(is_compile_definitions_current)
+			set(state "OUTPUT_VARIABLE")
+		elseif(arg STREQUAL "COPY_FILE")
+			set(state "COPY_FILE")
+		elseif(state STREQUAL "COMPILE_DEFINITIONS")
 			set(kmodule_cflags "${kmodule_cflags} ${arg}")
-		elseif(is_output_var_current)
+		elseif(state STREQUAL "OUTPUT_VARIABLE")
 			set(output_variable "${arg}")
+			set(state "None")
+		elseif(state STREQUAL "COPY_FILE")
+			set(copy_file_variable "${arg}")
+			set(state "None")
 		else(arg STREQUAL "COMPILE_DEFINITIONS")
 			message(FATAL_ERROR 
-				"Unknown parameter passed to kmodule_try_compile: '${arg}'."
+				"Unexpected parameter passed to kmodule_try_compile: '${arg}'."
 			)
 		endif(arg STREQUAL "COMPILE_DEFINITIONS")
 	endforeach(arg ${ARGN})
@@ -51,6 +56,9 @@ function(kmodule_try_compile RESULT_VAR bindir srcfile)
 	if(DEFINED kmodule_cflags)
 		list(APPEND cmake_params "-Dkmodule_flags=${kmodule_cflags}")
 	endif(DEFINED kmodule_cflags)
+	if(copy_file_variable)
+		list(APPEND cmake_params "-DCOPY_FILE=${copy_file_variable}")
+	endif(copy_file_variable)
 
 	if(DEFINED output_variable)
 		try_compile(result_tmp "${bindir}"

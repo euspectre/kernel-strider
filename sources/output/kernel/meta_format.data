@@ -1,0 +1,4 @@
+uuid_str = %8d-%4d-%4d-%4d-%4d%8d
+machine_type_declaration = x86
+pointer_bits_declaration = 32
+pointer_bits=32
