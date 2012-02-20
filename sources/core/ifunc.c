@@ -561,11 +561,11 @@ find_functions(struct kedr_i13n *i13n)
 		"No functions found in \"%s\" that can be instrumented\n",
 			module_name(target));
 	}
-	else {
+	/*else {
 		pr_info(KEDR_MSG_PREFIX 
 		"Number of functions to be instrumented in \"%s\": %u\n",
 			module_name(target), i13n->num_ifuncs);
-	}
+	}*/
 	return 0;
 out:
 	/* If an error occured above, some elements might still have been
