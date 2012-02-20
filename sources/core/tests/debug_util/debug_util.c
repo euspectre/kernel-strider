@@ -13,6 +13,9 @@
 #include "debug_util.h"
 /* ====================================================================== */
 
+#define KEDR_DBG_PREFIX "[kedr-debug]"
+/* ====================================================================== */
+
 /* The file for debug output. */
 struct dentry *debug_out_file = NULL;
 const char *debug_out_name = "output";
@@ -107,7 +110,7 @@ output_buffer_resize(struct debug_output_buffer *ob, size_t new_size)
 		DEBUG_OUTPUT_BUFFER_SIZE;
 	p = vmalloc(size);
 	if (p == NULL) {
-		pr_err("[sample] output_buffer_resize: "
+		pr_err(KEDR_DBG_PREFIX "output_buffer_resize: "
 	"not enough memory to resize the output buffer to %zu bytes\n",
 			size);
 		return -ENOMEM;
@@ -218,7 +221,7 @@ debug_read_common(struct file *filp, char __user *buf, size_t count,
 
 	if (mutex_lock_killable(ob->lock) != 0)
 	{
-		pr_warning("[sample] debug_read_common: "
+		pr_warning(KEDR_DBG_PREFIX "debug_read_common: "
 			"got a signal while trying to acquire a mutex.\n");
 		return -EINTR;
 	}
@@ -267,7 +270,7 @@ debug_util_init(struct dentry *debugfs_dir_dentry)
 	
 	ret = output_buffer_init(&output_buffer);
 	if (ret != 0) {
-		pr_err("[sample] "
+		pr_err(KEDR_DBG_PREFIX
 			"failed to create the output buffer\n");
 		goto out;
 	}
@@ -275,7 +278,7 @@ debug_util_init(struct dentry *debugfs_dir_dentry)
 	debug_out_file = debugfs_create_file(debug_out_name, S_IRUGO,
 		debugfs_dir_dentry, NULL, &fops_output_ro);
 	if (debug_out_file == NULL) {
-		pr_err("[sample] "
+		pr_err(KEDR_DBG_PREFIX
 			"failed to create output file in debugfs\n");
 		ret = -EINVAL;
 		goto out_free_buf;
@@ -314,7 +317,7 @@ debug_util_print_string(const char *s)
     
 	if (mutex_lock_killable(output_buffer.lock) != 0)
 	{
-		pr_warning("[sample] debug_util_print_string: "
+		pr_warning(KEDR_DBG_PREFIX "debug_util_print_string: "
 			"got a signal while trying to acquire a mutex.\n");
 		return;
 	}
@@ -331,7 +334,7 @@ debug_util_print_raw_bytes(const void *bytes, unsigned int count)
     
 	if (mutex_lock_killable(output_buffer.lock) != 0)
 	{
-		pr_warning("[sample] debug_util_print_raw_bytes: "
+		pr_warning(KEDR_DBG_PREFIX "debug_util_print_raw_bytes: "
 			"got a signal while trying to acquire a mutex.\n");
 		return;
 	}
@@ -352,7 +355,7 @@ debug_util_print_u64(u64 data, const char *fmt)
 	len = snprintf(&one_char[0], 1, fmt, data);
 	buf = (char *)kzalloc(len + 1, GFP_KERNEL);
 	if (buf == NULL) {
-		pr_err("[sample] debug_util_print_u64: "
+		pr_err(KEDR_DBG_PREFIX "debug_util_print_u64: "
 		"not enough memory to prepare a message of size %d\n",
 			len);
 		return;
@@ -380,7 +383,7 @@ debug_util_print_hex_bytes(const void *bytes, unsigned int count)
 	
 	if (mutex_lock_killable(output_buffer.lock) != 0)
 	{
-		pr_warning("[sample] debug_util_print_hex_bytes: "
+		pr_warning(KEDR_DBG_PREFIX "debug_util_print_hex_bytes: "
 			"got a signal while trying to acquire a mutex.\n");
 		return;
 	}
