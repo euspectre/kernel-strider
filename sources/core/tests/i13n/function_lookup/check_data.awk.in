@@ -1,0 +1,270 @@
+#!/bin/awk -f
+# check_data.awk
+# 
+# This script checks if the information that the test module collected 
+# about the functions in the target module is correct. 
+# 
+# Usage: 
+#   awk -f check_data.awk <found_info_file>
+# 
+# <found_info_file> is the file containing the information obtained by
+# the test module. Each function found in the target module should be 
+# recorded there in the following format:
+#	<name> <size> <section_name> <offset_in_section>
+# "<name>" and "<section_name>" are strings, "<size>" is a decimal, 
+# "<offset_in_section>" is a hexadecimal number w/o leading zeros (it can
+# also be treated as a string).
+########################################################################
+
+function load_section_names(  sections_file, ret, str, parts) 
+{
+	sections_file = "@KEDR_TEST_TEMP_DIR@/sections.txt"
+	delete section_names
+	
+	ret = 0
+	do {
+		str = ""
+		ret = getline str < sections_file
+		if (str == "") {
+			break
+		}
+		sub("^[ \\t\\[]+", "", str)
+		split(str, parts, "[ \\t\\[\\]]+")
+		if (parts[1] == "" || parts[2] == "") {
+			printf("Unexpected line in sections.txt: \"%s\"\n", str) > "/dev/stderr"
+			close(sections_file)
+			error_occurred = 1
+			exit 1
+		}
+		section_names[parts[1]] = parts[2];
+	} 
+	while (ret == 1)
+	close(sections_file)
+}
+
+function load_data_header(  header_file, str, parts, i)
+{
+	header_file = "@KEDR_TEST_TEMP_DIR@/header.txt"
+	
+	# Indices of the columns we need
+	idx_value = -1;
+	idx_size = -1;
+	idx_type = -1;
+	idx_ndx = -1;
+	idx_name = -1;
+	
+	str = ""
+	getline str < header_file
+	close(header_file)
+	if (str == "") {
+		printf("Failed to read data header from \"%s\"\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	
+	str = tolower(str)
+	sub("^[ \\t]+", "", str)
+	split(str, parts, "[ \\t]+")
+	for (i in parts) {
+		if (parts[i] == "value") {
+			idx_value = i
+		}
+		else if (parts[i] == "size") {
+			idx_size = i
+		}
+		else if (parts[i] == "type") {
+			idx_type = i
+		}
+		else if (parts[i] == "ndx") {
+			idx_ndx = i
+		}
+		else if (parts[i] == "name") {
+			idx_name = i
+		}
+	}
+	
+	if (idx_value == -1) {
+		printf("Unable to find column \"Value\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_size == -1) {
+		printf("Unable to find column \"Size\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_type == -1) {
+		printf("Unable to find column \"Type\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_ndx == -1) {
+		printf("Unable to find column \"Ndx\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_name == -1) {
+		printf("Unable to find column \"Name\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+}
+
+# 'readelf' outputs "Value" field as a hex value with leading zeros. 
+# Remove these zeros (except the last one for 0x0).
+function make_func_offset(s,  offset)
+{
+	offset = s
+	sub("^0+", "", offset)
+	if (offset == "") {
+		offset = "0"
+	}
+	return offset
+}
+
+function load_expected_data(  data_file, ret, str, parts, name)
+{
+	data_file = "@KEDR_TEST_TEMP_DIR@/data.txt"
+	delete func_found
+	delete func_section
+	delete func_size
+	delete func_offset
+	
+	ret = 0
+	do {
+		str = ""
+		ret = getline str < data_file
+		if (str == "") {
+			break
+		}
+		sub("^[ \\t]+", "", str)
+		split(str, parts, "[ \\t]+")
+		if (parts[idx_type] != "FUNC") {
+			continue
+		}
+		if (parts[idx_name] == "" || parts[idx_value] == "" ||
+			parts[idx_size] == "" || parts[idx_ndx] == "") {
+			printf("Unexpected line in data.txt: \"%s\"\n", str) > "/dev/stderr"
+			close(data_file)
+			error_occurred = 1
+			exit 1
+		}
+		
+		name = parts[idx_name]
+		func_found[name] = 0
+		
+		if (!(parts[idx_ndx] in section_names)) {
+			printf("Unknown section index (%s) in data.txt, line: \"%s\"\n", 
+				parts[idx_ndx], str) > "/dev/stderr"
+			close(data_file)
+			error_occurred = 1
+			exit 1
+		}
+		func_section[name] = section_names[parts[idx_ndx]]
+		func_size[name] = parts[idx_size]
+		func_offset[name] = make_func_offset(parts[idx_value])
+	} 
+	while (ret == 1)
+	close(data_file)
+}
+
+BEGIN {
+	error_occurred = 0
+	
+	# Size of 'jmp near' on x86
+	size_of_jump = 5
+	
+	load_section_names()
+	load_data_header()
+	load_expected_data()
+}
+
+/^.+$/ {
+	split($0, fields)
+	name = fields[1]
+	size = fields[2]
+	section = fields[3]
+	offset = fields[4]
+	
+	if (!(name in func_found)) {
+		printf("The core have found an unknown function in the target: \"%s\".\n",
+			name) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	func_found[name] = 1
+	
+	# [NB] The core may not recognize the trailing nops as a padding. But 
+	# according to the data in the .ko file of the target, these nops do not
+	# actually belong to the function. Therefore, the core may report the 
+	# larger size than the real value and it is acceptable. 
+	# On the other hand, if the reported size is less than expected, it is
+	# definitely an error.
+	if (size < func_size[name]) {
+		printf("The core have found the size of \"%s\" to be %d but it should be %d.\n",
+			name, size, func_size[name]) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	
+	if (size < size_of_jump) {
+		printf("The core considers function \"%s\" instrumentable but it is too small (its size is %d).\n",
+			name, size) > "/dev/stderr"
+		error_occurred = 1
+		exit 1	
+	}
+	
+	if (section != func_section[name] || offset != func_offset[name]) {
+		printf("The core have found \"%s\" at %s+0x%s but it should be at %s+0x%s.\n",
+			name, section, offset, func_section[name], func_offset[name]) > "/dev/stderr"
+		error_occurred = 1
+		exit 1	
+	}
+}
+
+# Returns 1 if there is an alias for the function with the given name 
+# and that alias has been found in the target by the core, 0 otherwise.
+#
+# An alias is a function with a different name but located at the same 
+# address (i.e., the section and the offset in it are the same). That is,
+# a function looks like it has more than one name.
+function alias_found(func_name,  section, offset, n)
+{
+	section = func_section[func_name]
+	offset = func_offset[func_name]
+	
+	for (n in func_found) {
+		if (n != func_name && func_section[n] == section && 
+			func_offset[n] == offset && func_found[n] == 1) {
+			return 1
+		}
+	}
+	return 0
+}
+
+END {
+	if (error_occurred != 0) {
+		exit 1
+	}
+	
+	# Check if the core has found all instrumentable functions in the target
+	for (name in func_found) {
+		if (func_found[name] != 1 && func_size[name] >= size_of_jump && 
+			alias_found(name) == 0) {
+			printf("The core failed to find function \"%s\".\n", name)  > "/dev/stderr"
+			exit 1
+		}
+	}
+	
+	# Check that if a function has aliases, no more than one alias 
+	# has been considered instrumentable.
+	for (name in func_found) {
+		if (func_found[name] == 1 && alias_found(name) == 1) {
+			printf("The core has reported more than one alias for function ")
+			printf("\"%s\" as instrumentable.\n", name)  > "/dev/stderr"
+			exit 1
+		}
+	}
+	exit 0
+}
+

@@ -1,0 +1,224 @@
+#!/bin/sh
+
+########################################################################
+# This test checks function lookup subsystem
+# 
+# Usage: 
+#   sh test.sh <short_name_of_target>
+#
+# The script expects the target module to be named 
+# "kedr_<short_name_of_target>" and to be located in 
+# "<TOP_BINARY_DIR>/tests/<short_name_of_target>/"
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+    if test ! -f "${CORE_MODULE}"; then
+        printf "The core module is missing: ${CORE_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TEST_MODULE}"; then
+        printf "The test module is missing: ${TEST_MODULE}\n"
+        exit 1
+    fi
+    
+    if test ! -f "${TARGET_MODULE}"; then
+        printf "The target module is missing: ${TARGET_MODULE}\n"
+        exit 1
+    fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+    cd "${WORK_DIR}"
+    
+    lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TARGET_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${TEST_MODULE_NAME}"
+    fi
+    
+    lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+    if test $? -eq 0; then
+        /sbin/rmmod "${CORE_MODULE_NAME}"
+    fi
+}
+
+########################################################################
+# getInfoFromCore() - get the information about the functions in the 
+# target module from KernelStrider core and save it to ${TEST_FILE_FOUND}. 
+# The required modules are loaded and unloaded as needed.
+########################################################################
+getInfoFromCore()
+{
+    /sbin/insmod "${CORE_MODULE}" \
+        target_name="${TARGET_MODULE_NAME}" \
+        umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+    /sbin/insmod "${TEST_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the test module\n"
+        cleanupAll
+        exit 1
+    fi
+    
+    /sbin/insmod "${TARGET_MODULE}"
+    if test $? -ne 0; then
+        printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+	# Save the information about the function of the target obtained by 
+	# the test module.
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		rm -rf "${TEST_TMP_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	cat "${TEST_DEBUGFS_FILE}" > "${TEST_FILE_FOUND}"	
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		rm -rf "${TEST_TMP_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	# Unload the modules, they are no longer needed
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    /sbin/rmmod "${TEST_MODULE_NAME}"
+    if test $? -ne 0; then
+        printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
+        cleanupAll
+        exit 1
+    fi
+
+    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+
+########################################################################
+# getInfoFromKoFile() - get the information about  the functions in the
+# target module from the .ko file of that module and save it to 
+# appropriate files:
+# - ${TEST_FILE_SECTIONS} - information about the sections, it is needed 
+#	to be able to determine name of a section by its index;
+# - ${TEST_FILE_HEADER} - the header line that readelf outputs for the
+# 	information about symbols, it is needed to determine the meaning of
+# 	each column;
+# - ${TEST_FILE_DATA} - the information about the symbols.
+########################################################################
+getInfoFromKoFile()
+{
+	readelf -SW "${TARGET_MODULE}" | grep -E '^\s*\[\s*[0-9]+\]' > \
+		"${TEST_FILE_SECTIONS}"
+	if test $? -gt 1; then
+		printf "Failed to obtain information about the sections of the target.\n"
+		exit 1
+	fi
+	
+	readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
+	if test $? -gt 1; then
+		printf "Failed to obtain the list of columns in the symbol table data.\n"
+		exit 1
+	fi
+	
+	readelf -sW "${TARGET_MODULE}" | grep -E '^\s*[0-9]+\s*:' > "${TEST_FILE_DATA}"
+	if test $? -gt 1; then
+		printf "Failed to obtain the symbol table data.\n"
+		exit 1
+	fi
+}
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	getInfoFromCore
+    getInfoFromKoFile
+    
+    # [NB] Other necesary files will be loaded by this AWK script 
+    # automatically.
+    LC_ALL=C awk -f "${SCRIPT_DIR}/check_data.awk" "${TEST_FILE_FOUND}"
+    if test $? -ne 0; then
+    	printf "Errors have been detected when comparing the actual and "
+    	printf "the expected data.\n"
+    	exit 1
+    fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 1; then
+    printf "Usage: $0 <short_name_of_target>"
+    exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TEST_MODULE_NAME="test_function_lookup"
+TEST_MODULE="test_module/${TEST_MODULE_NAME}.ko"
+
+TARGET_SHORT_NAME=$1
+TARGET_MODULE_NAME="kedr_${TARGET_SHORT_NAME}"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/${TARGET_SHORT_NAME}/${TARGET_MODULE_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/${TEST_MODULE_NAME}/output"
+
+TEST_FILE_FOUND="${TEST_TMP_DIR}/found.txt"
+TEST_FILE_SECTIONS="${TEST_TMP_DIR}/sections.txt"
+TEST_FILE_HEADER="${TEST_TMP_DIR}/header.txt"
+TEST_FILE_DATA="${TEST_TMP_DIR}/data.txt"
+
+SCRIPT_DIR="@CMAKE_CURRENT_BINARY_DIR@"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Test module: ${TEST_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+    printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
