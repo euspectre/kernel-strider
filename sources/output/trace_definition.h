@@ -259,17 +259,17 @@ typedef unsigned long __bitwise __be_size;
 typedef unsigned long __bitwise __be_tid;
 
 #ifdef CONFIG_X86_64
-static __u64 hton_addr(__u64 val)
+static inline __u64 hton_addr(__u64 val)
 {
     union
     {
-        __u64 result;
-        __u32 words[2];
-    };
-    words[0] = htonl(val >> 32);
-    words[1] = htonl(val & 0xffffffff);
+        __u64 qword;
+        __u32 dwords[2];
+    }result;
+    result.dwords[0] = htonl(val >> 32);
+    result.dwords[1] = htonl(val & 0xffffffff);
     
-    return result;
+    return result.qword;
 }
 #else /* CONFIG_X86_32 */
 #define hton_addr(val) htonl(val)
