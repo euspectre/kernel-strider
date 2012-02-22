@@ -58,9 +58,8 @@ struct kedr_local_storage
 	unsigned long values[KEDR_MAX_LOCAL_VALUES];
 	
 	/* "Thread ID", a unique number identifying the thread this storage
-	 * belongs to. As far as interrupt handlers are concerned, 'tid' can
-	 * be chosen in many ways, e.g. it could be the number of the CPU
-	 * the handler is running on, or may be something else. */
+	 * belongs to. The interrupt handlers also have thread IDs, 
+	 * different from the IDs of the "ordinary" threads. */
 	unsigned long tid;
 	
 	/* Needed for CMPXCHG* because it is not clear for these 

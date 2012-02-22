@@ -8,7 +8,7 @@
 struct module;
 
 /* The meaning of the arguments:
- *	user_data - the pointer passed during registration
+ *	eh - the pointer passed during registration
  *	target_module - the target module
  *	tid - ID of the relevant thread
  *	func - address of the original function

@@ -20,7 +20,7 @@ struct kedr_mem_event
 	 * events that did not actually happen because this structure is 
 	 * filled at the instrumentation phase and should be read-only in
 	 * runtime. Something in the local storage should be used for that 
-	 * purpose (e.g., the address of the acessed memory area). */
+	 * purpose (e.g., the address of the accessed memory area). */
 	unsigned long pc;
 	
 	/* Size of the accessed memory area, in bytes. Remains 0 for string 
@@ -28,7 +28,7 @@ struct kedr_mem_event
 	unsigned long size; 
 };
 
-/* Information about a block of code known at the instrumentation phase. 
+/* Information known at the instrumentation phase about a block of code. 
  * The data known only in runtime should go to the local_storage, etc.
  * [NB] A locked operation or an I/O operation that accesses memory is
  * likely to be alone in the block (such operation a memory barrier among 

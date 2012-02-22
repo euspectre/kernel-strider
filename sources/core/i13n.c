@@ -24,6 +24,7 @@
 #include "module_ms_alloc.h"
 #include "i13n.h"
 #include "ifunc.h"
+#include "util.h"
 /* ====================================================================== */
 
 static void
@@ -85,12 +86,67 @@ no_mem:
 /* ====================================================================== */
 
 // TODO
+
+/* Creates an instrumented instance of function specified by 'func' and 
+ * prepares the corresponding fallback function for later usage. Note that
+ * this function does not prepare jump tables for the fallback instance. */
+static int
+do_process_function(struct kedr_ifunc *func, struct kedr_i13n *i13n)
+{
+	BUG_ON(func == NULL || func->addr == NULL);
+	
+	/* Small functions should have been removed from the list */
+	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
+	
+	// TODO
+	return 0;
+}
+/* ====================================================================== */
+
+/* Computes the needed size of the detour buffer (the instrumented instances
+ * of the functions must have been prepared by this time) and allocates the 
+ * buffer. */
+static int 
+create_detour_buffer(struct kedr_i13n *i13n)
+{
+	// TODO
+	return 0;
+}
+/* ====================================================================== */
+
+/* Deploys the instrumented code of each function to an appropriate place in
+ * the detour buffer. Releases the temporary buffer and sets 'i_addr' to the
+ * final address of the instrumented instance. */
+static void
+deploy_instrumented_code(struct kedr_i13n *i13n)
+{
+	// TODO
+}
+/* ====================================================================== */
+
+/* Fix up the jump tables for the given function so that the fallback 
+ * instance could use them. */
+static void
+fixup_fallback_jump_tables(struct kedr_ifunc *func, struct kedr_i13n *i13n)
+{
+	// TODO
+}
+/* ====================================================================== */
+
+/* For each original function, place a jump to the instrumented instance at
+ * the beginning and fill the rest with '0xcc' (breakpoint) instructions. */
+static void
+detour_original_functions(struct kedr_i13n *i13n)
+{
+	// TODO
+}
 /* ====================================================================== */
 
 struct kedr_i13n *
 kedr_i13n_process_module(struct module *target)
 {
 	struct kedr_i13n *i13n;
+	struct kedr_ifunc *func;
 	int ret = 0;
 	
 	BUG_ON(target == NULL);
@@ -128,13 +184,44 @@ kedr_i13n_process_module(struct module *target)
 	"Failed to prepare the list of functions to be processed.\n");
 		goto out_free_sections;
 	}
+	/* If there are no instrumentable functions, nothing to do. */
+	if (list_empty(&i13n->ifuncs)) 
+		return i13n;
 	
-	// TODO: initialize other stuff
-	// TODO: perform instrumentation
-	// TODO: create detour buffer and deploy the code
-	return i13n;
-// TODO: more cleanup in error path as needed
+	list_for_each_entry(func, &i13n->ifuncs, list) {
+		ret = do_process_function(func, i13n);
+		if (ret != 0)
+			goto out_free_functions;
+	}
+	
+	/* Calculate the total size of the original functions and of their
+	 * instrumented instances (for statistics). Both values are 
+	 * initially 0. */
+	list_for_each_entry(func, &i13n->ifuncs, list) {
+		i13n->total_size += func->size;
+		i13n->total_i_size += func->i_size;
+	}
+	pr_info(KEDR_MSG_PREFIX "Total size of the functions before "
+		"instrumentation (bytes): %lu, after: %lu\n",
+		i13n->total_size, i13n->total_i_size);
+	
+	ret = create_detour_buffer(i13n);
+	if (ret != 0)
+		goto out_free_functions;
 
+	deploy_instrumented_code(i13n);
+
+	/* At this point, nothing more should fail, so we can finally 
+	 * fixup the jump tables to be applicable for the fallback instances
+	 * rather than for the original one. */
+	list_for_each_entry(func, &i13n->ifuncs, list)
+		fixup_fallback_jump_tables(func, i13n);
+	
+	detour_original_functions(i13n);
+	return i13n;
+
+out_free_functions:
+	kedr_release_functions(i13n);
 out_free_sections:
 	kedr_release_sections(&i13n->sections);
 out_free_fb:

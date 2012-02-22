@@ -36,6 +36,12 @@ struct kedr_i13n
 	 * allocation of the local storage fails. */
 	void *fallback_init_area;
 	void *fallback_core_area;
+	
+	/* Total size of the original instrumentable functions... */
+	unsigned long total_size;
+	
+	/* ...and of their instrumented instances. */
+	unsigned long total_i_size;
 };
 
 /* Create an instrumentation object for the given target module and 
