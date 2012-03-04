@@ -34,11 +34,6 @@
 #include "hooks.h"
 /* ====================================================================== */
 
-/* Common aliases: init and cleanup functions of a module. */
-static const char *name_module_init = "init_module";
-static const char *name_module_exit = "cleanup_module";
-/* ====================================================================== */
-
 /* For a given function, free the structures related to the jump tables for
  * the corresponding instrumented instance.
  * Deallocate and remove all members from 'func->jump_tables' as well. */
@@ -214,9 +209,7 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
 	 * the current symbol belongs to. */
 	if (mod == target && 
 	    name[0] != '\0' && /* skip symbols with empty name */
-	    is_text_address(addr, mod) && 
-	    strcmp(name, name_module_init) != 0 &&  /* skip these aliases */
-	    strcmp(name, name_module_exit) != 0) {
+	    is_text_address(addr, mod)) {
 	 	int ret = do_prepare_function(i13n, name, addr);
 	 	if (ret)
 			return ret;
