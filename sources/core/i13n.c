@@ -158,11 +158,6 @@ kedr_i13n_process_module(struct module *target)
 	i13n->target = target;
 	INIT_LIST_HEAD(&i13n->sections);
 	INIT_LIST_HEAD(&i13n->ifuncs);
-	i13n->num_ifuncs = 0;
-	
-	i13n->detour_buffer = NULL; 
-	i13n->fallback_init_area = NULL;
-	i13n->fallback_core_area = NULL;
 	
 	ret = alloc_fallback_areas(i13n);
 	if (ret != 0) {
