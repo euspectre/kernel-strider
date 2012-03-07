@@ -39,6 +39,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"i13n.c"
 	"ifunc.c"
 	"util.c"
+	"ir.c"
 
 # Headers
 	"core_impl.h"

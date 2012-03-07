@@ -24,7 +24,9 @@
 #include "module_ms_alloc.h"
 #include "i13n.h"
 #include "ifunc.h"
+#include "ir.h"
 #include "util.h"
+#include "hooks.h"
 /* ====================================================================== */
 
 static void
@@ -93,13 +95,35 @@ no_mem:
 static int
 do_process_function(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 {
+	int ret = 0;
+	struct list_head kedr_ir;
+	INIT_LIST_HEAD(&kedr_ir);
+	
 	BUG_ON(func == NULL || func->addr == NULL);
 	
 	/* Small functions should have been removed from the list */
 	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
 	
-	// TODO
-	return 0;
+	ret = kedr_ir_create(func, i13n, &kedr_ir);
+	if (ret != 0)
+		goto out;
+	
+	/* Call the hook if set. */
+	if (core_hooks->on_ir_created != NULL)
+		core_hooks->on_ir_created(core_hooks, i13n, func, &kedr_ir);
+	
+	ret = kedr_ir_instrument(func, &kedr_ir);
+	if (ret != 0)
+		goto out;
+		
+	// TODO: call hook2 if defined
+	
+	// TODO: the rest of processing: prepare the instrumented instance 
+	// from the IR, etc.
+
+out:
+	kedr_ir_destroy(&kedr_ir);
+	return ret;
 }
 /* ====================================================================== */
 

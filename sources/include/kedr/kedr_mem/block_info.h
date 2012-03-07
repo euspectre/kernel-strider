@@ -23,8 +23,10 @@ struct kedr_mem_event
 	 * purpose (e.g., the address of the accessed memory area). */
 	unsigned long pc;
 	
-	/* Size of the accessed memory area, in bytes. Remains 0 for string 
-	 * operations. For these, the size will be determined in runtime. */
+	/* Size of the accessed memory area, in bytes. 
+	 * For string operations, the size of the memory area accessed at a 
+	 * time is stored here, for convenience. The full size of the 
+	 * memory area will be determined in runtime in this case. */
 	unsigned long size; 
 };
 

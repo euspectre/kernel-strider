@@ -6,6 +6,7 @@
 #define HOOKS_H_1203_INCLUDED
 
 struct kedr_i13n;
+struct kedr_ifunc;
 struct module;
 
 /* A collection of callbacks to be called at the particular phases of the 
@@ -16,24 +17,40 @@ struct module;
  * 
  * Any callback can be NULL, which would mean "not set". 
  * 
- * Only one set of hooks can be active at a time. */
+ * Only one set of hooks can be active at a time. 
+ *
+ * In the hooks below, 'i13n' is the corresponding instrumentation object.*/
 struct kedr_core_hooks
 {
 	/* The kernel module that provides the hooks. Most of the time, this
 	 * field should be set to THIS_MODULE. */
 	struct module *owner;
 	
-	/* Called after function lookup has completed. 'i13n' is the 
-	 * corresponding instrumentation object, 'i13n->ifuncs' is the list 
-	 * of kedr_ifunc instances for the functions. */
+	/* Called after function lookup has completed. 
+	 * 'i13n->ifuncs' is the list of kedr_ifunc instances for the 
+	 * functions. */
 	void (*on_func_lookup_completed)(struct kedr_core_hooks *hooks,
 		struct kedr_i13n *i13n);
-		
+	
+	/* Called after the intermediate representation has been prepared 
+	 * for a function. Among other things, the code must have been split
+	 * into blocks and the instances of kedr_block_info structures must
+	 * have been created, where appropriate, by the time this hook is
+	 * called. 
+	 * The hook is called for each function 'func' in 'i13n->ifuncs' 
+	 * list if the IR has been created successfully for 'func'. 
+	 * 
+	 * The hook is allowed to modify the IR and the function object if
+	 * needed. */
+	void (*on_ir_created)(struct kedr_core_hooks *hooks,
+		struct kedr_i13n *i13n, struct kedr_ifunc *func,
+		struct list_head *ir);
+	
 	/* [NB] Add more hooks here as needed */
 };
 
 /* Set the core hooks. If 'hooks' is NULL, the hooks will be reset to their 
- * default. It is not allowed to change hooks if the target module is 
+ * defaults. It is not allowed to change hooks if the target module is 
  * loaded. */
 void
 kedr_set_core_hooks(struct kedr_core_hooks *hooks);

@@ -37,4 +37,8 @@ extern struct kedr_core_hooks *core_hooks;
  * would not change it, it is mainly for testing purposes. */
 extern char *umh_dir;
 
+/* A parameter to specify whether to report memory events for stack 
+ * accesses. */
+extern int process_stack_accesses;
+
 #endif // CORE_IMPL_H_1628_INCLUDED

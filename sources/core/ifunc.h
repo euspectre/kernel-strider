@@ -29,7 +29,7 @@ struct kedr_i13n;
  * must perform some initialization: allocate space for local storage, etc.
  * If this fails (e.g., in low memory conditions), the instrumented instance
  * cannot be used. But the original instance cannot be used either: during
- * the instrumentation a was placed at its beginning. After all the 
+ * the instrumentation a jump was placed at its beginning. After all the 
  * notifications about the loading of the target module had been processed,
  * the module loader might have made the code of the target module read only
  * ("RO/NX" protection). Therefore, we cannot restore the original instance 

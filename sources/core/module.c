@@ -50,6 +50,21 @@ module_param(target_name, charp, S_IRUGO);
  * would not change it, it is mainly for testing purposes. */
 char *umh_dir = KEDR_UM_HELPER_PATH;
 module_param(umh_dir, charp, S_IRUGO);
+
+/* This parameter controls whether to track memory accesses that actually
+ * read and/or modify data on stack. Namely, if this parameter is zero,
+ * - the instructions of type E and M that refer to memory relative to %rsp
+ * are not tracked;
+ * - the memory events may also be filtered out in runtime if the 
+ * corresponding instructions access the stack only (even if not using %rsp-
+ * based addressing). [TODO]
+ * 
+ * Note that PUSH/POP %reg instructions are currently not processed as 
+ * memory events even if this parameter is non-zero and so are the stack 
+ * accesses from PUSH/POP <expr> (but the normal rules apply to the access
+ * via <expr> in case of these instructions). */
+int process_stack_accesses = 0;
+module_param(process_stack_accesses, int, S_IRUGO);
 /* ====================================================================== */
 
 static struct kedr_event_handlers *eh_default = NULL;
