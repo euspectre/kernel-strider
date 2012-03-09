@@ -58,9 +58,16 @@ debug_util_print_raw_bytes(const void *bytes, unsigned int count);
 void
 debug_util_print_u64(u64 data, const char *fmt);
 
+/* Outputs the given unsigned long value using the specified format string
+ * 'fmt'. The format string must contain "%lu", "%lx" or the like. 
+ * 
+ * This function cannot be used in atomic context. */
+void
+debug_util_print_ulong(unsigned long data, const char *fmt);
+
 /* Outputs a sequence of bytes of length 'count' to a debug 'stream'. 
  * Each byte is output as a hex number, the consecutive bytes are separated
- * by spaces: 0D FA 7E and so forth.
+ * by spaces, e.g. "0D FA 7E".
  * 
  * The caller must ensure that the memory area pointed to by 'bytes' is at 
  * least 'count' bytes is size.

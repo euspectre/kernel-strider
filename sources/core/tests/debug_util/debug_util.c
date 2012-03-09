@@ -366,6 +366,29 @@ debug_util_print_u64(u64 data, const char *fmt)
 	return;
 }
 
+void
+debug_util_print_ulong(unsigned long data, const char *fmt)
+{
+	char one_char[1]; /* for the 1st call to snprintf */
+	char *buf = NULL;
+	int len;
+
+	BUG_ON(fmt == NULL);
+
+	len = snprintf(&one_char[0], 1, fmt, data);
+	buf = (char *)kzalloc(len + 1, GFP_KERNEL);
+	if (buf == NULL) {
+		pr_err(KEDR_DBG_PREFIX "debug_util_print_ulong: "
+		"not enough memory to prepare a message of size %d\n",
+			len);
+		return;
+	}
+	snprintf(buf, len + 1, fmt, data);
+	debug_util_print_string(buf);
+	kfree(buf);
+	return;
+}
+
 #define NUM_CHARS_HEX_BYTE 2
 void
 debug_util_print_hex_bytes(const void *bytes, unsigned int count)
@@ -388,8 +411,7 @@ debug_util_print_hex_bytes(const void *bytes, unsigned int count)
 		return;
 	}
 	
-	snprintf(buf, NUM_CHARS_HEX_BYTE + 1, fmt, 
-		*((u8 *)bytes));
+	snprintf(buf, NUM_CHARS_HEX_BYTE + 1, fmt, *((u8 *)bytes));
 	output_buffer_append_bytes(&output_buffer, buf, NUM_CHARS_HEX_BYTE);
 	
 	for (i = 1; i < count; ++i) {
