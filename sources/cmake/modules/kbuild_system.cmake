@@ -48,9 +48,9 @@ endfunction(copy_source_to_binary_tree source new_source_var)
 # For each <component>, set RESULT_VAR to corresponded component of filepath.
 #
 # <component> may be:
-#	- DIR: everything until last '/' (including it) if it is.
+#	- DIR: everything until last '/' (including it) if it exists.
 #   - NOTDIR: everything except directory(without '/').
-#	- SUFFIX: last suffix(including '.'), it it is.
+#	- SUFFIX: last suffix(including '.'), if it exists.
 #   - BASENAME: everything without suffix (without '.').
 
 
@@ -83,57 +83,60 @@ function(file_components filepath)
 	endforeach(arg ${ARGN})
 endfunction(file_components filepath)
 
-# kbuild_add_module(name [sources ..])
+# kbuild_add_module(name [sources ...])
 #
-# Build kernel module from sources_files, analogue of add_executable.
+# Build a kernel module from sources_files, similar to add_executable().
 #
-# Sources files are divided into two categories:
-# -Object sources
-# -Other sourses
+# The source files are divided into two categories:
+# - object sources;
+# - other sources.
 #
-# Object sources are thouse sources,
-# which may be used in building kernel module externally.
-# Follow types of object sources are supported now:
-# .c: c-file.
+# Object sources are the sources that can be used when building the kernel 
+# module externally.
+# The following types of object sources are currently supported:
+# .c: a file with the code in C language;
+# .S: a file with the code in assembly language;
 # .o_shipped: shipped file in binary format,
-#             do not require additional preprocessing.
+#             does not require additional preprocessing.
 # 
-# Other sources is treated as only prerequisite of building process.
+# Other sources are treated only as the prerequisites in the build process.
 #
-# Only one call of kbuild_add_module or kbuild_add_objects
+# Only one call to kbuild_add_module() or kbuild_add_objects()
 # is allowed in the CMakeLists.txt.
 #
-# In case when 'sources' omitted, module will be built 
-# from "${name}.c" source.
+# In case when 'sources' are omitted, the module will be built from 
+# "${name}.c" source file.
 
 function(kbuild_add_module name)
     set(symvers_file ${CMAKE_CURRENT_BINARY_DIR}/Module.symvers)
-	#Global target
+	# Global target
 	add_custom_target(${name} ALL
 			DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file})
 	if(kbuild_dependencies_modules)
 		add_dependencies(${name} ${kbuild_dependencies_modules})
 	endif(kbuild_dependencies_modules)
-	#Sources
+	# Sources
 	if(ARGN)
 		set(sources ${ARGN})
 	else(ARGN)
 		set(sources "${CMAKE_CURRENT_BINARY_DIR}/${name}.c")
 	endif(ARGN)
-	#Sources with absolute paths
+	# Sources with absolute paths
 	to_abs_path(sources_abs ${sources})
-	#list of files from which module building is depended
+	# The list of files the building of the module depends on
 	set(depend_files)
-	#Sources of "c" type, but without extension
-	#(for clean files, 
-	#for out-of-source builds do not create files in source tree)
+	# Sources of "c" type, but without extension
+	# (for clean files, 
+	# for out-of-source builds do not create files in source tree)
 	set(c_sources_noext_abs)
-	#Sources of "o_shipped" type, but without extension
+	# The sources with the code in assembly
+	set(asm_sources_noext_abs)
+	# Sources of "o_shipped" type, but without extension
 	set(shipped_sources_noext_abs)
-	# Sort sources and move them into binary tree if needed
+	# Sort the sources and move them into binary tree if needed
 	foreach(source_abs ${sources_abs})
 		file_components(${source_abs} SUFFIX ext)
-		if(ext STREQUAL ".c" OR ext STREQUAL ".o_shipped")
+		if(ext STREQUAL ".c" OR ext STREQUAL ".S" OR ext STREQUAL ".o_shipped")
 			# Real sources
 			# Move source into binary tree, if needed
 			copy_source_to_binary_tree("${source_abs}" source_abs)
@@ -141,16 +144,20 @@ function(kbuild_add_module name)
 				# c-source
 				file_components("${source_abs}" BASENAME c_source_noext_abs)
 				list(APPEND c_sources_noext_abs ${c_source_noext_abs})
+			elseif(ext STREQUAL ".S")
+				# asm source
+				file_components("${source_abs}" BASENAME asm_source_noext_abs)
+				list(APPEND asm_sources_noext_abs ${asm_source_noext_abs})
 			elseif(ext STREQUAL ".o_shipped")
 				# shipped-source
 				file_components("${source_abs}" BASENAME shipped_source_noext_abs)
 				list(APPEND shipped_sources_noext_abs ${shipped_source_noext_abs})
 			endif(ext STREQUAL ".c")
-		endif(ext STREQUAL ".c" OR ext STREQUAL ".o_shipped")
+		endif(ext STREQUAL ".c" OR ext STREQUAL ".S" OR ext STREQUAL ".o_shipped")
 		# In any case, add file to depend list
 		list(APPEND depend_files ${source_abs})
 	endforeach(source_abs ${sources_abs})
-	# Form relative path of the sources
+	# Form the relative paths to the sources
 	#(for $(module)-y :=)
 	set(c_sources_noext_rel)
 	foreach(c_source_noext_abs ${c_sources_noext_abs})
@@ -159,6 +166,13 @@ function(kbuild_add_module name)
 		list(APPEND c_sources_noext_rel ${c_source_noext_rel})
 	endforeach(c_source_noext_abs ${c_sources_noext_abs})
 	
+	set(asm_sources_noext_rel)
+	foreach(asm_source_noext_abs ${asm_sources_noext_abs})
+		file(RELATIVE_PATH asm_source_noext_rel
+			${CMAKE_CURRENT_BINARY_DIR} ${asm_source_noext_abs})
+		list(APPEND asm_sources_noext_rel ${asm_source_noext_rel})
+	endforeach(asm_source_noext_abs ${asm_sources_noext_abs})
+	
 	set(shipped_sources_noext_rel)
 	foreach(shipped_source_noext_abs ${shipped_sources_noext_abs})
 		file(RELATIVE_PATH shipped_source_noext_rel
@@ -166,23 +180,28 @@ function(kbuild_add_module name)
 		list(APPEND shipped_sources_noext_rel ${shipped_source_noext_rel})
 	endforeach(shipped_source_noext_abs ${shipped_sources_noext_abs})
 	
-	# Join all sources for determine type of build(simple or not)
-	set(obj_sources_noext_rel ${c_sources_noext_rel} ${shipped_sources_noext_rel})
+	# Join all sources to determine type of the build (simple or not)
+	set(obj_sources_noext_rel 
+		${c_sources_noext_rel} 
+		${asm_sources_noext_rel} 
+		${shipped_sources_noext_rel})
 
 	if(NOT obj_sources_noext_rel)
-		message(FATAL_ERROR "List of object files for module ${name} is empty.")
+		message(FATAL_ERROR "The list of object files for module \"${name}\" is empty.")
 	endif(NOT obj_sources_noext_rel)
-	#Detect, if build simple - source object name coincide with module name
+	# Detect if the build is simple, i.e the source object name is the same as 
+	# the module name
 	if(obj_sources_noext_rel STREQUAL ${name})
 		set(is_build_simple "TRUE")
 	else(obj_sources_noext_rel STREQUAL ${name})
-		#Detect, if only one of source object names coincide with module name.
-		#This situation is incorrect for kbuild system.
+		# Detect if some of source object names are the same as the module name 
+		# and there are the source object files except these.
+		# This situation is incorrect for kbuild system.
 		list(FIND obj_sources_noext_rel ${name} is_objects_contain_name)
 		if(is_objects_contain_name GREATER -1)
 			message(FATAL_ERROR "Module should be built "
-			"either from only one object with same name, "
-			"or from objects with names different from the name of the module")
+			"either from a single object with same name, "
+			"or from the objects with names different from the name of the module")
 		endif(is_objects_contain_name GREATER -1)
 		set(is_build_simple "FALSE")
 	endif(obj_sources_noext_rel STREQUAL ${name})
@@ -210,15 +229,15 @@ function(kbuild_add_module name)
 		FILE(APPEND "${kbuild_file}" "ccflags-y := ${cflags_string}\n")
     endif(kbuild_cflags OR kbuild_include_dirs)
 
-	#Build kbuild file - module string
+	# Build kbuild file - module string
 	FILE(APPEND "${kbuild_file}" "obj-m := ${name}.o\n")
 
-	#Build kbuild file - object sources string
+	# Build kbuild file - object sources string
 	if(NOT is_build_simple)
 		set(obj_src_string)
-		foreach(obj ${c_sources_noext_rel} ${shipped_sources_noext_rel})
+		foreach(obj ${c_sources_noext_rel} ${asm_sources_noext_rel} ${shipped_sources_noext_rel})
 			set(obj_src_string "${obj_src_string} ${obj}.o")
-		endforeach(obj ${c_sources_noext_rel} ${shipped_sources_noext_rel})
+		endforeach(obj ${c_sources_noext_rel} ${asm_sources_noext_rel}  ${shipped_sources_noext_rel})
 		FILE(APPEND "${kbuild_file}" "${name}-y := ${obj_src_string}\n")
 	endif(NOT is_build_simple)
 	
@@ -228,12 +247,12 @@ function(kbuild_add_module name)
 		set(symvers_command COMMAND cat ${kbuild_symbol_files} >> ${symvers_file})
 		list(APPEND ${depend_files} ${kbuild_symbol_files})
 	endif(kbuild_symbol_files)
-	# Create .cmd files for 'shipped' sources - gcc do not create them
+	# Create .cmd files for 'shipped' sources - gcc does not create them
 	# automatically for some reason
 	if(shipped_sources_noext_abs)
 		set(cmd_create_command)
 		foreach(shipped_source_noext_abs ${shipped_source_noext_abs})
-			# Parse filename to dir and name(without extension)
+			# Parse filename to dir and name (without extension)
 			file_components(${shipped_source_noext_abs} DIR _dir NOTDIR _name)
 			list(APPEND cmd_create_command
 				COMMAND printf "cmd_%s.o := cp -p %s.o_shipped %s.o\\n"
@@ -244,7 +263,7 @@ function(kbuild_add_module name)
 		endforeach(shipped_source_noext_abs ${shipped_source_noext_abs})
 	endif(shipped_sources_noext_abs)
 	
-	# Rule for create module
+	# The rule to create module
 	add_custom_command(
 		OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file}
 		${cmd_create_command}
@@ -253,9 +272,10 @@ function(kbuild_add_module name)
 			-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR} modules
 		DEPENDS ${depend_files}
 	)
-	# And clean files
+	# The rule to clean files
 	_kbuild_module_clean_files(${name}
 		C_SOURCE ${c_sources_noext_abs}
+		ASM_SOURCE ${asm_sources_noext_abs}
 		SHIPPED_SOURCE ${shipped_sources_noext_abs})
 endfunction(kbuild_add_module name)
 
@@ -284,32 +304,33 @@ endmacro(kbuild_add_definitions)
 # Internal functions
 
 # _kbuild_module_clean_files(module_name
-# 	[C_SOURCE c_source_noext_abs...]
+# 	[C_SOURCE c_source_noext_abs ...]
+# 	[ASM_SOURCE asm_source_noext_abs ...]
 #	[SHIPPED_SOURCE shipped_source_noext_abs ...])
 #
 # Tell CMake that intermediate files, created by kbuild system,
 # should be cleaned with 'make clean'.
 
 function(_kbuild_module_clean_files module_name)
-	# List common files(names only) for cleaning
+	# List common files (names only) for cleaning
 	set(common_files_names
 		"built-in.o"
 		".built-in.o.cmd"
 		"Module.markers")
-	# List module name-depended files(extensions only) for cleaning
+	# List module name-depending files (extensions only) for cleaning
 	set(name_files_ext
 		".o"
 		".mod.c"
 		".mod.o")
-	# Same but files started with dot ('.').
+	# Same but for the files with names starting with a dot ('.').
 	set(name_files_dot_ext
 		".ko.cmd"
 		".mod.o.cmd"
 		".o.cmd")
-	# List source name-depended files(extensions only) for cleaning
+	# List source name-depending files (extensions only) for cleaning
 	set(source_name_files_ext
 		".o")
-	# Same but files started with dot ('.')/
+	# Same but for the files with names starting with a dot ('.')
 	set(source_name_files_dot_ext
 		".o.cmd"
 		".o.d")
@@ -337,11 +358,13 @@ function(_kbuild_module_clean_files module_name)
 	foreach(arg ${ARGN})
 		if(arg STREQUAL "C_SOURCE")
 			set(state "C")
+		elseif(arg STREQUAL "ASM_SOURCE")
+			set(state "ASM")
 		elseif(arg STREQUAL "SHIPPED_SOURCE")
 			set(state "SHIPPED")
-		elseif(state STREQUAL "C" OR state STREQUAL "SHIPPED")
-			# Both type of sources are processes similarly
-			# Parse filename to dir and name(without extension)
+		elseif(state STREQUAL "C" OR state STREQUAL "ASM" OR state STREQUAL "SHIPPED")
+			# All the types of sources are processed in a similar way
+			# Parse the filename and extract dir and name (without extension)
 			file_components(${arg} DIR dir NOTDIR name)
 			foreach(ext ${source_name_files_ext})
 				list(APPEND files_list "${dir}${name}${ext}")
