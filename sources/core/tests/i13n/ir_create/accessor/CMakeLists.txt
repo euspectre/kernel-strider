@@ -1,4 +1,4 @@
-set(KMODULE_TEST_NAME "test_ir_create_accessor")
+set(KMODULE_TEST_NAME "test_ir_create")
 
 set(KEDR_MSG_PREFIX "[${KMODULE_TEST_NAME}] ")
 

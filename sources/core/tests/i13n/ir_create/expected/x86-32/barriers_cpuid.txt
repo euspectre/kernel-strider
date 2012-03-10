@@ -1,0 +1,21 @@
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 89 E5
+
+0x3: 53
+
+0x4: b8 01 00 00 00
+
+Block (type: 6)
+0x9: 0F A2
+
+Block (type: 2)
+0xb: 5B
+
+0xc: 5D
+
+Block (type: 12)
+0xd: C3
+

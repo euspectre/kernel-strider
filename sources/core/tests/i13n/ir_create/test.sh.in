@@ -1,0 +1,197 @@
+#!/bin/sh
+
+########################################################################
+# This test checks the IR creation subsystem. The IR is dumped for the
+# given function (kedr_test_<short_target_function_name>) of the target
+# module (see TARGET_MODULE below) and compared with the expected dump 
+# line by line. 
+# 
+# Usage: 
+#   sh test.sh <short_target_function_name>
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${ACCESSOR_MODULE}"; then
+		printf "The accessor module is missing: ${ACCESSOR_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${EXPECTED_DUMP_FILE}"; then
+		printf "The file containing the expected IR dump is missing: "
+		printf "${EXPECTED_DUMP_FILE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${ACCESSOR_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${ACCESSOR_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	/sbin/insmod "${ACCESSOR_MODULE}" target_function="${TARGET_FUNCTION}"
+	if test $? -ne 0; then
+		printf "Failed to load the accessor module\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Save the information about the function of the target obtained by 
+	# the test module.
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		rm -rf "${TEST_TMP_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	cat "${TEST_DEBUGFS_FILE}" > "${TEST_DUMP_FILE}"	
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		rm -rf "${TEST_TMP_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	SAVED_DUMP=$(cat "${TEST_DUMP_FILE}")
+	if test -z "${SAVED_DUMP}"; then
+		printf "No data have been obtained for the function ${TARGET_FUNCTION}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Unload the modules, they are no longer needed
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${ACCESSOR_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the test module: ${ACCESSOR_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	
+	# Compare the obtained and the expected data
+	sh "${COMPARE_SCRIPT}" "${EXPECTED_DUMP_FILE}" "${TEST_DUMP_FILE}"
+	if test $? -eq 0; then
+		printf "The obtained IR dump matches the expected one.\n"
+	else
+		printf "Error occurred during the comparison "
+		printf "of the obtained IR dump and the expected one.\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 1; then
+	printf "Usage: $0 <target_function>"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+ACCESSOR_MODULE_NAME="test_ir_create"
+ACCESSOR_MODULE="accessor/${ACCESSOR_MODULE_NAME}.ko"
+
+TARGET_FUNCTION_SHORT=$1
+TARGET_FUNCTION="kedr_test_${TARGET_FUNCTION_SHORT}"
+
+TARGET_MODULE_NAME="test_ir_create_common"
+TARGET_MODULE="target_common/${TARGET_MODULE_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/test_ir_create/output"
+
+TEST_DUMP_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}.txt"
+EXPECTED_DUMP_FILE="@KEDR_TEST_EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}.txt"
+
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Accessor module: ${ACCESSOR_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+printf "Dump file to be saved: ${TEST_DUMP_FILE}\n"
+printf "The file with the expected IR dump: ${EXPECTED_DUMP_FILE}\n"
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

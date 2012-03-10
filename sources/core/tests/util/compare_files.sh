@@ -7,7 +7,7 @@
 # The comparison is case-insensitive.
 #
 # Usage:
-#   compare_files.sh <expected_file> <actual_file>
+#   sh compare_files.sh <expected_file> <actual_file>
 #
 # [NB] '~' will be used internally as a separator by this script, so the 
 # input files should not contain such characters.

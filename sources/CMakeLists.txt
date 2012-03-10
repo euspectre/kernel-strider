@@ -40,6 +40,12 @@ endif ()
 set (ENV{KEDR_ARCH} "${KEDR_ARCH}")
 set (ENV{KEDR_CROSS_COMPILE} "${KEDR_CROSS_COMPILE}")
 
+if (CMAKE_SIZEOF_VOID_P EQUAL 8) 
+	set (KEDR_64_BIT "yes")
+else ()
+	set (KEDR_64_BIT "no")
+endif()
+
 #######################################################################
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 find_package(Kbuild)
