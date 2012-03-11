@@ -393,7 +393,7 @@ debug_util_print_ulong(unsigned long data, const char *fmt)
 void
 debug_util_print_hex_bytes(const void *bytes, unsigned int count)
 {
-	const char *fmt = "%.2hhX";
+	const char *fmt = "%.2hhx";
 	const char *separator = " "; 
 	static char buf[NUM_CHARS_HEX_BYTE + 1];
 	unsigned int i;
