@@ -60,6 +60,7 @@
 #include <linux/list.h>
 
 #include <kedr/kedr_mem/block_info.h>
+#include <kedr/asm/insn.h>
 #include <kedr/object_types.h>
 
 #include "config.h"
@@ -166,6 +167,10 @@ test_on_ir_created(struct kedr_core_hooks *hooks, struct kedr_i13n *i13n,
 	struct kedr_ifunc *func, struct list_head *ir)
 {
 	struct kedr_ir_node *node;
+	u8 buf[X86_MAX_INSN_SIZE];
+	struct insn *insn;
+	u8 *pos;
+	u8 opcode;
 	
 	if (strcmp(target_function, func->name) != 0)
 		return;
@@ -185,8 +190,34 @@ test_on_ir_created(struct kedr_core_hooks *hooks, struct kedr_i13n *i13n,
 
 		debug_util_print_ulong(offset_for_node(func, node), 
 			"0x%lx: ");
-		debug_util_print_hex_bytes(&node->insn_buffer[0], 
-			node->insn.length);
+		memcpy(&buf[0], &node->insn_buffer[0], X86_MAX_INSN_SIZE);
+		insn = &node->insn;
+		opcode = insn->opcode.bytes[0];
+		
+		/* For the indirect near jumps using a jump table, we cannot
+		 * determine the address of the table in advance to prepare 
+		 * the expected dump properly. Let us just put 0 both here
+		 * and in the expected dump. */
+		if (opcode == 0xff && insn->modrm.bytes[0] == 0x24 && 
+		    X86_SIB_BASE(insn->sib.value) == 5) {
+			pos = buf + insn_offset_displacement(&node->insn);
+			*(u32 *)pos = 0;
+		}
+		else if (opcode == 0xe8 || opcode == 0xe9 ||
+		    (opcode == 0x0f && 
+		    (insn->opcode.bytes[1] & 0xf0) == 0x80)) {
+			/* same for the relative near calls and jumps */
+			pos = buf + insn_offset_immediate(&node->insn);
+			*(u32 *)pos = 0;
+		}
+		else if (insn->x86_64 && 
+		    (insn->modrm.bytes[0] & 0xc7) == 0x5) {
+			/* same for the insns with IP-rel. addressing */
+			pos = buf + insn_offset_displacement(&node->insn);
+			*(u32 *)pos = 0;
+		}
+		
+		debug_util_print_hex_bytes(&buf[0], node->insn.length);
 		debug_util_print_string("\n\n");
 	}
 }

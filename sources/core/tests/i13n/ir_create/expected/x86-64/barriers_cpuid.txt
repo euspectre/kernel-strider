@@ -2,20 +2,20 @@ IR:
 Block (type: 2)
 0x0: 55
 
-0x1: 48 89 E5
+0x1: 48 89 e5
 
 0x4: 53
 
-0x5: 48 C7 C0 01 00 00 00
+0x5: 48 c7 c0 01 00 00 00
 
 Block (type: 6)
-0xc: 0F A2
+0xc: 0f a2
 
 Block (type: 2)
-0xe: 5B
+0xe: 5b
 
-0xf: 5D
+0xf: 5d
 
 Block (type: 12)
-0x10: C3
+0x10: c3
 

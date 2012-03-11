@@ -19,6 +19,10 @@ configure_file (
 kedr_test_add_script (mem_core.i13n.ir_create.01
     test.sh "barriers_cpuid"
 )
+
+kedr_test_add_script (mem_core.i13n.ir_create.02
+    test.sh "jump_tables"
+)
 # TODO: more tests
 
 add_subdirectory(accessor)

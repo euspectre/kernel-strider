@@ -1,0 +1,83 @@
+JTable 0 (referrer at 0xb): 0x12, 0x16, 0x12, 0x1a
+JTable 1 (referrer at 0x20): 0x27, 0x2b
+JTable 2 (referrer at 0x39): 0x12, 0x2b, 0x40, 0x44
+
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 89 e5
+
+0x3: 83 ec 10
+
+0x6: 31 c9
+
+0x8: 8d 14 40
+
+Block (type: 10)
+0xb: ff 24 85 00 00 00 00
+
+Block (type: 2)
+0x12: 01 d1
+
+Jump to 0x1e
+0x14: e9 00 00 00 00
+
+Block (type: 2)
+0x16: 19 d1
+
+Jump to 0x1e
+0x18: e9 00 00 00 00
+
+Block (type: 2)
+0x1a: 29 d1
+
+Jump to 0x1e
+0x1c: e9 00 00 00 00
+
+0x1e: 85 c9
+
+Block (type: 10)
+0x20: ff 24 95 00 00 00 00
+
+Block (type: 2)
+0x27: 11 d1
+
+Jump to 0x2d
+0x29: e9 00 00 00 00
+
+Block (type: 2)
+0x2b: 11 c1
+
+0x2d: 85 c9
+
+Jump to 0x38
+0x2f: 0f 84 00 00 00 00
+
+Block (type: 11)
+0x31: ff 24 85 00 00 00 00
+
+Block (type: 2)
+0x38: 48
+
+Block (type: 10)
+0x39: ff 24 85 00 00 00 00
+
+Block (type: 2)
+0x40: 29 d1
+
+Jump to 0x46
+0x42: e9 00 00 00 00
+
+Block (type: 2)
+0x44: 11 d1
+
+0x46: 89 c8
+
+0x48: 83 c4 10
+
+0x4b: 5d
+
+Block (type: 12)
+0x4c: c3
+
