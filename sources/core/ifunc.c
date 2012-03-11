@@ -422,14 +422,19 @@ skip_trailing_zeros(struct kedr_ifunc *func)
 		--func->size;
 }
 
+#define KEDR_NOT_A_NOP ((unsigned long)(-1))
+
 /* If we have skipped too many zeros at the end of the function, that is, 
- * if we have cut off a part of the last instruction, fix it now. */
+ * if we have cut off a part of the last instruction, fix it now. 
+ * In addition, collect information about the trailing nops, these are to
+ * be removed by adjust_size(). */
 static int
-do_adjust_size(struct kedr_ifunc *func, struct insn *insn, void *unused)
+do_adjust_size(struct kedr_ifunc *func, struct insn *insn, void *data)
 {
 	unsigned long start_addr;
 	unsigned long offset_after_insn;
-	
+	unsigned long *nop_pos = (unsigned long *)data;
+		
 	start_addr = (unsigned long)func->addr;
 	offset_after_insn = (unsigned long)insn->kaddr + 
 		(unsigned long)insn->length - start_addr;
@@ -442,7 +447,14 @@ do_adjust_size(struct kedr_ifunc *func, struct insn *insn, void *unused)
 	
 	if (offset_after_insn > func->size)
 		func->size = offset_after_insn;
-
+	
+	if (insn_is_noop(insn)) {
+		if (*nop_pos == KEDR_NOT_A_NOP)
+			*nop_pos = (unsigned long)insn->kaddr;
+	}
+	else {
+		*nop_pos = KEDR_NOT_A_NOP;
+	}
 	return 0; 
 }
 
@@ -451,12 +463,27 @@ do_adjust_size(struct kedr_ifunc *func, struct insn *insn, void *unused)
 static int 
 adjust_size(struct kedr_ifunc *func)
 {
-	BUG_ON(func == NULL);
+	int ret = 0;
+	unsigned long nop_pos = KEDR_NOT_A_NOP;
 	
+	BUG_ON(func == NULL);
 	skip_trailing_zeros(func);
 	if (func->size == 0)
 		return 0;
-	return kedr_for_each_insn_in_function(func, do_adjust_size, NULL);
+	
+	/* 'nop_pos' - the address of the first nop of the last sequence
+	 * of nops in the function. KEDR_NOT_A_NOP if the last processed
+	 * instruction is not a nop. */
+	ret = kedr_for_each_insn_in_function(func, do_adjust_size, 
+		&nop_pos);
+	if (ret != 0)
+		return ret;
+	
+	/* Cut off the trailing nops, if any. */
+	if (nop_pos != KEDR_NOT_A_NOP)
+		func->size = nop_pos - (unsigned long)func->addr;
+
+	return 0;
 }
 
 /* Find the functions in the original code and find the addresses of the 
