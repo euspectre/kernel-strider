@@ -510,6 +510,28 @@ is_insn_call_rel32(struct insn *insn)
 	return (insn->opcode.bytes[0] == 0xe8);
 }
 
+/* Opcodes: FF/3 or 9A */
+static int
+is_insn_call_far(struct insn *insn)
+{
+	u8 opcode = insn->opcode.bytes[0];
+	u8 modrm = insn->modrm.bytes[0];
+	
+	return (opcode == 0x9a || 
+		(opcode == 0xff && X86_MODRM_REG(modrm) == 3));
+}
+
+/* Opcodes: FF/5 or EA */
+static int
+is_insn_jump_far(struct insn *insn)
+{
+	u8 opcode = insn->opcode.bytes[0];
+	u8 modrm = insn->modrm.bytes[0];
+	
+	return (opcode == 0xea || 
+		(opcode == 0xff && X86_MODRM_REG(modrm) == 5));
+}
+
 /* ====================================================================== */
 
 /* A padding byte sequence is "00 00" (looks like "add al, (%rax)"). 
@@ -805,7 +827,8 @@ is_tracked_memory_op(struct insn *insn)
 	/* Filter out indirect jumps and calls first, we do not track these
 	 * memory accesses. */
 	if (is_insn_call_near_indirect(insn) || 
-	    is_insn_jump_near_indirect(insn))
+	    is_insn_jump_near_indirect(insn) ||
+	    is_insn_call_far(insn) || is_insn_jump_far(insn))
 		return 0;
 	
 	if (insn_is_noop(insn))
@@ -1294,6 +1317,12 @@ ir_create_block_info(struct kedr_ifunc *func, struct kedr_ir_node *start,
 		list_add(&bi->list, &func->block_infos);
 	}
 	else {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Unexpected: block of type %u at offset 0x%lx in %s() "
+		"seems to contain tracked memory events.\n",
+			(unsigned int)start->cb_type,
+			start->orig_addr - (unsigned long)func->addr,
+			func->name);
 		BUG(); /* should not get here */
 	}
 	return 0;
