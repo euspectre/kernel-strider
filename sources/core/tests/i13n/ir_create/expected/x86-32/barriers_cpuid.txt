@@ -9,6 +9,7 @@ Block (type: 2)
 0x4: b8 01 00 00 00
 
 Block (type: 6)
+Barrier of type 0
 0x9: 0f a2
 
 Block (type: 2)

@@ -29,6 +29,8 @@
  *			events: 
  *			  (pc_offset1, size1) 
  *			[  (pc_offset2, size2) ...]
+ *	<If the insn is a barrier>
+ *		Barrier of type <N>
  *	<If dest_inner != NULL>
  *		Jump to <offset of 'dest_inner' node>
  * 	<if it is a jump out of the common block with tracked memory events>
@@ -187,7 +189,15 @@ test_on_ir_created(struct kedr_core_hooks *hooks, struct kedr_i13n *i13n,
 				"Jump to 0x%lx\n");
 		if (node->jump_past_last)
 			debug_util_print_string("Jump out of block\n");
-
+		
+		if (node->cb_type == KEDR_CB_LOCKED_UPDATE ||
+		    node->cb_type == KEDR_CB_IO_MEM_OP ||
+		    node->cb_type == KEDR_CB_BARRIER_OTHER) {
+			debug_util_print_ulong(
+				(unsigned long)node->barrier_type,
+				"Barrier of type %lu\n");
+		}
+		
 		debug_util_print_ulong(offset_for_node(func, node), 
 			"0x%lx: ");
 		memcpy(&buf[0], &node->insn_buffer[0], X86_MAX_INSN_SIZE);

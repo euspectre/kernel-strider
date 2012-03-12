@@ -1,0 +1,56 @@
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 48 89 e5
+
+0x4: 48 85 c0
+
+Jump to 0xe
+0x7: 0f 85 00 00 00 00
+
+0x9: 48 89 e8
+
+Block (type: 12)
+0xc: 0f 0b
+
+Block (type: 2)
+0xe: 48 31 c9
+
+0x11: 48 85 c0
+
+Block (type: 2)
+0x14: 48 83 e9 03
+
+0x18: 48 39 ca
+
+0x1b: 48 89 ca
+
+Block (type: 1)
+Jump to 0x14
+0x1e: 0f 82 00 00 00 00
+
+Block (type: 2)
+0x20: 48 31 c9
+
+0x23: 48 31 c0
+
+Block (type: 12)
+0x26: cc
+
+Block (type: 2)
+0x27: 48 31 c9
+
+0x2a: 48 31 c0
+
+Block (type: 12)
+0x2d: cd 02
+
+Block (type: 2)
+0x2f: 48 31 c0
+
+0x32: 5d
+
+Block (type: 12)
+0x33: c3
+

@@ -1,0 +1,172 @@
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 48 89 e5
+
+Block (type: 6)
+Barrier of type 1
+0x4: 0f ae e8
+
+Block (type: 2)
+0x7: 48 31 c0
+
+0xa: 48 31 c9
+
+Block (type: 6)
+Barrier of type 2
+0xd: 0f ae f8
+
+Block (type: 2)
+0x10: 48 31 c0
+
+0x13: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x16: 0f ae f0
+
+Block (type: 2)
+0x19: 48 31 c0
+
+0x1c: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x1f: e4 37
+
+Block (type: 2)
+0x21: 48 31 c0
+
+0x24: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x27: e5 37
+
+Block (type: 2)
+0x29: 48 31 c0
+
+0x2c: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x2f: ec
+
+Block (type: 2)
+0x30: 48 31 c0
+
+0x33: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x36: ed
+
+Block (type: 2)
+0x37: 48 31 c0
+
+0x3a: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x3d: e6 28
+
+Block (type: 2)
+0x3f: 48 31 c0
+
+0x42: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x45: e7 28
+
+Block (type: 2)
+0x47: 48 31 c0
+
+0x4a: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x4d: ee
+
+Block (type: 2)
+0x4e: 48 31 c0
+
+0x51: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x54: ef
+
+Block (type: 2)
+0x55: 48 31 c0
+
+0x58: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x5b: 0f 08
+
+Block (type: 2)
+0x5d: 48 31 c0
+
+0x60: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x63: 0f 01 3a
+
+Block (type: 2)
+0x66: 48 31 c0
+
+0x69: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x6c: 0f 09
+
+Block (type: 2)
+0x6e: 48 31 c0
+
+0x71: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x74: 0f 22 d3
+
+Block (type: 2)
+0x77: 0f 20 d0
+
+0x7a: 48 31 c0
+
+0x7d: 48 31 c9
+
+Block (type: 6)
+Barrier of type 0
+0x80: 0f 22 c3
+
+Block (type: 2)
+0x83: 0f 20 c0
+
+0x86: 48 31 c0
+
+0x89: 48 31 c9
+
+0x8c: 44 0f 22 c0
+
+0x90: 44 0f 20 c0
+
+Block (type: 6)
+Barrier of type 0
+0x94: 0f 23 c0
+
+Block (type: 2)
+0x97: 0f 21 c1
+
+0x9a: 5b
+
+0x9b: 5d
+
+Block (type: 12)
+0x9c: c3
+

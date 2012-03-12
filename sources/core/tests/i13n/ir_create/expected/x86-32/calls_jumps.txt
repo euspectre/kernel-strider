@@ -1,0 +1,82 @@
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 89 e5
+
+Block (type: 7)
+0x3: e8 00 00 00 00
+
+Block (type: 2)
+0x8: 85 c0
+
+0xa: 89 c2
+
+0xc: 31 c0
+
+Block (type: 9)
+0xe: ff d1
+
+Block (type: 2)
+0x10: 85 c0
+
+0x12: 31 c0
+
+Jump to 0x19
+0x14: e8 00 00 00 00
+
+0x19: 5a
+
+0x1a: 89 d0
+
+Block (type: 8)
+0x1c: e9 00 00 00 00
+
+Block (type: 2)
+0x21: 31 c0
+
+0x23: 89 c2
+
+Block (type: 11)
+0x25: ff e1
+
+Block (type: 2)
+0x27: 89 d0
+
+0x29: 31 d2
+
+Block (type: 12)
+0x2b: 9a ef be 0d f0 ad ba
+
+Block (type: 2)
+0x32: 31 d2
+
+0x34: 31 c0
+
+Block (type: 12)
+0x36: ea ed fe 0f b0 ad da
+
+Block (type: 2)
+0x3d: 31 d2
+
+0x3f: 31 c0
+
+Block (type: 12)
+0x41: ff 19
+
+Block (type: 2)
+0x43: 31 d2
+
+0x45: 31 c0
+
+Block (type: 12)
+0x47: ff 29
+
+Block (type: 2)
+0x49: 31 c0
+
+0x4b: 5d
+
+Block (type: 12)
+0x4c: c3
+

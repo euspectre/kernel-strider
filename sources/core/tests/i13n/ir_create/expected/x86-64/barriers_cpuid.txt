@@ -9,6 +9,7 @@ Block (type: 2)
 0x5: 48 c7 c0 01 00 00 00
 
 Block (type: 6)
+Barrier of type 0
 0xc: 0f a2
 
 Block (type: 2)

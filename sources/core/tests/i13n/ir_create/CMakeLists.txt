@@ -23,6 +23,22 @@ kedr_test_add_script (mem_core.i13n.ir_create.01
 kedr_test_add_script (mem_core.i13n.ir_create.02
     test.sh "jump_tables"
 )
+
+kedr_test_add_script (mem_core.i13n.ir_create.03
+    test.sh "calls_jumps"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.04
+    test.sh "jcxz_loop"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.05
+    test.sh "special_control"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.06
+    test.sh "barriers_other"
+)
 # TODO: more tests
 
 add_subdirectory(accessor)
