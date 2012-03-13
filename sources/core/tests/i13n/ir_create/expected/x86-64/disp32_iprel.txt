@@ -1,0 +1,28 @@
+IR:
+Block (type: 3)
+Block info:
+Function difference: 0
+max_events = 2
+read_mask = 0x3
+write_mask = 0x0
+string_mask = 0x0
+events:
+  (0x4, 8)
+  (0x15, 8)
+0x0: 55
+
+0x1: 48 89 e5
+
+0x4: 48 8b 15 00 00 00 00
+
+0xb: 48 31 c0
+
+0xe: 48 8d 15 00 00 00 00
+
+0x15: 48 8b 02
+
+0x18: 5d
+
+Block (type: 12)
+0x19: c3
+

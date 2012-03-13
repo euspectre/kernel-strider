@@ -39,6 +39,14 @@ kedr_test_add_script (mem_core.i13n.ir_create.05
 kedr_test_add_script (mem_core.i13n.ir_create.06
     test.sh "barriers_other"
 )
+
+kedr_test_add_script (mem_core.i13n.ir_create.07
+    test.sh "disp32_iprel"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.08
+    test.sh "long_blocks"
+)
 # TODO: more tests
 
 # Tests for the error conditions. The core should detect these and

@@ -10,6 +10,8 @@ kbuild_add_module(${KMODULE_TARGET_NAME}
 	"${KEDR_TEST_ASM_DIR}/jcxz_loop.S"
 	"${KEDR_TEST_ASM_DIR}/special_control.S"
 	"${KEDR_TEST_ASM_DIR}/barriers_other.S"
+	"${KEDR_TEST_ASM_DIR}/disp32_iprel.S"
+	"${KEDR_TEST_ASM_DIR}/long_blocks.S"
 )
 
 kedr_test_add_target (${KMODULE_TARGET_NAME})
