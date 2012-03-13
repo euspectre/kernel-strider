@@ -41,6 +41,18 @@ kedr_test_add_script (mem_core.i13n.ir_create.06
 )
 # TODO: more tests
 
+# Tests for the error conditions. The core should detect these and
+# refuse to instrument the target module.
+configure_file (
+  "${CMAKE_CURRENT_SOURCE_DIR}/test_err.sh.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/test_err.sh"
+  @ONLY
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.err.01
+    test_err.sh "split_func"
+)
+
 add_subdirectory(accessor)
 add_subdirectory(target_common)
-# TODO: target to test the core on "split" functions, etc.
+add_subdirectory(target_split_func)
