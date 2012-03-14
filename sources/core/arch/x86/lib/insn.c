@@ -248,6 +248,18 @@ void insn_get_modrm(struct insn *insn)
 	if (insn->x86_64 && inat_is_force64(&insn->attr))
 		insn->opnd_bytes = 8;
 	modrm->got = 1;
+	
+	/* Adjust memory read-write attributes for the special cases. */
+	/* MOVBE Mv,Gv VS CRC32 Gd,Ev. "Read" is set initially, unset it and
+	 * set "Write" for MOVBE Mv,Gv. */
+	if (insn->opcode.bytes[0] == 0x0f && 
+	    insn->opcode.bytes[1] == 0x38 &&
+	    insn->opcode.bytes[2] == 0xf1 &&
+	    !insn_has_prefix(insn, 0xf2)) {
+		unsigned int *attrs = &insn->attr.attributes;
+		*attrs &= ~INAT_MEM_CAN_READ;
+		*attrs |= INAT_MEM_CAN_WRITE;
+	}
 }
 
 
