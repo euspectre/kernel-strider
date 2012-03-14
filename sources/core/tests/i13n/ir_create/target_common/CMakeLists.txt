@@ -12,6 +12,9 @@ kbuild_add_module(${KMODULE_TARGET_NAME}
 	"${KEDR_TEST_ASM_DIR}/barriers_other.S"
 	"${KEDR_TEST_ASM_DIR}/disp32_iprel.S"
 	"${KEDR_TEST_ASM_DIR}/long_blocks.S"
+	"${KEDR_TEST_ASM_DIR}/io_mem.S"
+	"${KEDR_TEST_ASM_DIR}/locked_updates.S"
+	"${KEDR_TEST_ASM_DIR}/common_blocks.S"
 )
 
 kedr_test_add_target (${KMODULE_TARGET_NAME})

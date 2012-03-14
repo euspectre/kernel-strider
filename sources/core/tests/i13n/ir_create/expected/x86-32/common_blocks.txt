@@ -1,0 +1,114 @@
+IR:
+Block (type: 3)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x1
+write_mask = 0x1
+string_mask = 0x0
+events:
+  (0x3, 4)
+0x0: 55
+
+0x1: 89 e5
+
+0x3: 83 40 10 07
+
+Block (type: 3)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x1
+write_mask = 0x0
+string_mask = 0x0
+events:
+  (0x7, 4)
+0x7: 0b 50 18
+
+Block (type: 9)
+0xa: ff 12
+
+Block (type: 3), has jumps out
+Block info:
+Function difference: 0
+max_events = 3
+read_mask = 0x5
+write_mask = 0x2
+string_mask = 0x0
+events:
+  (0xc, 4)
+  (0xf, 1)
+  (0x18, 4)
+0xc: 39 48 10
+
+0xf: 0f 9f 40 20
+
+0x13: 0f 9e c1
+
+Jump to 0x1e
+Jump out of block
+0x16: 0f 88 00 00 00 00
+
+0x18: 0f 44 48 10
+
+Block (type: 1)
+Jump to 0x7
+0x1c: 0f 8f 00 00 00 00
+
+Block (type: 3)
+Block info:
+Function difference: 0
+max_events = 13
+read_mask = 0x19ff
+write_mask = 0x602
+string_mask = 0x0
+events:
+  (0x20, 4)
+  (0x23, 4)
+  (0x26, 1)
+  (0x27, 1)
+  (0x2b, 2)
+  (0x2f, 1)
+  (0x33, 2)
+  (0x37, 1)
+  (0x3c, 4)
+  (0x41, 4)
+  (0x46, 1)
+  (0x4b, 1)
+  (0x51, 4)
+Jump to 0x57
+0x1e: e9 00 00 00 00
+
+0x20: 85 48 18
+
+0x23: ff 48 20
+
+0x26: d7
+
+0x27: 0f be 48 20
+
+0x2b: 0f bf 50 28
+
+0x2f: 0f b6 48 20
+
+0x33: 0f b7 50 30
+
+0x37: a0 0d f0 ad ba
+
+0x3c: a1 0d f0 ad ba
+
+0x41: a3 af de ef be
+
+0x46: a2 ed fe ad be
+
+0x4b: f2 0f 38 f0 50 28
+
+0x51: f2 0f 38 f1 48 28
+
+0x57: 31 c0
+
+0x59: 5d
+
+Block (type: 12)
+0x5a: c3
+

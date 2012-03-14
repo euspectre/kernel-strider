@@ -1,0 +1,113 @@
+IR:
+Block (type: 2)
+0x0: 55
+
+0x1: 89 e5
+
+0x3: b9 05 00 00 00
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x0
+write_mask = 0x1
+string_mask = 0x1
+events:
+  (0x8, 1)
+Barrier of type 0
+0x8: f3 6c
+
+Block (type: 2)
+0xa: 31 c9
+
+0xc: 31 c0
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x0
+write_mask = 0x1
+string_mask = 0x1
+events:
+  (0xe, 2)
+Barrier of type 0
+0xe: 66 6d
+
+Block (type: 2)
+0x10: 31 c9
+
+0x12: 31 c0
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x0
+write_mask = 0x1
+string_mask = 0x1
+events:
+  (0x14, 4)
+Barrier of type 0
+0x14: 6d
+
+Block (type: 2)
+0x15: 31 c9
+
+0x17: 31 c0
+
+0x19: b9 05 00 00 00
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x1
+write_mask = 0x0
+string_mask = 0x1
+events:
+  (0x1e, 1)
+Barrier of type 0
+0x1e: f3 6e
+
+Block (type: 2)
+0x20: 31 c9
+
+0x22: 31 c0
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x1
+write_mask = 0x0
+string_mask = 0x1
+events:
+  (0x24, 2)
+Barrier of type 0
+0x24: 66 6f
+
+Block (type: 2)
+0x26: 31 c9
+
+0x28: 31 c0
+
+Block (type: 5)
+Block info:
+Function difference: 0
+max_events = 1
+read_mask = 0x1
+write_mask = 0x0
+string_mask = 0x1
+events:
+  (0x2a, 4)
+Barrier of type 0
+0x2a: 6f
+
+Block (type: 2)
+0x2b: 5d
+
+Block (type: 12)
+0x2c: c3
+

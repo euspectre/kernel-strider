@@ -47,7 +47,18 @@ kedr_test_add_script (mem_core.i13n.ir_create.07
 kedr_test_add_script (mem_core.i13n.ir_create.08
     test.sh "long_blocks"
 )
-# TODO: more tests
+
+kedr_test_add_script (mem_core.i13n.ir_create.09
+    test.sh "io_mem"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.10
+    test.sh "locked_updates"
+)
+
+kedr_test_add_script (mem_core.i13n.ir_create.11
+    test.sh "common_blocks"
+)
 
 # Tests for the error conditions. The core should detect these and
 # refuse to instrument the target module.
