@@ -87,8 +87,6 @@ no_mem:
 }
 /* ====================================================================== */
 
-// TODO
-
 /* Creates an instrumented instance of function specified by 'func' and 
  * prepares the corresponding fallback function for later usage. Note that
  * this function does not prepare jump tables for the fallback instance. */
@@ -115,12 +113,19 @@ do_process_function(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 	ret = kedr_ir_instrument(func, &kedr_ir);
 	if (ret != 0)
 		goto out;
-		
-	// TODO: call hook2 if defined
 	
-	// TODO: the rest of processing: prepare the instrumented instance 
-	// from the IR, etc.
-
+	/* Call the hook if set. */
+	if (core_hooks->on_ir_transformed != NULL)
+		core_hooks->on_ir_transformed(core_hooks, i13n, func, 
+			&kedr_ir);
+		
+	ret = kedr_ir_generate_code(func, &kedr_ir);
+	/* If the code has been generated successfully, the IR is no longer 
+	 * needed: the generated code is in the temporary buffer 
+	 * ('func->tbuf'), the information about the relocations is in
+	 * 'func->relocs', etc. 
+	 * If the code generation has failed, we also need to destroy the 
+	 * IR. */
 out:
 	kedr_ir_destroy(&kedr_ir);
 	return ret;
@@ -255,8 +260,6 @@ void
 kedr_i13n_cleanup(struct kedr_i13n *i13n)
 {
 	BUG_ON(i13n == NULL);
-	
-	// TODO: more cleanup here
 	
 	kedr_release_functions(i13n);
 	kedr_module_free(i13n->detour_buffer);

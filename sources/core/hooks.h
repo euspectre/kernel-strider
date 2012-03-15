@@ -40,9 +40,19 @@ struct kedr_core_hooks
 	 * The hook is called for each function 'func' in 'i13n->ifuncs' 
 	 * list if the IR has been created successfully for 'func'. 
 	 * 
-	 * The hook is allowed to modify the IR and the function object if
-	 * needed. */
+	 * The hook is allowed to modify the IR and the function object. */
 	void (*on_ir_created)(struct kedr_core_hooks *hooks,
+		struct kedr_i13n *i13n, struct kedr_ifunc *func,
+		struct list_head *ir);
+	
+	/* Called after all transformations of the IR for a given function 
+	 * (that is, the instrumentation proper) have been completed but 
+	 * before the code is generated from the IR.
+	 * The hook is called for each function 'func' in 'i13n->ifuncs' 
+	 * list if the IR has been processed successfully for 'func'. 
+	 * 
+	 * The hook is allowed to modify the IR and the function object. */
+	void (*on_ir_transformed)(struct kedr_core_hooks *hooks,
 		struct kedr_i13n *i13n, struct kedr_ifunc *func,
 		struct list_head *ir);
 	

@@ -264,6 +264,33 @@ kedr_ir_create(struct kedr_ifunc *func, struct kedr_i13n *i13n,
 int 
 kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir);
 
+/* Prepares the instrumented instance of the function from the IR in the 
+ * temporary memory buffer. The resulting code will only need relocation
+ * before it can be used. 
+ * On success, 'tbuf' and 'i_size' become defined, 'tbuf' pointing to that
+ * buffer. In case of failure, 'tbuf' will remain NULL.
+ * 
+ * [NB] The value of 'i_addr' will be defined at the deployment stage, when 
+ * the function is copied to its final location. 
+ *
+ * [NB] Here, we can assume that the size of the function is not less than
+ * the size of 'jmp near rel32'.
+ *
+ * The function allocates memory for the instrumented instance as needed.
+ * 
+ * The instructions to be relocated at the deployment phase (call/jmp rel32 
+ * outside of the function, instructions with RIP-relative addressing) will 
+ * be listed in 'func->relocs'.
+ * 
+ * Among other things, the function fills the jump tables (if any) for the 
+ * instrumented instance with the offsets of the appropriate positions in 
+ * the instrumented function. The offsets should be replaced with the 
+ * complete addresses during the deployment phase.
+ * 
+ * The return value is 0 on success and a negative error code on failure. */
+int 
+kedr_ir_generate_code(struct kedr_ifunc *func, struct list_head *ir);
+
 /* Use this function to destroy the IR when it is no longer needed (i.e. 
  * after the instrumented instance of the function has been prepared). 
  * The head itself ('ir') is not freed by this function. 

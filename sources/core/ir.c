@@ -2072,3 +2072,263 @@ kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	return 0;
 }
 /* ====================================================================== */
+
+/* Updates the offsets of the instructions from the beginning of the 
+ * instrumented instance.
+ * The function returns non-zero if the new offset is different from the
+ * old one for at least one node, 0 otherwise. */
+static int
+ir_update_offsets(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	int changed = 0;
+	long offset = 0;
+	
+	list_for_each_entry(node, ir, list) {
+		changed |= (node->offset != offset);
+		node->offset = offset;
+		offset += (long)node->insn.length;
+	}
+	return changed;
+}
+
+/* For the nodes with non-NULL 'dest_inner', update that field to actually
+ * point to the destination node. */
+static void 
+ir_resolve_dest_inner(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *dest;
+	
+	list_for_each_entry(node, ir, list) {
+		dest = node->dest_inner;
+		if (dest == NULL)
+			continue; 
+		
+		if (node->jump_past_last) {
+			BUG_ON(dest->last->list.next == ir);
+			dest = list_entry(dest->last->list.next,
+				struct kedr_ir_node, list);
+		}
+		else
+			dest = dest->first;
+		node->dest_inner = dest; 
+	}
+}
+
+/* Process direct inner jumps: choose among their near and short versions.
+ * If the instruction is changed by this function, it will be re-decoded.
+ * By the time this function is called, 'dest_inner' should already point 
+ * to the actual destination nodes of these jumps rather than to the 
+ * corresponding reference nodes. */
+static void
+ir_set_inner_jump_length(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	long disp;
+	unsigned int prefix_len;
+	u8 *pos;
+	u8 opcode;
+	
+	list_for_each_entry(node, ir, list) {
+		if (node->dest_inner == NULL)
+			continue; 
+		
+		/* Assume the jump is short, so the size of the instruction
+		 * is <size_of_prefixes> + 2. Calculate the displacement
+		 * to the destination (NB: it is not final yet!). */
+		prefix_len = insn_offset_opcode(&node->insn);
+		disp = node->dest_inner->offset - (node->offset + 
+			(long)prefix_len + 2);
+		if (disp > 127 || disp < -128)
+			continue; /* too long distance, leave as is */
+		
+		/* Make the jump short. The displacement in the instruction
+		 * will be set later. Set 0 for now - just in case. */
+		opcode = node->insn.opcode.bytes[0];
+		pos = node->insn_buffer + prefix_len;
+		if (opcode == 0xe9) { /* jmp near => jmp short */
+			*pos++ = 0xeb;
+			*pos++ = 0;
+			kernel_insn_init(&node->insn, node->insn_buffer);
+			insn_get_length(&node->insn);
+			BUG_ON(node->insn.length != 
+				(unsigned char)(pos - node->insn_buffer));
+		}
+		else if (opcode == 0x0f && 
+			(node->insn.opcode.bytes[1] & 0xf0) == 0x80) {
+			/* jcc near => jcc short */
+			*pos++ = node->insn.opcode.bytes[1] - 0x10;
+			*pos++ = 0;
+			kernel_insn_init(&node->insn, node->insn_buffer);
+			insn_get_length(&node->insn);
+			BUG_ON(node->insn.length != 
+				(unsigned char)(pos - node->insn_buffer));
+		}
+		/* Neither jmp near nor jcc near? Do nothing then, it might
+		 * be a short jump already or a mov generated when handling
+		 * a jump out of the block. */
+	}
+}
+
+/* Sets the displacements in jmp/jcc, short and near. By the time this 
+ * function is called, 'dest_inner' should already point to the actual 
+ * destination nodes of these jumps rather than to the corresponding 
+ * reference nodes. 
+ * [NB] This function does not re-decode the instructions it changes. This
+ * should not be a problem because all the fields except 'immediate' will
+ * remain valid. */
+static void
+ir_set_inner_jump_disp(struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	u8 opcode;
+	u8 *pos;
+	long disp;
+	
+	list_for_each_entry(node, ir, list) {
+		if (node->dest_inner == NULL)
+			continue;
+		
+		disp = node->dest_inner->offset - (node->offset + 
+			(long)node->insn.length);
+		pos = node->insn_buffer + insn_offset_immediate(&node->insn);
+				
+		opcode = node->insn.opcode.bytes[0];
+		if (opcode == 0xeb || (opcode & 0xf0) == 0x70) {
+			/* jmp/jcc short */
+			BUG_ON(disp < -128 || disp > 127);
+			*pos = (u8)disp;
+		}
+		else { /* jmp/jcc near, mov (handling of jumps out of the 
+			block) or something like call $+5; imm32 assumed. */
+			*(u32 *)pos = (u32)disp;
+		}
+		
+	}
+}
+
+/* Replace the addresses of the nodes in the jump tables with the offsets 
+ * of the instructions the jumps should lead to. Note that each jump 
+ * destination is not always the node itself but 'node->first'. */
+static void
+fill_jump_tables(struct kedr_ifunc *func)
+{
+	struct kedr_jtable *jtable;
+	unsigned long *table;
+	struct kedr_ir_node *node;
+	unsigned int i;
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		if (jtable->num == 0)
+			continue;
+		table = jtable->i_table;
+		for (i = 0; i < jtable->num; ++i) {
+			node = (struct kedr_ir_node *)table[i];
+			table[i] = (unsigned long)node->first->offset;
+		}
+	}
+}
+
+/* If a relocation should be created for the given node, this function
+ * does so and adds the relocation to the list of relocations in 'func'. 
+ * The type of the relocation is inferred from the node. */
+static int 
+add_relocation(struct kedr_ifunc *func, struct kedr_ir_node *node)
+{
+	struct kedr_reloc *reloc = NULL;
+	
+	if (node->iprel_addr == 0 && !node->needs_addr32_reloc)
+		return 0; /* nothing to do */
+		
+	reloc = kzalloc(sizeof(*reloc), GFP_KERNEL);
+	if (reloc == NULL)
+		return -ENOMEM;
+	
+	reloc->offset = node->offset;
+	if (node->iprel_addr != 0) {
+		reloc->rtype = KEDR_RELOC_IPREL;
+		reloc->dest = (void *)node->iprel_addr;
+	}
+	else /* node->needs_addr32_reloc */ {
+		reloc->rtype = KEDR_RELOC_ADDR32;
+	}
+	
+	list_add_tail(&reloc->list, &func->relocs);
+	return 0;
+}
+
+/* Creates the temporary buffer and places the instrumented code there.
+ * During that process, relocation records are created for the nodes with 
+ * iprel_addr != 0 to func->relocs as well as for those with 
+ * needs_addr32_reloc. 
+ * The function sets 'func->i_size'. */
+static int
+generate_code(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	size_t size_of_code;
+	u8 *buf;
+	int ret = 0;
+	
+	BUG_ON(list_empty(ir));
+	
+	/* Determine the size of the code: the offset of the last 
+	 * instruction + the length of that instruction. */
+	node = list_entry(ir->prev, struct kedr_ir_node, list);
+	size_of_code = (size_t)node->offset + (size_t)node->insn.length;
+	BUG_ON(size_of_code == 0);
+	
+	/* [NB] If an error occurs, we need not bother and delete relocation
+	 * records created so far as well as 'func->tbuf'. All these data 
+	 * will be deleted at once when 'func' is deleted. */
+		
+	func->tbuf = kzalloc(size_of_code, GFP_KERNEL);
+	if (func->tbuf == NULL)
+		return -ENOMEM;
+	
+	buf = (u8 *)func->tbuf;
+	list_for_each_entry(node, ir, list) {
+		size_t len = node->insn.length;
+		memcpy(buf, &node->insn_buffer[0], len);
+		
+		ret = add_relocation(func, node);
+		if (ret < 0)
+			return ret;
+		
+		buf += len;
+	}
+	
+	func->i_size = (unsigned long)size_of_code;
+	return 0;
+}
+
+int 
+kedr_ir_generate_code(struct kedr_ifunc *func, struct list_head *ir)
+{
+	int ret = 0;
+	int offsets_changed = 0;
+	
+	BUG_ON(ir == NULL);
+	BUG_ON(func->tbuf != NULL);
+	BUG_ON(!list_empty(&func->jump_tables) && func->jt_buf == NULL);
+	
+	/* Choose the length of the inner jumps and set the final offsets
+	 * of the instructions. */
+	ir_resolve_dest_inner(ir);
+	ir_update_offsets(ir);
+	do {
+		ir_set_inner_jump_length(ir);
+		offsets_changed = ir_update_offsets(ir);
+	}
+	while (offsets_changed);
+	ir_set_inner_jump_disp(ir);
+	
+	/* Replace the pointers in the jump tables with the offsets of the 
+	 * destination instructions. */
+	fill_jump_tables(func);
+	
+	ret = generate_code(func, ir);
+	return ret;
+}
+/* ====================================================================== */
