@@ -2111,7 +2111,6 @@ ir_resolve_dest_inner(struct list_head *ir)
 			continue; 
 		
 		if (node->jump_past_last) {
-			BUG_ON(dest->last->list.next == ir);
 			//<> TODO: Uncomment when the instrumentation of
 			// the ends of the common blocks is implemented.
 			// Remove "dest = dest->first;" statement.
@@ -2119,7 +2118,9 @@ ir_resolve_dest_inner(struct list_head *ir)
 			// be able to test detoured execution before the
 			// rest of the core is prepared.
 			dest = dest->first;
-			/*dest = list_entry(dest->last->list.next,
+			/*
+			BUG_ON(dest->last->list.next == ir);
+			dest = list_entry(dest->last->list.next,
 				struct kedr_ir_node, list);
 			*/
 			//<>
