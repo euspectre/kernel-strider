@@ -87,6 +87,82 @@ no_mem:
 }
 /* ====================================================================== */
 
+/* Relocate the given instruction in the fallback function in place. The 
+ * code was "moved" from base address func->addr to func->fallback. 
+ * [NB] No need to process short jumps outside of the function, they are 
+ * already usable. This is because the positions of the functions relative 
+ * to each other are the same as for the original functions. */
+static int
+relocate_insn_in_fallback(struct insn *insn, void *data)
+{
+	struct kedr_ifunc *func = (struct kedr_ifunc *)data;
+	u32 *to_fixup;
+	unsigned long addr;
+	u32 new_offset;
+	BUG_ON(insn->length == 0);
+	
+	if (insn->opcode.bytes[0] == KEDR_OP_CALL_REL32 ||
+	    insn->opcode.bytes[0] == KEDR_OP_JMP_REL32) {
+		/* For calls and jumps, the decoder stores the offset in 
+		 * 'immediate' field rather than in 'displacement'.
+		 * [NB] When dealing with RIP-relative addressing on x86-64,
+		 * it uses 'displacement' field for that purpose. */
+		 
+		/* Find the new offset corresponding to the same address */
+		new_offset = (u32)((unsigned long)func->addr + 
+			X86_SIGN_EXTEND_V32(insn->immediate.value) -
+			(unsigned long)func->fallback);
+		
+		/* Then calculate the address the instruction refers to.
+		 * The original instruction referred to this address too. */
+		addr = (unsigned long)X86_ADDR_FROM_OFFSET(
+			insn->kaddr,
+			insn->length, 
+			new_offset);
+		
+		if (kedr_is_address_in_function(addr, func))
+		/* no fixup needed, the offset may remain the same */
+			return 0; 
+		
+		/* Call or jump outside of the function. Set the new offset
+		 * so that the instruction referred to the same address as 
+		 * the original one. */
+		to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+			insn_offset_immediate(insn));
+		*to_fixup = new_offset;
+		return 0;
+	}
+
+#ifdef CONFIG_X86_64
+	if (!insn_rip_relative(insn))
+		return 0;
+
+	/* Handle RIP-relative addressing */
+	/* Find the new offset first. We assume that the instruction refers
+	 * to something outside of the function. The instrumentation system
+	 * must have checked this, see ir_node_set_iprel_addr() in ir.c. */
+	new_offset = (u32)((unsigned long)func->addr + 
+		X86_SIGN_EXTEND_V32(insn->displacement.value) -
+		(unsigned long)func->fallback);
+		
+	to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+		insn_offset_displacement(insn));
+	*to_fixup = new_offset;
+#endif
+	return 0;
+}
+
+/* Performs relocations in the code of the fallback instance of a function. 
+ * After that, the instance is ready to be used. */
+static int 
+relocate_fallback_function(struct kedr_ifunc *func)
+{
+	return kedr_for_each_insn((unsigned long)func->fallback, 
+		(unsigned long)func->fallback + func->size, 
+		relocate_insn_in_fallback, 
+		(void *)func); 
+}
+
 /* Creates an instrumented instance of function specified by 'func' and 
  * prepares the corresponding fallback function for later usage. Note that
  * this function does not prepare jump tables for the fallback instance. */
@@ -120,12 +196,12 @@ do_process_function(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 			&kedr_ir);
 		
 	ret = kedr_ir_generate_code(func, &kedr_ir);
-	/* If the code has been generated successfully, the IR is no longer 
-	 * needed: the generated code is in the temporary buffer 
-	 * ('func->tbuf'), the information about the relocations is in
-	 * 'func->relocs', etc. 
-	 * If the code generation has failed, we also need to destroy the 
-	 * IR. */
+	/* [NB] No matter if the code generation has succeeded or failed,
+	 * the IR is no longer needed. */
+	if (ret != 0)
+		goto out;
+	
+	ret = relocate_fallback_function(func);
 out:
 	kedr_ir_destroy(&kedr_ir);
 	return ret;
@@ -138,10 +214,137 @@ out:
 static int 
 create_detour_buffer(struct kedr_i13n *i13n)
 {
-	// TODO
+	/* Spare bytes to align the start of the buffer, just in case. */
+	unsigned long size = KEDR_FUNC_ALIGN; 
+	struct kedr_ifunc *f;
+	
+	list_for_each_entry(f, &i13n->ifuncs, list)
+		size += KEDR_ALIGN_VALUE(f->i_size); 
+	
+	BUG_ON(i13n->detour_buffer != NULL);
+	i13n->detour_buffer = kedr_module_alloc(size);
+	if (i13n->detour_buffer == NULL)
+		return -ENOMEM;
+	
 	return 0;
 }
 /* ====================================================================== */
+
+/* The elements of the jump tables are currently the offsets of the jump
+ * destinations from the beginning of the instrumented instance. Now that 
+ * the base address of that instance function is known (func->i_addr), 
+ * these offsets are replaced with the real addresses. */
+static void
+fixup_instrumented_jump_tables(struct kedr_ifunc *func)
+{
+	struct kedr_jtable *jtable;
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		unsigned int k;
+		unsigned long *table = jtable->i_table;
+		
+		if (table == NULL) {
+			BUG_ON(jtable->num != 0);
+			continue;
+		}
+		
+		for (k = 0; k < jtable->num; ++k)
+			table[k] += (unsigned long)func->i_addr;
+	}
+}
+
+/* See the description of KEDR_RELOC_IPREL in struct kedr_reloc.
+ * The instruction to be relocated can be either call/jmp rel32 or
+ * an instruction using RIP-relative addressing.
+ * 'dest' is the address the instruction should refer to. */
+static void
+relocate_iprel_in_icode(struct insn *insn, void *dest)
+{
+	u32 *to_fixup;
+	BUG_ON(insn->length == 0);
+	
+	if (insn->opcode.bytes[0] == KEDR_OP_CALL_REL32 ||
+	    insn->opcode.bytes[0] == KEDR_OP_JMP_REL32) {
+		to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+			insn_offset_immediate(insn));
+		*to_fixup = (u32)X86_OFFSET_FROM_ADDR(insn->kaddr, 
+			insn->length,
+			dest);
+		return;
+	}
+
+#ifdef CONFIG_X86_64
+	if (!insn_rip_relative(insn))
+		return;
+
+	to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+		insn_offset_displacement(insn));
+	*to_fixup = (u32)X86_OFFSET_FROM_ADDR(insn->kaddr, insn->length,
+		dest);
+#endif
+}
+
+/* See the description of KEDR_RELOC_ADDR32 in struct kedr_reloc. */
+static void
+relocate_addr32_in_icode(struct insn *insn)
+{
+	u32 *to_fixup;
+	unsigned long addr;
+	
+	BUG_ON(insn->length == 0);
+	/* imm32 must contain an offset of the memory location which address
+	 * is needed. As this type of relocation is expected to be used to 
+	 * handle jumps out of the blocks with memory accesses, that offset
+	 * must not be 0. This is because such jumps lead to another block 
+	 * and there are at least the instructions processing the end of 
+	 * the block between the jumps and their destinations. */
+	BUG_ON(insn->immediate.value == 0 || insn->immediate.nbytes != 4);
+	
+	addr = X86_SIGN_EXTEND_V32(insn->immediate.value) + 
+		(unsigned long)insn->kaddr + 
+		(unsigned long)insn->length;
+	
+	to_fixup = (u32 *)((unsigned long)insn->kaddr + 
+		insn_offset_immediate(insn));
+	*to_fixup = (u32)addr;
+}
+
+/* Performs fixup of call and jump addresses in the instrumented instance, 
+ * as well as RIP-relative addressing, and the contents of the jump tables.
+ * Note that the addressing expressions for the jump tables themselves must 
+ * be already in place: the instrumentation phase takes care of that. */
+static void
+deploy_instrumented_function(struct kedr_ifunc *func)
+{
+	struct kedr_reloc *reloc;
+	struct kedr_reloc *tmp;
+
+	fixup_instrumented_jump_tables(func);
+	
+	/* Decode the instructions that should be relocated and perform 
+	 * relocations. Free the relocation structures when done, they are 
+	 * no longer needed. */
+	list_for_each_entry_safe(reloc, tmp, &func->relocs, list) {
+		struct insn insn;
+		void *kaddr = (void *)((unsigned long)func->i_addr + 
+			reloc->offset);
+
+		BUG_ON(reloc->offset >= func->i_size);
+				
+		kernel_insn_init(&insn, kaddr);
+		insn_get_length(&insn);
+		
+		if (reloc->rtype == KEDR_RELOC_IPREL)
+			relocate_iprel_in_icode(&insn, reloc->dest);
+		else if (reloc->rtype == KEDR_RELOC_ADDR32) 
+			relocate_addr32_in_icode(&insn);
+		else
+			BUG(); /* should not get here */
+		
+		list_del(&reloc->list);
+		kfree(reloc);
+	}
+}
 
 /* Deploys the instrumented code of each function to an appropriate place in
  * the detour buffer. Releases the temporary buffer and sets 'i_addr' to the
@@ -149,7 +352,24 @@ create_detour_buffer(struct kedr_i13n *i13n)
 static void
 deploy_instrumented_code(struct kedr_i13n *i13n)
 {
-	// TODO
+	struct kedr_ifunc *func;
+	unsigned long dest_addr;
+	
+	BUG_ON(i13n->detour_buffer == NULL);
+	
+	dest_addr = KEDR_ALIGN_VALUE(i13n->detour_buffer);
+	list_for_each_entry(func, &i13n->ifuncs, list) {
+		BUG_ON(func->tbuf == NULL);
+		BUG_ON(func->i_addr != NULL);
+		
+		memcpy((void *)dest_addr, func->tbuf, func->i_size);
+		kfree(func->tbuf);
+		func->tbuf = NULL;
+		func->i_addr = (void *)dest_addr;
+		
+		deploy_instrumented_function(func);
+		dest_addr += KEDR_ALIGN_VALUE(func->i_size);
+	}
 }
 /* ====================================================================== */
 
@@ -158,7 +378,22 @@ deploy_instrumented_code(struct kedr_i13n *i13n)
 static void
 fixup_fallback_jump_tables(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 {
-	// TODO
+	struct kedr_jtable *jtable;
+	unsigned long func_start = (unsigned long)func->addr;
+	unsigned long fallback_start = (unsigned long)func->fallback;
+	
+	list_for_each_entry(jtable, &func->jump_tables, list) {
+		unsigned long *table = jtable->addr;
+		unsigned int i;
+		/* If the code refers to a "table" without elements (e.g. a 
+		 * table filled with the addresses of other functons, etc.),
+		 * nothing will be done. 
+		 * If the number of the elements is 0 because some other 
+		 * jumps use the same jump table, the fixup will be done 
+		 * for only one of such jumps, which should be enough. */
+		for (i = 0; i < jtable->num; ++i)
+			table[i] = table[i] - func_start + fallback_start;
+	}
 }
 /* ====================================================================== */
 
@@ -167,7 +402,36 @@ fixup_fallback_jump_tables(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 static void
 detour_original_functions(struct kedr_i13n *i13n)
 {
-	// TODO
+	u32 *pos;
+	struct kedr_ifunc *func;
+	
+	list_for_each_entry(func, &i13n->ifuncs, list) {
+		BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
+		
+		/* Place the jump to the instrumented instance at the 
+		 * beginning of the original instance.
+		 * [NB] We allocate memory for the detour buffer in a 
+		 * special way, so that it is "not very far" from where the 
+		 * code of the target module resides. A near relative jump 
+		 * is enough in this case. */
+		*(u8 *)func->addr = KEDR_OP_JMP_REL32;
+		pos = (u32 *)((unsigned long)func->addr + 1);
+		*pos = X86_OFFSET_FROM_ADDR((unsigned long)func->addr, 
+			KEDR_SIZE_JMP_REL32, (unsigned long)func->i_addr);
+
+		/* Fill the rest of the original function's code with 
+		 * 'int 3' (0xcc) instructions to detect if control still 
+		 * transfers there despite all our efforts. 
+		 * If we do not handle some situation where the control 
+		 * transfers somewhere within an original function rather 
+		 * than to its beginning, we better know this early. */
+		if (func->size > KEDR_SIZE_JMP_REL32) {
+			memset((void *)((unsigned long)func->addr + 
+					KEDR_SIZE_JMP_REL32), 
+				0xcc, 
+				func->size - KEDR_SIZE_JMP_REL32);
+		}
+	}
 }
 /* ====================================================================== */
 

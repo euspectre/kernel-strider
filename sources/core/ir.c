@@ -777,7 +777,7 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 }
 
 /* See the description of kedr_ir_node::iprel_addr */
-static void
+static int
 ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 {
 	u8 opcode = node->insn.opcode.bytes[0];
@@ -787,7 +787,7 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 		
 		if (!kedr_is_address_in_function(node->dest_addr, func))
 			node->iprel_addr = node->dest_addr;
-		return;
+		return 0;
 	}
 	
 #ifdef CONFIG_X86_64
@@ -802,15 +802,16 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 
 		if (kedr_is_address_in_function(node->iprel_addr, func)) {
 			pr_warning(KEDR_MSG_PREFIX 
-				"Warning: the instruction at %pS "
-				"uses IP-relative addressing to access "
-				"the code of the original function.\n",
-				(void *)node->orig_addr);
-			WARN_ON_ONCE(1);
+	"Warning: the instruction at %pS uses IP-relative addressing "
+	"to access the code of the original function. "
+	"Unable to instrument function %s().\n",
+				(void *)node->orig_addr, func->name);
+			return -EFAULT;
 		}
 	}
 #endif
 	/* node->iprel_addr remains 0 by default */
+	return 0;
 }
 
 /* Check if the memory addressing expression uses %rsp/%esp. */
@@ -880,7 +881,11 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	if (node == NULL)
 		return -ENOMEM;
 	
-	ir_node_set_iprel_addr(node, func);
+	ret = ir_node_set_iprel_addr(node, func);
+	if (ret != 0) {
+		ir_node_destroy(node);
+		return ret;
+	}
 	
 	list_add_tail(&node->list, ic_data->ir);
 	node_map_add(node, ic_data->node_map);
@@ -2107,11 +2112,21 @@ ir_resolve_dest_inner(struct list_head *ir)
 		
 		if (node->jump_past_last) {
 			BUG_ON(dest->last->list.next == ir);
-			dest = list_entry(dest->last->list.next,
-				struct kedr_ir_node, list);
-		}
-		else
+			//<> TODO: Uncomment when the instrumentation of
+			// the ends of the common blocks is implemented.
+			// Remove "dest = dest->first;" statement.
+			// This is a temporary "short-circuit" change to 
+			// be able to test detoured execution before the
+			// rest of the core is prepared.
 			dest = dest->first;
+			/*dest = list_entry(dest->last->list.next,
+				struct kedr_ir_node, list);
+			*/
+			//<>
+		}
+		else {
+			dest = dest->first;
+		}
 		node->dest_inner = dest; 
 	}
 }
@@ -2166,8 +2181,9 @@ ir_set_inner_jump_length(struct list_head *ir)
 				(unsigned char)(pos - node->insn_buffer));
 		}
 		/* Neither jmp near nor jcc near? Do nothing then, it might
-		 * be a short jump already or a mov generated when handling
-		 * a jump out of the block. */
+		 * be a short jump already, or a mov generated when handling
+		 * a jump out of the block, or something like 'call $+5', 
+		 * etc. */
 	}
 }
 
