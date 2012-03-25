@@ -1,7 +1,6 @@
 IR:
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 2
 read_mask = 0x3
 write_mask = 0x0

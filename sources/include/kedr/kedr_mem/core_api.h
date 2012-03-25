@@ -11,7 +11,7 @@ struct module;
  *	eh - the pointer passed during registration
  *	target_module - the target module
  *	tid - ID of the relevant thread
- *	func - address of the original function
+ *	func - address of the original function (except in on_call_pre/post)
  *	data - additional pointer needed when recording memory events
  *	num_events - number of the memory events to record
  *	pc - "program counter", the address in the original code 
@@ -61,6 +61,7 @@ struct kedr_event_handlers
 	 * In this case, 'pc' is the address of the corresponding 
 	 * instruction in the original code. Note that it is not the 
 	 * return address for that function call. 
+	 * 'func' is the address of the function called.
 	 * Unlike function entry/exit events, the call events are generated 
 	 * both for the calls to the functions defined in the target module 
 	 * and for the calls to the external functions. */
@@ -211,5 +212,12 @@ kedr_register_event_handlers(struct kedr_event_handlers *eh);
  * loaded. */
 void 
 kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
+
+/* Returns the current set of event handlers. It is only safe to call this 
+ * function and use its result when the target is in memory and hence the 
+ * provider of the event handlers is unloadable. During that period, the 
+ * handlers remain valid and do not change. */
+struct kedr_event_handlers *
+kedr_get_event_handlers(void);
 
 #endif /* CORE_API_H_1049_INCLUDED */

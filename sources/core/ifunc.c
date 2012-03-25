@@ -22,6 +22,7 @@
 
 #include <kedr/asm/insn.h>
 #include <kedr/kedr_mem/block_info.h>
+#include <kedr/kedr_mem/functions.h>
 
 #include "core_impl.h"
 #include "config.h"
@@ -81,11 +82,26 @@ cleanup_block_infos(struct list_head *block_infos)
 }
 
 static void
+cleanup_call_infos(struct list_head *call_infos)
+{
+	struct kedr_call_info *ci;
+	struct kedr_call_info *tmp;
+	
+	BUG_ON(call_infos == NULL);
+	
+	list_for_each_entry_safe(ci, tmp, call_infos, list) {
+		list_del(&ci->list);
+		kfree(ci);
+	}
+}
+
+static void
 ifunc_destroy(struct kedr_ifunc *func)
 {
 	cleanup_jump_tables(func);
 	cleanup_relocs(&func->relocs);
 	cleanup_block_infos(&func->block_infos);
+	cleanup_call_infos(&func->call_infos);
 	
 	/* If the instrumentation completed successfully, func->tbuf must be 
 	 * NULL. If an error occurred during the instrumentation, the
@@ -168,6 +184,7 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	INIT_LIST_HEAD(&tf->jump_tables);
 	INIT_LIST_HEAD(&tf->relocs);
 	INIT_LIST_HEAD(&tf->block_infos);
+	INIT_LIST_HEAD(&tf->call_infos);
 
 	/* Find the corresponding fallback function, it's at the same offset 
 	 * from the beginning of fallback_init_area or fallback_core_area as

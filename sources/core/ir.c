@@ -9,6 +9,7 @@
 
 #include <kedr/kedr_mem/block_info.h>
 #include <kedr/kedr_mem/local_storage.h>
+#include <kedr/kedr_mem/functions.h>
 
 #include "config.h"
 #include "core_impl.h"
@@ -17,6 +18,8 @@
 #include "util.h"
 #include "i13n.h"
 #include "module_ms_alloc.h"
+#include "handlers.h"
+#include "transform.h"
 /* ====================================================================== */
 
 /* Parameters of a hash map to be used to lookup IR nodes by the addresses 
@@ -568,12 +571,8 @@ is_incomplete_function(struct list_head *ir)
 }
 /* ====================================================================== */
 
-/* Construct an IR node with all fields initialized to their default values.
- * The function returns the pointer to the constructed and initialized node
- * on success, NULL if there is not enough memory to complete the operation.
- */
-static struct kedr_ir_node *
-ir_node_create(void)
+struct kedr_ir_node *
+kedr_ir_node_create(void)
 {
 	struct kedr_ir_node *node;
 	
@@ -588,10 +587,9 @@ ir_node_create(void)
 	node->cb_type = KEDR_CB_NONE;
 	return node;
 }
-/* Destroy the node and release memory it occupies. 
- * If 'node' is NULL, the function does nothing. */
-static void
-ir_node_destroy(struct kedr_ir_node *node)
+
+void
+kedr_ir_node_destroy(struct kedr_ir_node *node)
 {
 	kfree(node);
 }
@@ -616,7 +614,7 @@ ir_node_create_from_insn(struct insn *src_insn)
 	BUG_ON(src_insn->length == 0);
 	BUG_ON(src_insn->length > X86_MAX_INSN_SIZE);
 	
-	node = ir_node_create();
+	node = kedr_ir_node_create();
 	if (node == NULL)
 		return NULL;
 	
@@ -883,7 +881,7 @@ do_process_insn(struct kedr_ifunc *func, struct insn *insn, void *data)
 	
 	ret = ir_node_set_iprel_addr(node, func);
 	if (ret != 0) {
-		ir_node_destroy(node);
+		kedr_ir_node_destroy(node);
 		return ret;
 	}
 	
@@ -1156,6 +1154,38 @@ is_jump_backwards(struct kedr_ir_node *node)
 	 * kernel modules, some special kind of padding, may be. */
 }
 
+/* Allocates an instance of 'kedr_call_info' for a given node, initializes
+ * the fields which data are already known (depending on the type of the 
+ * node), adds the instance to 'call_infos' in 'func'. The node must 
+ * correspond to a near call/jump that transfers control to some other
+ * function. */
+static int
+prepare_call_info(struct kedr_ir_node *node, struct kedr_ifunc *func)
+{
+	struct kedr_call_info *info;
+	
+	BUG_ON( node->cb_type != KEDR_CB_JUMP_INDIRECT_OUT &&
+		node->cb_type != KEDR_CB_CALL_INDIRECT &&
+		node->cb_type != KEDR_CB_CALL_REL32_OUT &&
+		node->cb_type != KEDR_CB_JUMP_REL32_OUT);
+	
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (info == NULL)
+		return -ENOMEM;
+	
+	info->pc = node->orig_addr;
+	
+	if (node->cb_type == KEDR_CB_CALL_REL32_OUT || 
+	    node->cb_type == KEDR_CB_JUMP_REL32_OUT) {
+		info->target = node->dest_addr;
+		kedr_fill_call_info((unsigned long)info);
+	}
+	
+	node->call_info = info;
+	list_add(&info->list, &func->call_infos);
+	return 0;
+}
+
 /* If the current instruction is a control transfer instruction, determine
  * whether it should be reflected in the set of code blocks (i.e. whether we
  * should mark some IR nodes as the beginnings of the blocks). 
@@ -1171,10 +1201,12 @@ is_jump_backwards(struct kedr_ir_node *node)
  * there are any), that is, after create_jump_tables(), because that 
  * function marks the targets of the corresponding indirect jumps as the 
  * starts of the blocks and sets other relevant flags. */
-static void
+static int
 ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir, 
 	struct kedr_ifunc *func)
 {
+	int ret = 0;
+	
 	/* The node should have been added to the IR before this function is 
 	 * called. */
 	BUG_ON(node->list.next == NULL);
@@ -1184,7 +1216,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		ir_mark_node_separate_block(node, ir);
 		node->cb_type = KEDR_CB_LOCKED_UPDATE;
 		node->barrier_type = KEDR_BT_FULL;
-		return;
+		return 0;
 	}
 	
 	/* I/O operation accessing memory. */
@@ -1192,35 +1224,41 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		ir_mark_node_separate_block(node, ir);
 		node->cb_type = KEDR_CB_IO_MEM_OP;
 		node->barrier_type = KEDR_BT_FULL;
-		return;
+		return 0;
 	}
 	
 	/* Some other kind of a memory barrier. */
 	if (is_insn_barrier_other(&node->insn, &node->barrier_type)) {
 		ir_mark_node_separate_block(node, ir);
 		node->cb_type = KEDR_CB_BARRIER_OTHER;
-		return;
+		return 0;
 	}
 	
 	/* Only control transfer instructions remain to be processed. */
 	if (node->dest_addr == 0)
-		return;
+		return 0;
 	
 	/* Indirect near jump. */
 	if (is_insn_jump_near_indirect(&node->insn)) {
 		ir_mark_node_separate_block(node, ir);
-		if (node->inner_jmp_indirect) 
+		if (node->inner_jmp_indirect) {
 			node->cb_type = KEDR_CB_JUMP_INDIRECT_INNER;
-		else
+		}
+		else {
 			node->cb_type = KEDR_CB_JUMP_INDIRECT_OUT;
-		return;
+			ret = prepare_call_info(node, func);
+			if (ret != 0)
+				return ret;
+		}
+		return 0;
 	}
 	
 	/* Indirect near call. */
 	if (is_insn_call_near_indirect(&node->insn)) {
 		ir_mark_node_separate_block(node, ir);
 		node->cb_type = KEDR_CB_CALL_INDIRECT;
-		return;
+		ret = prepare_call_info(node, func);
+		return ret;
 	}
 	
 	/* JMP rel32, Jcc rel32 
@@ -1230,6 +1268,9 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		if (is_transfer_outside(node, func)) {
 			ir_mark_node_separate_block(node, ir);
 			node->cb_type = KEDR_CB_JUMP_REL32_OUT;
+			ret = prepare_call_info(node, func);
+			if (ret != 0)
+				return ret;
 		}
 		else if (is_jump_backwards(node)) {
 			ir_mark_node_separate_block(node, ir);
@@ -1241,7 +1282,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		}
 		/* Other kinds of these jumps do not need to be placed in 
 		 * separate blocks. */
-		return;
+		return 0;
 	}
 	
 	/* CALL rel32 */
@@ -1249,6 +1290,9 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		if (is_transfer_outside(node, func)) {
 			ir_mark_node_separate_block(node, ir);
 			node->cb_type = KEDR_CB_CALL_REL32_OUT;
+			ret = prepare_call_info(node, func);
+			if (ret != 0)
+				return ret;
 		}
 		else if (is_jump_backwards(node)) {
 			ir_mark_node_separate_block(node, ir);
@@ -1257,16 +1301,17 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		}
 		/* Other kinds of these calls do not need to be placed in 
 		 * separate blocks. */
-		return;
+		return 0;
 	}
 	 	
 	/* Some other kind of control transfer: CALL/JMP far, RET, ... */
 	ir_mark_node_separate_block(node, ir);
 	node->cb_type = KEDR_CB_CONTROL_OUT_OTHER;
+	return 0;
 }
 
 static struct kedr_block_info *
-kedr_block_info_create(unsigned long orig_func, unsigned long max_events)
+kedr_block_info_create(unsigned long max_events)
 {
 	struct kedr_block_info *bi = NULL;
 	size_t s; 
@@ -1277,8 +1322,7 @@ kedr_block_info_create(unsigned long orig_func, unsigned long max_events)
 	bi = kzalloc(s, GFP_KERNEL);
 	if (bi == NULL)
 		return NULL;
-	
-	bi->orig_func = orig_func;
+
 	bi->max_events = max_events;
 	return bi;
 }
@@ -1305,7 +1349,7 @@ ir_create_block_info(struct kedr_ifunc *func, struct kedr_ir_node *start,
 	if (start->cb_type == KEDR_CB_LOCKED_UPDATE || 
 	    start->cb_type == KEDR_CB_IO_MEM_OP) {
 		BUG_ON(max_events != 1);
-		bi = kedr_block_info_create((unsigned long)func->addr, 1);
+		bi = kedr_block_info_create(1);
 		if (bi == NULL)
 			return -ENOMEM;
 		start->block_info = bi;
@@ -1314,8 +1358,7 @@ ir_create_block_info(struct kedr_ifunc *func, struct kedr_ir_node *start,
 	else if (start->cb_type == KEDR_CB_COMMON_NO_MEM_OPS) {
 		/* This common block has memory events, adjust its type. */
 		start->cb_type = KEDR_CB_COMMON;
-		bi = kedr_block_info_create((unsigned long)func->addr, 
-			max_events);
+		bi = kedr_block_info_create(max_events);
 		if (bi == NULL)
 			return -ENOMEM;
 		start->block_info = bi;
@@ -1585,7 +1628,7 @@ fill_block_info_e_m_common(struct kedr_block_info *bi,
 /* Fill the masks and the event information in the kedr_block_info instance
  * for the block starting with 'start' if the appropriate data are already
  * known.
- * 'orig_func' and 'max_events' must have been already set. */
+ * 'max_events' must have been already set. */
 static void
 fill_block_info(struct kedr_ir_node *start, struct list_head *ir)
 {
@@ -1667,8 +1710,11 @@ ir_create_blocks(struct kedr_ifunc *func, struct list_head *ir)
 	
 	/* The first pass: process control transfer instructions and the 
 	 * instructions that should always be in a separate block. */
-	list_for_each_entry(pos, ir, list)
-		ir_node_set_block_starts(pos, ir, func);
+	list_for_each_entry(pos, ir, list) {
+		ret = ir_node_set_block_starts(pos, ir, func);
+		if (ret != 0)
+			return ret;
+	}
 	
 	/* The second pass: determine the number of local values needed for 
 	 * each common block, split the long blocks, adjust types, create
@@ -1876,11 +1922,11 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 	 *     jmp near <where j*cxz would jump> (length: 5 bytes)
 	 * label_continue:
 	 *     ...  */
-	node_orig = ir_node_create();
-	node_jump_over = ir_node_create();
+	node_orig = kedr_ir_node_create();
+	node_jump_over = kedr_ir_node_create();
 	if (node_orig == NULL || node_jump_over == NULL) {
-		ir_node_destroy(node_orig);
-		ir_node_destroy(node_jump_over);
+		kedr_ir_node_destroy(node_orig);
+		kedr_ir_node_destroy(node_jump_over);
 		return -ENOMEM;
 	}
 	
@@ -2063,17 +2109,252 @@ kedr_ir_destroy(struct list_head *ir)
 	
 	list_for_each_entry_safe(pos, tmp, ir, list) {
 		list_del(&pos->list);
-		ir_node_destroy(pos);
+		kedr_ir_node_destroy(pos);
 	}
 }
 /* ====================================================================== */
 
+#ifdef CONFIG_X86_64
+static unsigned int 
+update_base_mask_for_string_insn(struct kedr_ir_node *node, 
+	unsigned int base_mask)
+{
+	/* %rsi and %rdi are scratch registers on x86-64, so they cannot be
+	 * used as a base register anyway. No special handling of string
+	 * instructions is necessary here. */
+	return base_mask;
+}
+
+static int
+is_pushad(struct insn *insn)
+{
+	/* No "PUSHAD" instruction on x86-64. */
+	return 0;
+}
+
+static int
+is_popad(struct insn *insn)
+{
+	/* No "POPAD" instruction on x86-64. */
+	return 0;
+}
+
+#else	/* CONFIG_X86_32 */
+static unsigned int 
+update_base_mask_for_string_insn(struct kedr_ir_node *node, 
+	unsigned int base_mask)
+{
+	/* If the function contains instructions with addressing method X
+	 * (movs, lods, ...), %esi cannot be used as a base register. 
+	 * Same for addressing method Y (movs, stos, ...) and %edi. */
+	insn_attr_t *attr = &node->insn.attr;
+	if (attr->addr_method1 == INAT_AMETHOD_X || 
+	    attr->addr_method2 == INAT_AMETHOD_X)
+		base_mask &= ~X86_REG_MASK(INAT_REG_CODE_SI);
+	
+	if (attr->addr_method1 == INAT_AMETHOD_Y || 
+	    attr->addr_method2 == INAT_AMETHOD_Y)
+		base_mask &= ~X86_REG_MASK(INAT_REG_CODE_DI);
+	
+	return base_mask;
+}
+
+static int
+is_pushad(struct insn *insn)
+{
+	BUG_ON(insn == NULL || insn->length == 0);
+	return (insn->opcode.bytes[0] == 0x60);
+}
+
+static int
+is_popad(struct insn *insn)
+{
+	BUG_ON(insn == NULL || insn->length == 0);
+	return (insn->opcode.bytes[0] == 0x61);
+}
+#endif
+
+/* Similar to insn_reg_mask() but also takes function calls into
+ * account. If 'insn' transfers control outside of the function
+ * 'func', the register_usage_mask() considers all the scratch general
+ * purpose registers used and updates the mask accordingly. 
+ * 
+ * It is possible that the instruction does not actually use this many
+ * registers. For now, we take a safer, simpler but less optimal route 
+ * in such cases. */
+static unsigned int 
+register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
+{
+	unsigned int reg_mask;
+	unsigned long dest;
+	unsigned long start_addr = (unsigned long)func->addr;
+	u8 opcode;
+	
+	BUG_ON(insn == NULL);
+	BUG_ON(func == NULL);
+	
+	/* Decode at least the opcode because we need to handle some 
+	 * instructions separately ('ret' group). */
+	insn_get_opcode(insn);
+	opcode = insn->opcode.bytes[0];
+	
+	/* Handle 'ret' group to avoid marking scratch registers as used for 
+	 * these instructions. Same for 'iret'. */
+	if (opcode == 0xc3 || opcode == 0xc2 || 
+	    opcode == 0xca || opcode == 0xcb ||
+	    opcode == 0xcf)
+		return X86_REG_MASK(INAT_REG_CODE_SP);
+	
+	reg_mask = insn_reg_mask(insn);
+	dest = insn_jumps_to(insn);
+	
+	if (dest != 0 && 
+	    (dest < start_addr || dest >= start_addr + func->size))
+	    	reg_mask |= X86_REG_MASK_SCRATCH;
+		
+	return reg_mask;
+}
+
+/* Collects the data about register usage in the function and chooses 
+ * the base register for the instrumentation of that function. 
+ *
+ * The function saves the collected data about register usage in 'reg_mask'
+ * fields of the corresponding nodes.
+ * 
+ * The return value is the code of the base resister on success, a negative
+ * error code on failure. */
+static int
+ir_choose_base_register(struct kedr_ifunc *func, struct list_head *ir)
+{
+	struct kedr_ir_node *node;
+	unsigned int allowed_base_mask = X86_REG_MASK_NON_SCRATCH;
+	unsigned int reg_usage[X86_REG_COUNT];
+	int base = KEDR_REG_NONE;
+	unsigned int usage_count = UINT_MAX;
+	int i;
+	
+	memset(&reg_usage[0], 0, sizeof(reg_usage));
+	
+	list_for_each_entry(node, ir, list) {
+		unsigned int mask;
+		
+		allowed_base_mask = update_base_mask_for_string_insn(node,
+			allowed_base_mask);
+		mask = register_usage_mask(&node->insn, func);
+		BUG_ON(mask > X86_REG_MASK_ALL);
+		
+		if ((mask == X86_REG_MASK_ALL) && 
+		    !is_pushad(&node->insn) && !is_popad(&node->insn)) {
+			pr_warning(KEDR_MSG_PREFIX 
+	"The instruction at %pS seems to use all general-purpose registers "
+	"and is neither PUSHAD nor POPAD. Unable to instrument function "
+	"%s().\n",
+				(void *)node->orig_addr, func->name);
+			return -EINVAL;
+		}
+		
+		node->reg_mask = mask;
+		for (i = 0; i < X86_REG_COUNT; ++i) {
+			if (mask & X86_REG_MASK(i))
+				++reg_usage[i];
+		}
+	}
+	
+	for (i = 0; i < X86_REG_COUNT; ++i) {
+		if ((X86_REG_MASK(i) & allowed_base_mask) &&
+		    reg_usage[i] < usage_count) {
+		    	base = i;
+		    	usage_count = reg_usage[i];
+		}
+	}
+	BUG_ON(base == KEDR_REG_NONE); /* we should have chosen something */
+
+	return base;
+}
+
+/* Returns non-zero if the instruction is a "simple" exit from the function
+ * (that is, an exit that required only the standard processing):
+ * RET*, IRET, UD2, JMP far. 
+ * Note that near jumps that can also be function exits do not fall into 
+ * this group as they require special processing. */
+static int 
+is_simple_function_exit(struct insn *insn)
+{
+	u8 opcode = insn->opcode.bytes[0];
+	u8 modrm = insn->modrm.bytes[0];
+	
+	/* RET*, IRET */
+	if (opcode == 0xc2 || opcode == 0xc3 || opcode == 0xca || 
+	    opcode == 0xcb || opcode == 0xcf)
+		return 1;
+	
+	/* UD2 */
+	if (opcode == 0x0f && insn->opcode.bytes[1] == 0x0b)
+		return 1;
+	
+	/* JMP far */
+	if (opcode == 0xea || (opcode == 0xff && X86_MODRM_REG(modrm) == 5))
+		return 1;
+	
+	return 0;
+}
+
 int 
 kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
+	int ret;
+	u8 base;
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *tmp;
+	
 	BUG_ON(ir == NULL);
 	
-	// TODO
+	ret = ir_choose_base_register(func, ir);
+	if (ret < 0)
+		return ret;
+	base = (u8)ret;
+	
+	/* Phase 1:
+	 * - handle the instructions that use the base register and 
+	 *   "release" it;
+	 * - handle function entry and exits; 
+	 * - handle function calls;
+	 * - handle inner indirect near jumps that use the base register. */
+	ret = kedr_handle_function_entry(ir, func, base);
+	if (ret < 0)
+		return ret;
+	
+	list_for_each_entry_safe(node, tmp, ir, list) {
+		if (!is_reference_node(node))
+			continue;
+		
+		ret = 0;
+		if (is_simple_function_exit(&node->insn))
+			ret = kedr_handle_function_exit(node, base);
+		else if (node->cb_type == KEDR_CB_CALL_INDIRECT)
+			ret = kedr_handle_call_indirect(node, base);
+		else if (node->cb_type == KEDR_CB_JUMP_INDIRECT_OUT)
+			ret = kedr_handle_jmp_indirect_out(node, base);
+		else if (node->cb_type == KEDR_CB_JUMP_INDIRECT_INNER)
+			ret = kedr_handle_jmp_indirect_inner(node, base);
+		else if (node->cb_type == KEDR_CB_CALL_REL32_OUT)
+			ret = kedr_handle_call_rel32_out(node, base);
+		else if (node->cb_type == KEDR_CB_JUMP_REL32_OUT)
+			ret = kedr_handle_jxx_rel32_out(node, base);
+		else if (is_pushad(&node->insn))
+			ret = kedr_handle_pushad(node, base);
+		else if (is_popad(&node->insn))
+			ret = kedr_handle_popad(node, base);
+		else 
+			/* General case, just "release" %base register. */
+			ret = kedr_handle_general_case(node, base);
+		
+		if (ret < 0)
+			return ret;
+	}
+	
+	// TODO: Phase 2
+	// TODO: Do not forget to process barriers
 	return 0;
 }
 /* ====================================================================== */

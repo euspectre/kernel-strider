@@ -42,9 +42,6 @@ struct kedr_block_info
 	/* The list of such structures for a particular function. */
 	struct list_head list;
 	
-	/* Start address of the original function. */
-	unsigned long orig_func;
-	
 	/* The number of the elements in events[] array (see below). The 
 	 * block of code may contain no more than 'max_events' operations 
 	 * with memory. For most of the instructions accessing memory, each

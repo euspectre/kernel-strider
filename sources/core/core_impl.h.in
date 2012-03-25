@@ -33,6 +33,11 @@ extern struct kedr_ls_allocator *ls_allocator;
 struct kedr_core_hooks;
 extern struct kedr_core_hooks *core_hooks;
 
+/* The currently used implementation of "Function Handlers" subsystem. 
+ * Should never be NULL. */
+struct kedr_function_handlers;
+extern struct kedr_function_handlers *function_handlers;
+
 /* Path where the user-mode helper scripts are located. Normally, the user
  * would not change it, it is mainly for testing purposes. */
 extern char *umh_dir;

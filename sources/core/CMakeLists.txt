@@ -22,6 +22,12 @@ set(ARCH_DIR "arch/${KEDR_ARCH}")
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/include/kedr/asm)
 
+if (KEDR_64_BIT)
+	set(THUNKS_SOURCE_FILE "thunks_64.S")
+else ()
+	set(THUNKS_SOURCE_FILE "thunks_32.S")
+endif ()
+
 kbuild_include_directories(
 	"${CMAKE_CURRENT_SOURCE_DIR}/${ARCH_DIR}/include"
 	"${CMAKE_CURRENT_BINARY_DIR}/${ARCH_DIR}/lib"
@@ -29,6 +35,7 @@ kbuild_include_directories(
 )
 
 set(TOP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include/kedr")
+set(ASM_OFFSETS_FILE "kedr_asm_offsets.h")
 
 kbuild_add_module(${KMODULE_NAME}
 # Sources:
@@ -40,6 +47,10 @@ kbuild_add_module(${KMODULE_NAME}
 	"ifunc.c"
 	"util.c"
 	"ir.c"
+	"insn_gen.c"
+	"transform.c"
+	"handlers.c"
+	"${THUNKS_SOURCE_FILE}"
 
 # Headers
 	"core_impl.h"
@@ -51,14 +62,22 @@ kbuild_add_module(${KMODULE_NAME}
 	"util.h"
 	"hooks.h"
 	"ir.h"
+	"insn_gen.h"
+	"transform.h"
+	"handlers.h"
+	"thunks.h"
 
 # Instruction decoder: sources and headers
-    "${ARCH_DIR}/lib/inat.c"
-    "${ARCH_DIR}/lib/insn.c"
-    "${ARCH_DIR}/lib/inat-tables.h"
-    "${ARCH_DIR}/include/kedr/asm/inat.h"
-    "${ARCH_DIR}/include/kedr/asm/inat_types.h"
-    "${ARCH_DIR}/include/kedr/asm/insn.h"
+	"${ARCH_DIR}/lib/inat.c"
+	"${ARCH_DIR}/lib/insn.c"
+	"${ARCH_DIR}/lib/inat-tables.h"
+	"${ARCH_DIR}/include/kedr/asm/inat.h"
+	"${ARCH_DIR}/include/kedr/asm/inat_types.h"
+	"${ARCH_DIR}/include/kedr/asm/insn.h"
+
+# Offsets of some fields in the structures needed by the functions
+# written in assembly.
+	"${ASM_OFFSETS_FILE}"
 
 # The headers that can be used by other components (specify the headers
 # here for CMake to create a dependency of the core module on these).
@@ -66,6 +85,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"${TOP_INCLUDE_DIR}/kedr_mem/core_api.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/block_info.h"
+	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
 )
 
 # Generate the table with the information about the machine instructions
@@ -84,6 +104,48 @@ add_custom_command(
 )
 ########################################################################
 
+# Rules to generate the header file with the offsets of the needed fields
+# in structs.
+set(ASM_OFFSETS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/asm_offsets")
+set(ASM_OFFSETS_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/asm_offsets")
+set(ASM_OFFSETS_C_FILE_NAME "kedr_asm_offsets")
+
+# The header files containing the structures we need the offsets for
+# and the files these headers depend on.
+set(HEADERS_FOR_OFFSETS 
+	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
+	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
+	"${CMAKE_SOURCE_DIR}/core/${ARCH_DIR}/include/kedr/asm/insn.h"
+)
+
+# Include directories and -I options
+set(cflags_string)
+if(kbuild_include_dirs)
+	foreach(dir ${kbuild_include_dirs})
+		set(cflags_string "${cflags_string} -I${dir}")
+	endforeach(dir ${kmodule_include_dirs})
+endif(kbuild_include_dirs)
+
+configure_file (
+	"${ASM_OFFSETS_SOURCE_DIR}/Kbuild.in"
+	"${ASM_OFFSETS_BINARY_DIR}/Kbuild"
+)
+
+add_custom_command(OUTPUT "${ASM_OFFSETS_FILE}"
+	COMMAND cp -p 
+		"${ASM_OFFSETS_SOURCE_DIR}/${ASM_OFFSETS_C_FILE_NAME}.c"
+		"${ASM_OFFSETS_BINARY_DIR}/${ASM_OFFSETS_C_FILE_NAME}.c"
+	COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE} 
+			-C ${KBUILD_BUILD_DIR} M="${ASM_OFFSETS_BINARY_DIR}"
+	COMMAND cp -p 
+		"${ASM_OFFSETS_BINARY_DIR}/${ASM_OFFSETS_FILE}"
+		"${CMAKE_CURRENT_BINARY_DIR}/${ASM_OFFSETS_FILE}"
+	DEPENDS 
+		"${ASM_OFFSETS_SOURCE_DIR}/${ASM_OFFSETS_C_FILE_NAME}.c"
+		${HEADERS_FOR_OFFSETS}
+)
+########################################################################
+
 kedr_install_kmodule(${KMODULE_NAME})
 ########################################################################
 
@@ -93,4 +155,23 @@ add_subdirectory(um_helpers)
 
 # Tests
 kedr_test_add_subdirectory(tests)
+########################################################################
+
+# Additional files to remove during 'make clean'
+set(files_to_clean_extra
+	"${ASM_OFFSETS_BINARY_DIR}/.tmp_versions"
+	"${ASM_OFFSETS_BINARY_DIR}/Module.symvers"
+	"${ASM_OFFSETS_BINARY_DIR}/modules.order"
+	"${ASM_OFFSETS_BINARY_DIR}/Module.markers"
+	"${ASM_OFFSETS_BINARY_DIR}/${ASM_OFFSETS_C_FILE_NAME}.c"
+	"${ASM_OFFSETS_BINARY_DIR}/${ASM_OFFSETS_C_FILE_NAME}.s"
+	"${ASM_OFFSETS_BINARY_DIR}/.${ASM_OFFSETS_C_FILE_NAME}.s.cmd"
+	"${ASM_OFFSETS_BINARY_DIR}/.${ASM_OFFSETS_C_FILE_NAME}.s.d"
+	"${ASM_OFFSETS_BINARY_DIR}/.${ASM_OFFSETS_C_FILE_NAME}.o.cmd"
+	"${ASM_OFFSETS_BINARY_DIR}/.${ASM_OFFSETS_C_FILE_NAME}.o.d"
+	"${ASM_OFFSETS_BINARY_DIR}/${ASM_OFFSETS_FILE}"
+)
+set_property (DIRECTORY APPEND PROPERTY 
+    ADDITIONAL_MAKE_CLEAN_FILES ${files_to_clean_extra}
+)
 ########################################################################

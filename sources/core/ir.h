@@ -10,6 +10,7 @@
 #include <kedr/object_types.h>
 
 struct kedr_block_info;
+struct kedr_call_info;
 struct kedr_ifunc;
 struct kedr_i13n;
 /* ====================================================================== */
@@ -194,6 +195,14 @@ struct kedr_ir_node
 	 * care of deleting that instance when it is appropriate. */
 	struct kedr_block_info *block_info;
 	
+	/* Meaningful only for a node that represents a function call
+	 * (call/jmp out, direct or indirect). Each call has 
+	 * 'kedr_call_info' instance associated with it.
+	 * Note that the 'kedr_call_info' instance is owned by the function
+	 * object (kedr_ifunc) rather than by this node. The owner will take
+	 * care of deleting that instance when it is appropriate. */
+	struct kedr_call_info *call_info;
+	
 	/* Register usage mask for the instruction. To simplify debugging,
 	 * its default value should be as if the instruction used all the 
 	 * general-purpose registers. */
@@ -301,5 +310,19 @@ kedr_ir_generate_code(struct kedr_ifunc *func, struct list_head *ir);
  * except the head). */
 void
 kedr_ir_destroy(struct list_head *ir);
+
+/* Constructs an IR node with all fields initialized to their default 
+ * values.
+ * The function returns the pointer to the constructed and initialized node
+ * on success, NULL if there is not enough memory to complete the operation.
+ */
+struct kedr_ir_node *
+kedr_ir_node_create(void);
+
+/* Destroys the node and release memory it occupies. 
+ * If 'node' is NULL, the function does nothing. */
+void
+kedr_ir_node_destroy(struct kedr_ir_node *node);
+
 
 #endif // IR_H_1801_INCLUDED

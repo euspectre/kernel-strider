@@ -28,6 +28,7 @@
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
+#include <kedr/kedr_mem/functions.h>
 
 #include "config.h"
 #include "core_impl.h"
@@ -133,7 +134,10 @@ enum kedr_provider_role
 	/* Provides: hooks for the core */
 	KEDR_PR_HOOKS,
 	
-	/* TODO: add more roles here if necessary */
+	/* Provides: function call handlers */
+	KEDR_PR_FUNC_HANDLERS,
+	
+	/* [NB] Add more roles here if necessary */
 	
 	/* The number of provider roles, keep this item last. */
 	KEDR_PR_NUM_ROLES
@@ -244,6 +248,15 @@ static struct kedr_core_hooks default_hooks;
 struct kedr_core_hooks *core_hooks = &default_hooks;
 /* ====================================================================== */
 
+static struct kedr_function_handlers default_function_handlers = {
+	.owner = THIS_MODULE,
+	.fill_call_info = NULL,
+};
+
+struct kedr_function_handlers *function_handlers = 
+	&default_function_handlers;
+/* ====================================================================== */
+
 /* Non-zero if some set of event handlers has already been registered, 
  * 0 otherwise. 
  * Must be called with 'target_mutex' locked. */
@@ -336,6 +349,14 @@ out:
 	return;
 }
 EXPORT_SYMBOL(kedr_unregister_event_handlers);
+
+struct kedr_event_handlers *
+kedr_get_event_handlers(void)
+{
+	WARN_ON_ONCE(!target_module_loaded());
+	return eh_current;
+}
+EXPORT_SYMBOL(kedr_get_event_handlers);
 /* ====================================================================== */
 
 /* Module filter.
@@ -583,6 +604,49 @@ out:
 	return;
 }
 EXPORT_SYMBOL(kedr_set_core_hooks);
+/* ====================================================================== */
+
+void
+kedr_set_function_handlers(struct kedr_function_handlers *fh)
+{
+	int ret = 0;
+	ret = mutex_lock_killable(&target_mutex);
+	if (ret != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX
+	"kedr_set_function_handlers(): failed to lock target_mutex\n");
+		goto out;
+	}
+
+	if (target_module_loaded()) {
+		pr_warning(KEDR_MSG_PREFIX
+			"Attempt to change the function handlers "
+			"while the target is loaded. "
+			"The handlers will not be changed.\n");
+		goto out_unlock;
+	}
+	
+	if (fh != NULL) {
+		if (function_handlers != &default_function_handlers) {
+			pr_warning(KEDR_MSG_PREFIX
+	"Attempt to set the function handlers while custom ones are still "
+	"active. The handlers will not be changed.\n");
+			goto out_unlock;
+		}
+		function_handlers = fh;
+		set_provider(fh->owner, KEDR_PR_FUNC_HANDLERS);
+	}
+	else {
+		function_handlers = &default_function_handlers;
+		reset_provider(KEDR_PR_FUNC_HANDLERS);
+	}
+
+out_unlock:	
+	mutex_unlock(&target_mutex);
+out:
+	return;
+}
+EXPORT_SYMBOL(kedr_set_function_handlers);
 /* ====================================================================== */
 
 static void __init

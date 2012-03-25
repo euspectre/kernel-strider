@@ -9,6 +9,7 @@
 
 #include <kedr/asm/insn.h>	/* X86_REG_COUNT */
 #include <kedr/kedr_mem/block_info.h>
+#include <kedr/kedr_mem/functions.h>
 
 /* The local storage is to some extent similar to thread-local storage (TLS)
  * widely used in the user space applications. The difference is that our 
@@ -62,27 +63,34 @@ struct kedr_local_storage
 	 * different from the IDs of the "ordinary" threads. */
 	unsigned long tid;
 	
+	/* Start address of the original function. */
+	unsigned long orig_func;
+	
 	/* Needed for CMPXCHG* because it is not clear for these 
-	 * instructions until runtim whether a write to memory will happen.
+	 * instructions until runtime whether a write to memory will happen.
 	 * For each such instruction, the corresponding bit of the mask 
 	 * should be set to 1, the remaining bits should be 0.
 	 * When handling the end of the corresponding block, use 
 	 * kedr_local_storage::write_mask | kedr_block_info::write_mask to
 	 * obtain the actual write mask. */
-	u32 write_mask;
+	unsigned long write_mask;
 	
-	/* The address of the kedr_block_info structure for the block being
-	 * processed. Can be NULL if the block has no operations to be 
-	 * reported. */
-	struct kedr_block_info *block_info;
+	/* When processing the end of the block with memory accesses to
+	 * record, 'info' should be the address of the corresponding 
+	 * instance of kedr_block_info.
+	 * When processing a function call, 'info' is the address of the
+	 * corresponding instance of kedr_call_info. 
+	 * In all other cases, the value of 'info' cannot be used. */
+	unsigned long info;
 	
 	/* Destination address of a jump, used to handle jumps out of the
 	 * code block. */
 	unsigned long dest_addr;
 	
-	/* A place for temporary data. It can be handy if using a register
-	 * to store these data is not desirable. */
+	/* Two more slots for temporary data. It can be handy if using 
+	 * a register to store these data is not desirable. */
 	unsigned long temp;
+	unsigned long temp1;
 	
 	/* The following two values are needed when processing the function
 	 * calls to hold the return value of the called function. The 
@@ -91,14 +99,10 @@ struct kedr_local_storage
 	unsigned long ret_val;  	/* lower part, %rax */
 	unsigned long ret_val_high;	/* higher part, %rdx */
 	
-	/* Three more values needed when processing the function calls:
-	 *  ret_addr - the saved return address for a function call;
-	 *  call_func - the address of the function to be called;
-	 *  call_pc - the address of the instruction in the original code
-	 *    that would perform that call. */
+	/* One more value needed when processing the function calls:
+	 *  ret_addr - the saved intermediate return address for a 
+	 * function call. */
 	unsigned long ret_addr;
-	unsigned long call_func;
-	unsigned long call_pc;
 };
 
 /* The allocator of kedr_local_storage instances. 

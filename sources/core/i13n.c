@@ -478,8 +478,12 @@ kedr_i13n_process_module(struct module *target)
 	
 	list_for_each_entry(func, &i13n->ifuncs, list) {
 		ret = do_process_function(func, i13n);
-		if (ret != 0)
+		if (ret != 0) {
+			pr_warning(KEDR_MSG_PREFIX 
+				"Failed to instrument function %s().\n",
+				func->name);
 			goto out_free_functions;
+		}
 	}
 	
 	/* Calculate the total size of the original functions and of their

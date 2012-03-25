@@ -39,7 +39,7 @@
 struct insn_field {
 	union {
 		insn_value_t value;
-		insn_byte_t bytes[X86_NUM_LEGACY_PREFIXES];
+		insn_byte_t bytes[4];
 	};
 	/* !0 if we've run insn_get_xxx() for this field */
 	unsigned char got;

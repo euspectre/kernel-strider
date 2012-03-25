@@ -1232,8 +1232,8 @@ insn_jumps_to(struct insn *insn)
 			insn->length, insn->immediate.value); 
 	}
 	
-	/* int*, ret* */
-	if ((opcode >= 0xca && opcode <= 0xce) || 
+	/* int*, ret*, iret */
+	if ((opcode >= 0xca && opcode <= 0xcf) || 
 	    opcode == 0xc2 || opcode == 0xc3)
 		return (unsigned long)(-1); 
 	

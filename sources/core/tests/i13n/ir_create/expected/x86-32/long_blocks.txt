@@ -1,7 +1,6 @@
 IR:
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 32
 read_mask = 0xfffffffb
 write_mask = 0x4
@@ -127,7 +126,6 @@ events:
 
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 31
 read_mask = 0x6fffffff
 write_mask = 0x10000000
@@ -242,7 +240,6 @@ events:
 
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 28
 read_mask = 0xffffffb
 write_mask = 0x4
@@ -348,7 +345,6 @@ events:
 
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 5
 read_mask = 0xd
 write_mask = 0x12

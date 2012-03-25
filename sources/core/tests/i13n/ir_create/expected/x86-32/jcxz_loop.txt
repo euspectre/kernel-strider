@@ -6,10 +6,10 @@ Block (type: 2)
 
 0x3: 89 c1
 
-0xffffffff: e3 02
+0xadded: e3 02
 
 Jump to 0x7
-0xffffffff: eb 05
+0xadded: eb 05
 
 Jump to 0xc
 0x5: e9 00 00 00 00
@@ -19,10 +19,10 @@ Block (type: 2)
 
 0x9: 42
 
-0xffffffff: e2 02
+0xadded: e2 02
 
 Jump to 0xc
-0xffffffff: eb 05
+0xadded: eb 05
 
 Block (type: 1)
 Jump to 0x7
@@ -41,10 +41,10 @@ Jump to 0x1d
 
 0x13: 42
 
-0xffffffff: e1 02
+0xadded: e1 02
 
 Jump to 0x16
-0xffffffff: eb 05
+0xadded: eb 05
 
 Block (type: 1)
 Jump to 0xf
@@ -58,10 +58,10 @@ Block (type: 2)
 
 0x1a: 42
 
-0xffffffff: e0 02
+0xadded: e0 02
 
 Jump to 0x1d
-0xffffffff: eb 05
+0xadded: eb 05
 
 Block (type: 1)
 Jump to 0x18

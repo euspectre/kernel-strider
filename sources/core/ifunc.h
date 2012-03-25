@@ -95,6 +95,11 @@ struct kedr_ifunc
 	 * These structures must live until this kedr_ifunc instance is
 	 * destroyed (they are used when the target module is working). */
 	struct list_head block_infos;
+	
+	/* The list of kedr_call_info structures created for this function.
+	 * These structures must live until this kedr_ifunc instance is
+	 * destroyed (they are used when the target module is working). */
+	struct list_head call_infos;
 };
 
 struct kedr_ir_node;

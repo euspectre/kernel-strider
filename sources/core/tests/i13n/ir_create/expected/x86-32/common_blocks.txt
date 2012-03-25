@@ -1,7 +1,6 @@
 IR:
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 1
 read_mask = 0x1
 write_mask = 0x1
@@ -16,7 +15,6 @@ events:
 
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 1
 read_mask = 0x1
 write_mask = 0x0
@@ -30,7 +28,6 @@ Block (type: 9)
 
 Block (type: 3), has jumps out
 Block info:
-Function difference: 0
 max_events = 3
 read_mask = 0x5
 write_mask = 0x2
@@ -57,7 +54,6 @@ Jump to 0x7
 
 Block (type: 3)
 Block info:
-Function difference: 0
 max_events = 13
 read_mask = 0x19ff
 write_mask = 0x602

@@ -8,7 +8,7 @@
  *
  * The format is as follows: 
  * ("offset" for a node is (node->orig_addr - func->addr), printed as 
- * %llx)
+ * %llx; 0xadded for the nodes added during the instrumentation)
  * -----------------------------------------------------------------------
  * 
  * <If the function has jump tables, for each jump table, in order>
@@ -20,8 +20,6 @@
  *	<If the node is the starting node of a block>
  * 		Block (type: <N (as %u)>) [, has jumps out]
  *		<If there is block_info>
- *			Function difference: <N>
- *			<N is block_info::orig_func - func->addr>
  *			max_events = <...>
  *			read_mask = <...>
  *			write_mask = <...>
@@ -93,7 +91,7 @@ static unsigned long
 offset_for_node(struct kedr_ifunc *func, struct kedr_ir_node *node)
 {
 	if (node->orig_addr == 0)
-		return (unsigned long)(-1); /* just in case */
+		return 0xadded; /* just in case */
 		
 	return (node->orig_addr - (unsigned long)func->addr);
 }
@@ -147,9 +145,6 @@ print_ir_block(struct kedr_ifunc *func, struct kedr_ir_node *node)
 	
 	bi = node->block_info;
 	debug_util_print_string("Block info:\n");
-	debug_util_print_ulong(bi->orig_func - (unsigned long)func->addr,
-		"Function difference: %lu\n");
-	
 	debug_util_print_ulong(bi->max_events, "max_events = %lu\n");
 	debug_util_print_ulong(bi->read_mask, "read_mask = 0x%lx\n");
 	debug_util_print_ulong(bi->write_mask, "write_mask = 0x%lx\n");

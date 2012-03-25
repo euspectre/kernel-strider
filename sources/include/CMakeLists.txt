@@ -7,6 +7,7 @@ set(KEDR_INCLUDE_FILES_SRC
 	kedr_mem/core_api.h
 	kedr_mem/local_storage.h
 	kedr_mem/block_info.h
+	kedr_mem/functions.h
 	event_collector/event_collector.h
 	event_collector/event_handler.h
 )
