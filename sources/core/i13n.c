@@ -87,6 +87,16 @@ no_mem:
 }
 /* ====================================================================== */
 
+/* CALL/JMP/Jcc near relative (E8, E9 or 0F 8x) */
+static int
+is_insn_call_or_jxx_rel32(struct insn *insn)
+{
+	u8 opcode = insn->opcode.bytes[0];
+	return (opcode == 0xe8 || opcode == 0xe9 ||
+		(opcode == 0x0f && (insn->opcode.bytes[1] & 0xf0) == 0x80));
+}
+/* ====================================================================== */
+
 /* Relocate the given instruction in the fallback function in place. The 
  * code was "moved" from base address func->addr to func->fallback. 
  * [NB] No need to process short jumps outside of the function, they are 
@@ -101,8 +111,7 @@ relocate_insn_in_fallback(struct insn *insn, void *data)
 	u32 new_offset;
 	BUG_ON(insn->length == 0);
 	
-	if (insn->opcode.bytes[0] == KEDR_OP_CALL_REL32 ||
-	    insn->opcode.bytes[0] == KEDR_OP_JMP_REL32) {
+	if (is_insn_call_or_jxx_rel32(insn)) {
 		/* For calls and jumps, the decoder stores the offset in 
 		 * 'immediate' field rather than in 'displacement'.
 		 * [NB] When dealing with RIP-relative addressing on x86-64,
@@ -263,8 +272,7 @@ relocate_iprel_in_icode(struct insn *insn, void *dest)
 	u32 *to_fixup;
 	BUG_ON(insn->length == 0);
 	
-	if (insn->opcode.bytes[0] == KEDR_OP_CALL_REL32 ||
-	    insn->opcode.bytes[0] == KEDR_OP_JMP_REL32) {
+	if (is_insn_call_or_jxx_rel32(insn)) {
 		to_fixup = (u32 *)((unsigned long)insn->kaddr + 
 			insn_offset_immediate(insn));
 		*to_fixup = (u32)X86_OFFSET_FROM_ADDR(insn->kaddr, 

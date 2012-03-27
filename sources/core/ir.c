@@ -778,8 +778,8 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 static int
 ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 {
-	u8 opcode = node->insn.opcode.bytes[0];
-	if (opcode == KEDR_OP_CALL_REL32 || opcode == KEDR_OP_JMP_REL32) {
+	if (is_insn_call_rel32(&node->insn) || 
+	    is_insn_jmp_jcc_rel32(&node->insn)) {
 		BUG_ON(node->dest_addr == 0);
 		BUG_ON(node->dest_addr == (unsigned long)(-1));
 		
@@ -1997,11 +1997,10 @@ ir_node_process_short_jumps(struct kedr_ir_node *node,
 	if (ret != 0)
 		return ret;
 	
-	/* If a formerly short jump lead outside of the function, set the 
+	/* If a formerly short jump leads outside of the function, set the 
 	 * destination address as the address the resulting near jump
 	 * jumps to. */
-	if (node->insn.opcode.bytes[0] == KEDR_OP_JMP_REL32 &&
-	    node->iprel_addr == 0) {
+	if (is_insn_jmp_jcc_rel32(&node->insn) && node->iprel_addr == 0) {
 		BUG_ON(node->dest_addr == 0);
 		BUG_ON(node->dest_addr == (unsigned long)(-1));
 		if (!kedr_is_address_in_function(node->dest_addr, func))
