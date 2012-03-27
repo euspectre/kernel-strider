@@ -94,6 +94,7 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 	u8 *pos;
 	u8 opcode;
 	u8 modrm;
+	int is_mov_imm_to_reg;
 	
 	if (node->dest_inner != NULL)
 		debug_util_print_ulong(
@@ -103,6 +104,11 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 	memcpy(&buf[0], &node->insn_buffer[0], X86_MAX_INSN_SIZE);
 	opcode = insn->opcode.bytes[0];
 	modrm = insn->modrm.bytes[0];
+	
+	/* Non-zero for MOV imm32/64, %reg. */
+	is_mov_imm_to_reg = 
+		((opcode == 0xc7 && X86_MODRM_REG(modrm) == 0) ||
+		(opcode >= 0xb8 && opcode <= 0xbf));
 	
 	/* For the indirect near jumps using a jump table, as well as 
 	 * for other instructions using similar addressing expressions
@@ -127,31 +133,30 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 		pos = buf + insn_offset_displacement(insn);
 		*(u32 *)pos = 0;
 	}
-	else if (insn->x86_64 && start != NULL && 
-		opcode >= 0xb8 && opcode <= 0xbf &&
+#ifdef CONFIG_X86_64
+	else if (start != NULL && is_mov_imm_to_reg &&
 		X86_REX_W(insn->rex_prefix.value)) {
 		/* MOV imm64, %reg, check if imm64 is the address of 
 		 * a call_info or a block_info instance */
 		u64 imm64 = ((u64)insn->immediate2.value << 32) | 
 			(u64)insn->immediate1.value;
 		if (imm64 == (u64)(unsigned long)start->block_info) {
-			pos = buf + insn_offset_immediate(insn);
-			*(u64 *)pos = 0;
 			debug_util_print_ulong(offset_for_node(func, start),
 			"Ref. to block_info for the block at 0x%lx\n");
 		}
 		if (imm64 == (u64)(unsigned long)start->call_info) {
-			pos = buf + insn_offset_immediate(insn);
-			*(u64 *)pos = 0;
 			/* 'start' should be the only reference node of the
 			 * block in this case. */
 			debug_util_print_ulong(offset_for_node(func, start),
 			"Ref. to call_info for the node at 0x%lx\n");
 		}
+		
+		/* Zero the immediate value anyway */
+		pos = buf + insn_offset_immediate(insn);
+		*(u64 *)pos = 0;
 	}
-	else if (!insn->x86_64 && start != NULL && 
-		((opcode == 0xc7 && X86_MODRM_REG(modrm) == 0) ||
-		(opcode >= 0xb8 && opcode <= 0xbf))) {
+#else /* x86-32 */
+	else if (start != NULL && is_mov_imm_to_reg) {
 		/* "MOV imm32, r/m32", check if imm32 is the address of 
 		 * a call_info or a block_info instance */
 		u32 imm32 = (u32)insn->immediate.value;
@@ -169,15 +174,18 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 			debug_util_print_ulong(offset_for_node(func, start),
 			"Ref. to call_info for the node at 0x%lx\n");
 		}
-	}
-	else if (start == NULL && 
-		((opcode == 0xc7 && X86_MODRM_REG(modrm) == 0) ||
-		(opcode >= 0xb8 && opcode <= 0xbf))) {
-		/* "MOV <addr>, %rax" in the entry handler. */
+		
+		/* Zero the immediate value anyway */	
 		pos = buf + insn_offset_immediate(insn);
-		*(unsigned long *)pos = 0;
+		*(u32 *)pos = 0;
 	}
-
+#endif
+	else if (start == NULL && is_mov_imm_to_reg) {
+		/* MOV imm32, %rax in the entry handler. */
+		pos = buf + insn_offset_immediate(insn);
+		*(u32 *)pos = 0;
+	}
+	
 	debug_util_print_ulong(offset_for_node(func, node), "0x%lx: ");
 	debug_util_print_hex_bytes(&buf[0], insn->length);
 	debug_util_print_string("\n\n");

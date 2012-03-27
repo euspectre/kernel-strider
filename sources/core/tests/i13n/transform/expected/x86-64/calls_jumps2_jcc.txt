@@ -1,0 +1,79 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 58
+
+Block (type: 2)
+0x0: 55
+
+0x1: 57
+
+0x2: 56
+
+Block (type: 7)
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0x3
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0x3: e8 00 00 00 00
+
+Block (type: 2)
+0x8: 5e
+
+0x9: 5f
+
+0xa: 5d
+
+0xb: 48 31 c0
+
+0xe: 48 85 c0
+
+Block (type: 8)
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0x11
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x11: 0f 84 00 00 00 00
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x17: c3
+

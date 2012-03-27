@@ -1,0 +1,421 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 58
+
+Block (type: 2)
+0x0: 55
+
+0x1: 57
+
+0x2: 56
+
+0x3: 41 54
+
+0x5: 41 55
+
+0x7: 41 56
+
+0x9: 41 57
+
+0xb: 48 ff cf
+
+0xe: 48 ff ce
+
+0x11: 48 ff cd
+
+0x14: 49 ff cc
+
+0x17: 49 ff cd
+
+0x1a: 49 ff ce
+
+0x1d: 49 ff cf
+
+0x20: 48 ff cf
+
+0x23: 48 ff ce
+
+0x26: 48 ff cd
+
+0x29: 49 ff cc
+
+0x2c: 49 ff cd
+
+0x2f: 49 ff ce
+
+0x32: 49 ff cf
+
+0x35: 48 ff cf
+
+0x38: 48 ff ce
+
+0x3b: 48 ff cd
+
+0x3e: 49 ff cc
+
+0x41: 49 ff cd
+
+0x44: 49 ff ce
+
+0x47: 49 ff cf
+
+0x4a: 48 ff cf
+
+0x4d: 48 ff ce
+
+0x50: 48 ff cd
+
+0x53: 49 ff cc
+
+0x56: 49 ff cd
+
+0x59: 49 ff ce
+
+0x5c: 49 ff cf
+
+0x5f: 48 ff cf
+
+0x62: 48 ff ce
+
+0x65: 48 ff cd
+
+0x68: 49 ff cc
+
+0x6b: 49 ff cd
+
+0x6e: 49 ff ce
+
+0x71: 49 ff cf
+
+0x74: 48 ff cf
+
+0x77: 48 ff ce
+
+0x7a: 48 ff cd
+
+0x7d: 49 ff cc
+
+0x80: 49 ff cd
+
+0x83: 49 ff ce
+
+0x86: 49 ff cf
+
+0x89: 48 ff cf
+
+0x8c: 48 ff ce
+
+0x8f: 48 ff cd
+
+0x92: 49 ff cc
+
+0x95: 49 ff cd
+
+0x98: 49 ff ce
+
+0x9b: 49 ff cf
+
+0x9e: 48 ff cf
+
+0xa1: 48 ff ce
+
+0xa4: 48 ff cd
+
+0xa7: 49 ff cc
+
+0xaa: 49 ff cd
+
+0xad: 49 ff ce
+
+0xb0: 49 ff cf
+
+0xb3: 48 ff cf
+
+0xb6: 48 ff ce
+
+0xb9: 48 ff cd
+
+0xbc: 49 ff cc
+
+0xbf: 49 ff cd
+
+0xc2: 49 ff ce
+
+0xc5: 49 ff cf
+
+0xc8: 48 ff cf
+
+0xcb: 48 ff ce
+
+0xce: 48 ff cd
+
+0xd1: 49 ff cc
+
+0xd4: 49 ff cd
+
+0xd7: 49 ff ce
+
+0xda: 49 ff cf
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xdd: 48 89 dd
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xe0: 48 c7 c3 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+Block (type: 9)
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: 48 8b cb
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0xe7
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 48 18
+
+0xadded: 48 8b 4b 08
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 89 d8
+
+0xe7: e8 00 00 00 00
+
+Block (type: 2)
+0xe9: 48 c7 c0 00 00 00 00
+
+Block (type: 9)
+0xadded: 48 89 4b 08
+
+0xadded: 48 8b c8
+
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0xf0
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 48 18
+
+0xadded: 48 8b 4b 08
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 89 d8
+
+0xf0: e8 00 00 00 00
+
+Block (type: 2)
+0xf2: 48 31 c0
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xf5: 48 31 db
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+Block (type: 9)
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: 48 8b 0c dd 00 00 00 00
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0xf8
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 48 18
+
+0xadded: 48 8b 4b 08
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 89 d8
+
+0xf8: e8 00 00 00 00
+
+Block (type: 10)
+0xff: ff 24 c5 00 00 00 00
+
+Block (type: 2)
+0x106: 48 ff c1
+
+Jump to 0x113
+0x109: e9 00 00 00 00
+
+Block (type: 2)
+0x10b: 48 ff c2
+
+Jump to 0x113
+0x10e: e9 00 00 00 00
+
+Block (type: 2)
+0x110: 48 ff c0
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x113: 48 31 db
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+Block (type: 10)
+0xadded: 48 89 6b 28
+
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: 48 8b 2c dd 00 00 00 00
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+0xadded: 55
+
+0xadded: 48 8b 6b 28
+
+0x116: c3
+
+Block (type: 2)
+0xadded: 48 89 43 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x11d: 48 89 eb
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 43 00
+
+0x120: 41 5f
+
+0x122: 41 5e
+
+0x124: 41 5d
+
+0x126: 41 5c
+
+0x128: 5e
+
+0x129: 5f
+
+0x12a: 5d
+
+0x12b: 48 31 d2
+
+0x12e: 48 ff c2
+
+Block (type: 11)
+0xadded: 48 89 4b 08
+
+0xadded: 48 8b 0c d5 00 00 00 00
+
+0xadded: 48 89 43 00
+
+Ref. to call_info for the node at 0x131
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 48 18
+
+0xadded: 48 8b 4b 08
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x131: e9 00 00 00 00
+

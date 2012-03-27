@@ -1,0 +1,86 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 4c 89 60 60
+
+0xadded: 49 89 c4
+
+0xadded: 58
+
+Block (type: 2)
+0x0: 53
+
+0x1: 55
+
+0x2: 41 57
+
+0x4: 41 55
+
+0x6: 41 56
+
+0x8: 4d 89 e4
+
+0xb: 4d 8d 24 24
+
+0xf: 90
+
+0x10: 48 31 db
+
+0x13: 48 31 ed
+
+0x16: 4d 31 ff
+
+0x19: 4d 31 ed
+
+0x1c: 4d 31 f6
+
+0xadded: 49 89 44 24 00
+
+0xadded: 4c 89 e0
+
+0xadded: 4c 8b 60 60
+
+0x1f: 4c 89 e5
+
+0xadded: 4c 89 60 60
+
+0xadded: 49 89 c4
+
+0xadded: 49 8b 44 24 00
+
+0x22: 41 5e
+
+0x24: 41 5d
+
+0x26: 41 5f
+
+0x28: 5d
+
+0x29: 5b
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 4c 89 e0
+
+0xadded: 4c 8b 60 60
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x2a: c3
+
