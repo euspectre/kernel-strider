@@ -71,7 +71,7 @@ char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
 /* ====================================================================== */
 
-/* A directory for the core in debugfs. */
+/* A directory for the module in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
 const char *debugfs_dir_name = "test_accessor2";
 /* ====================================================================== */

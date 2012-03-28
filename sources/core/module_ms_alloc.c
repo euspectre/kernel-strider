@@ -41,14 +41,13 @@
 
 void *(*module_alloc_func)(unsigned long) = NULL;
 void (*module_free_func)(struct module *, void *) = NULL;
-
 /* ====================================================================== */
+
 /* This function will be called for each symbol known to the system.
- * We need to find only functions and only from the target module.
+ * We need to find only the particular functions.
  *
  * If this function returns 0, kallsyms_on_each_symbol() will continue
- * walking the symbols. If non-zero - it will stop.
- */
+ * walking the symbols. If non-zero - it will stop. */
 static int
 symbol_walk_callback(void *data, const char *name, struct module *mod, 
 	unsigned long addr)
