@@ -1,0 +1,142 @@
+#!/bin/sh
+
+########################################################################
+# This test uses "NULL Allcoator" to check the operation of the target
+# module when the allocation of the local storage fails.
+# 
+# Usage: 
+#   sh test.sh <target_name> <target_dir_path>
+# 
+# The target module is expected to be <target_dir_path>/<target_name>.ko
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${ALLOCATOR_MODULE}"; then
+		printf "The allocator module is missing: ${ALLOCATOR_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${ALLOCATOR_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${ALLOCATOR_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	/sbin/insmod "${ALLOCATOR_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the allocator module\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the modules
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${ALLOCATOR_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the allocator module: ${ALLOCATOR_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 2; then
+	printf "Usage: sh $0 <target_name> <target_dir_path>\n"
+	exit 1
+fi
+
+if test -z "$1"; then
+    printf "<target_name> must not be empty\n"
+    printf "Usage: sh $0 <target_name> <target_dir_path>\n"
+	exit 1
+fi
+
+if test -z "$2"; then
+    printf "<target_dir_path> must not be empty\n"
+    printf "Usage: sh $0 <target_name> <target_dir_path>\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+ALLOCATOR_MODULE_NAME="kedr_null_alloc"
+ALLOCATOR_MODULE="@CORE_MODULE_DIR@/tests/i13n/null_alloc/${ALLOCATOR_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="$1"
+TARGET_MODULE="$2/${TARGET_MODULE_NAME}.ko"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Allocator module: ${ALLOCATOR_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

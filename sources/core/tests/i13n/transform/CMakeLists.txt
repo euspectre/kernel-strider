@@ -59,7 +59,28 @@ kedr_test_add_script (mem_core.i13n.transform.06
 	test.sh "calls_jumps2_jcc_short"
 )
 
-# TODO: tests with NULL allocator for sample target and target with jtables.
+# Tests with "NULL Allocator" (checking fallbacks, etc.)
+configure_file (
+	"${CMAKE_CURRENT_SOURCE_DIR}/test_nulla.sh.in"
+	"${CMAKE_CURRENT_BINARY_DIR}/test_nulla.sh"
+	@ONLY
+)
+
+kedr_test_add_script (mem_core.i13n.null_alloc.01
+	test_nulla.sh "kedr_sample_target" "${CMAKE_BINARY_DIR}/tests/sample_target"
+)
+
+kedr_test_add_script (mem_core.i13n.null_alloc.02
+	test_nulla.sh "target_jtable_basic" 
+		"${CMAKE_BINARY_DIR}/core/tests/i13n/target_jtable"
+)
+
+# Just in case some functions in the dummy target are instrumentable.
+# Usually they are not but the calls to mcount() or the like used on some 
+# systems could make these functions long enough to be instrumentable.
+kedr_test_add_script (mem_core.i13n.null_alloc.03
+	test_nulla.sh "kedr_dummy_target" "${CMAKE_BINARY_DIR}/tests/dummy_target"
+)
 
 # TODO: tests checking entry/exit and call pre/post events with handlers
 # (on the same code as calls_jumps2_* tests?)

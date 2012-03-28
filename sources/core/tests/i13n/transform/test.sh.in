@@ -148,7 +148,7 @@ doTest()
 WORK_DIR=${PWD}
 
 if test $# -ne 1; then
-	printf "Usage: $0 <target_function>"
+	printf "Usage: $0 <target_function>\n"
 	exit 1
 fi
 
