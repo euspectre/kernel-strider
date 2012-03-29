@@ -2,17 +2,18 @@
  * core to a file in debugfs. The parameters of the module control which
  * types of events to report this way.
  * 
- * The module reports only the events starting from the entry to the 
- * function which name is given in 'target_function' parameter of the
- * module, and up to the exit from that function (inclusive). If this 
- * function does not belong to the target module, the reporter records 
- * nothing.
- *
- * [NB] The module cannot handle the targets where that function is called 
- * recursively (the reporter must not crash but the report itself is likely 
- * to contain less data than expected). Same for the targets where that
- * function is called from several threads at the same time while the 
- * reporter is active.
+ * The module can operate in two modes, depending on the value of 
+ * 'target_function' parameter:
+ * - if the parameter has an empty value, all events allowed by "report_*"
+ * parameters will be reported;
+ * - if the parameter has a non-empty value (name of the function), only the
+ * events starting from the first entry to the function and up to the exit
+ * from that function in the same thread will be reported (and only the 
+ * events from that thread will be reported) if enabled by "report_*".
+ * 
+ * [NB] In the second mode, the module cannot handle the targets where that
+ * function is called recursively (the reporter must not crash but the 
+ * report itself is likely to contain less data than expected).
  * 
  * Format of the output records is as follows (the leading spaces are only 
  * for readability).
@@ -24,7 +25,10 @@
  *	TID=<tid,0x%lx> CALL_PRE pc=<pc,%pS> name="<name of the callee>"
  * - Format of the records for "call post" events:
  *	TID=<tid,0x%lx> CALL_POST pc=<pc,%pS> name="<name of the callee>"
- */
+ *
+ * [NB] If a function to be mentioned in the report is in "init" area of the
+ * target module, its name may sometimes be resolved incorrectly (usually,
+ * to an empty string). */
 
 /* ========================================================================
  * Copyright (C) 2012, KEDR development team
@@ -67,6 +71,15 @@ MODULE_LICENSE("GPL");
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
 
+/* The maximum number of events that can be reported in a single session
+ * (from loading to unloading of the target or from the function entry to 
+ * the function exit). After this number of events has been reported, the 
+ * following events in this session will be skipped. 
+ * The greater this parameter is, the more memory the module needs to 
+ * contain the report. */
+unsigned int max_events = 65536;
+module_param(max_events, uint, S_IRUGO);
+
 /* If non-zero, call pre/post and function entry/exit events will be 
  * reported. */
 int report_calls = 0;
@@ -98,10 +111,29 @@ static DEFINE_SPINLOCK(wq_lock);
 /* ====================================================================== */
 
 /* This flag specifies if the events should be reported. */
-int report_events = 0;
+static int within_target_func = 0;
+
+/* Restrict the reported events to a span from the first entry to the given
+ * function up to the exit from that function in the same thread. In 
+ * addition, if this flag is non-zero, only the events from the same thread
+ * as for that function entry will be reported.
+ * If this flag is 0, no such restrictions are imposed. That is, if 
+ * "report_*" parameters indicate that a given type of events should be 
+ * reported, all events of that type will be reported no matter in which 
+ * function and in which thread they occur. */
+static int restrict_to_func = 0;
+
+/* The number of events reported in the current session so far. */
+static unsigned int ecount = 0;
 
 /* The start address of the target function. */
-unsigned long target_start = 0;
+static unsigned long target_start = 0;
+
+#define KEDR_ALL_THREADS ((unsigned long)(-1))
+
+/* The ID of the thread to report the events for. If it is KEDR_ALL_THREADS,
+ * no restriction on thread ID is imposed. */
+static unsigned long target_tid = KEDR_ALL_THREADS;
 /* ====================================================================== */
 
 /* The structures containing the data to be passed to the workqueue. 
@@ -163,23 +195,15 @@ static void
 work_func_entry(struct work_struct *work)
 {
 	static const char *fmt = "TID=0x%lx FENTRY name=\"%pf\"\n";
-	char *buf = NULL;
-	int len;
-	
+	int ret;
 	struct kr_work_on_func *wof = container_of(work, 
 		struct kr_work_on_func, work);
 	
-	len = snprintf(NULL, 0, fmt, wof->tid, wof->func) + 1;
-	buf = kzalloc(len, GFP_KERNEL);
-	if (buf != NULL) {
-		snprintf(buf, len, fmt, wof->tid, wof->func);
-		debug_util_print_string(buf);
-		kfree(buf);
-	}
-	else {
+	ret = debug_util_print(fmt, wof->tid, wof->func);
+	if (ret < 0)
 		pr_warning(KEDR_MSG_PREFIX 
-			"work_func_entry(): out of memory.\n");
-	}
+		"work_func_entry(): output failed, error code: %d.\n", 
+			ret);
 	kfree(wof);
 }
 
@@ -189,23 +213,15 @@ static void
 work_func_exit(struct work_struct *work)
 {
 	static const char *fmt = "TID=0x%lx FEXIT name=\"%pf\"\n";
-	char *buf = NULL;
-	int len;
-	
+	int ret;
 	struct kr_work_on_func *wof = container_of(work, 
 		struct kr_work_on_func, work);
 	
-	len = snprintf(NULL, 0, fmt, wof->tid, wof->func) + 1;
-	buf = kzalloc(len, GFP_KERNEL);
-	if (buf != NULL) {
-		snprintf(buf, len, fmt, wof->tid, wof->func);
-		debug_util_print_string(buf);
-		kfree(buf);
-	}
-	else {
+	ret = debug_util_print(fmt, wof->tid, wof->func);
+	if (ret < 0)
 		pr_warning(KEDR_MSG_PREFIX 
-			"work_func_exit(): out of memory.\n");
-	}
+		"work_func_exit(): output failed, error code: %d.\n", 
+			ret);
 	kfree(wof);
 }
 
@@ -215,23 +231,15 @@ static void
 work_func_call_pre(struct work_struct *work)
 {
 	static const char *fmt = "TID=0x%lx CALL_PRE pc=%pS name=\"%pf\"\n";
-	char *buf = NULL;
-	int len;
-	
+	int ret;	
 	struct kr_work_on_call *woc = container_of(work, 
 		struct kr_work_on_call, work);
 	
-	len = snprintf(NULL, 0, fmt, woc->tid, woc->pc, woc->func) + 1;
-	buf = kzalloc(len, GFP_KERNEL);
-	if (buf != NULL) {
-		snprintf(buf, len, fmt, woc->tid, woc->pc, woc->func);
-		debug_util_print_string(buf);
-		kfree(buf);
-	}
-	else {
+	ret = debug_util_print(fmt, woc->tid, woc->pc, woc->func);
+	if (ret < 0)
 		pr_warning(KEDR_MSG_PREFIX 
-			"work_func_call_pre(): out of memory.\n");
-	}
+		"work_func_call_pre(): output failed, error code: %d.\n", 
+			ret);
 	kfree(woc);
 }
 
@@ -242,32 +250,59 @@ work_func_call_post(struct work_struct *work)
 {
 	static const char *fmt = 
 		"TID=0x%lx CALL_POST pc=%pS name=\"%pf\"\n";
-	char *buf = NULL;
-	int len;
-	
+	int ret;
 	struct kr_work_on_call *woc = container_of(work, 
 		struct kr_work_on_call, work);
 	
-	len = snprintf(NULL, 0, fmt, woc->tid, woc->pc, woc->func) + 1;
-	buf = kzalloc(len, GFP_KERNEL);
-	if (buf != NULL) {
-		snprintf(buf, len, fmt, woc->tid, woc->pc, woc->func);
-		debug_util_print_string(buf);
-		kfree(buf);
-	}
-	else {
+	ret = debug_util_print(fmt, woc->tid, woc->pc, woc->func);
+	if (ret < 0)
 		pr_warning(KEDR_MSG_PREFIX 
-			"work_func_call_post(): out of memory.\n");
-	}
+		"work_func_call_post(): output failed, error code: %d.\n", 
+			ret);
 	kfree(woc);
 }
+/* ====================================================================== */
+
+/* If the function is called not from on_load/on_unload handlers, 'wq_lock' 
+ * must be held. */
+static void
+reset_counters(void)
+{
+	target_start = 0;
+	target_tid = KEDR_ALL_THREADS;
+	ecount = 0;
+}
+
+/* If the function is called not from on_load/on_unload handlers, 'wq_lock' 
+ * must be held. 
+ * 
+ * Returns non-zero if it is allowed to report the event with a given TID
+ * provided "report_*" parameters also allow that. 0 if the event should not 
+ * be reported. */
+static int
+report_event_allowed(unsigned long tid)
+{
+	if (ecount >= max_events)
+		return 0;
+	
+	if (!restrict_to_func)
+		return 1;
+	
+	return (within_target_func && (tid == target_tid));
+}
+ 
 /* ====================================================================== */
 
 static void 
 on_load(struct kedr_event_handlers *eh, struct module *target_module)
 {
 	int ret;
-	WARN_ON_ONCE(target_start != 0);
+	
+	reset_counters();
+	debug_util_clear();	
+	
+	if (!restrict_to_func)
+		return;
 	
 	ret = kallsyms_on_each_symbol(symbol_walk_callback, target_module);
 	if (ret < 0) {
@@ -280,7 +315,7 @@ on_load(struct kedr_event_handlers *eh, struct module *target_module)
 			"The function \"%s\" was not found in \"%s\".\n", 
 			target_function, module_name(target_module));
 	}
-	else {
+	else { /* Must have found the target function. */
 		BUG_ON(target_start == 0);
 	}
 }
@@ -289,10 +324,6 @@ static void
 on_unload(struct kedr_event_handlers *eh, struct module *target_module)
 {
 	flush_workqueue(wq);
-	
-	/* If the target module is loaded again, the target function will
-	 * probably have a different address. */
-	target_start = 0; 
 }
 
 static void 
@@ -309,8 +340,10 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		 * previous invocation of that function has not exited yet.
 		 * May be a recursive call or a call from another thread. 
 		 * The report may contain less data than expected. */
-		WARN_ON_ONCE(report_events != 0);
-		report_events = 1;
+		WARN_ON_ONCE(within_target_func != 0);
+		within_target_func = 1;
+		target_tid = tid;
+		ecount = 0;
 		
 		/* Add a command to the wq to clear the output */
 		work = kzalloc(sizeof(*work), GFP_ATOMIC);
@@ -322,8 +355,9 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		INIT_WORK(work, work_func_clear);
 		queue_work(wq, work);
 	}
-	if (!report_calls || !report_events)
+	if (!report_calls || !report_event_allowed(tid))
 		goto out;
+	++ecount;
 	
 	wof = kzalloc(sizeof(*wof), GFP_ATOMIC);
 	if (wof == NULL) {
@@ -346,18 +380,11 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 {
 	unsigned long irq_flags;
 	struct kr_work_on_func *wof = NULL;
-	int old_report_events = 0;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	old_report_events = report_events;
-	if (func == target_start) {
-		/* Exit from the target function but no entry event has been
-		 * received for it. */
-		WARN_ON_ONCE(report_events == 0);
-		report_events = 0;
-	}
-	if (!report_calls || !old_report_events)
+	if (!report_calls || !report_event_allowed(tid))
 		goto out;
+	++ecount;
 	
 	wof = kzalloc(sizeof(*wof), GFP_ATOMIC);
 	if (wof == NULL) {
@@ -371,6 +398,13 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 	queue_work(wq, &wof->work);
 
 out:	
+	if (func == target_start && tid == target_tid) {
+		/* Warn if it is an exit from the target function but no 
+		 * entry event has been received for it. */
+		WARN_ON_ONCE(within_target_func == 0);
+		within_target_func = 0;
+		target_tid = KEDR_ALL_THREADS;
+	}
 	spin_unlock_irqrestore(&wq_lock, irq_flags);
 }
 
@@ -382,8 +416,9 @@ on_call_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_call *woc = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_events)
+	if (!report_calls || !report_event_allowed(tid))
 		goto out;
+	++ecount;
 	
 	woc = kzalloc(sizeof(*woc), GFP_ATOMIC);
 	if (woc == NULL) {
@@ -408,8 +443,9 @@ on_call_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_call *woc = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_events)
+	if (!report_calls || !report_event_allowed(tid))
 		goto out;
+	++ecount;
 
 	woc = kzalloc(sizeof(*woc), GFP_ATOMIC);
 	if (woc == NULL) {
@@ -454,11 +490,7 @@ test_init_module(void)
 {
 	int ret = 0;
 	
-	if (target_function[0] == 0) {
-		pr_warning(KEDR_MSG_PREFIX 
-	"'target_function' parameter should not be empty.\n");
-		return -EINVAL;
-	}
+	restrict_to_func = (target_function[0] != 0);
 	
 	/* [NB] Add checking of other report_* parameters here as needed. */
 	if (report_calls == 0) {
