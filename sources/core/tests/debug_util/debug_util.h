@@ -35,14 +35,14 @@ debug_util_fini(void);
 void
 debug_util_clear(void);
 
-/* Output a string pointed to by 's' to a debug 'stream' (usually, a file 
+/* Output a string pointed to by 's' to a debug "stream" (usually, a file 
  * in debugfs).
  *
  * This function cannot be used in atomic context. */
 void
 debug_util_print_string(const char *s);
 
-/* Outputs a sequence of bytes of length 'count' as is to a debug 'stream' 
+/* Outputs a sequence of bytes of length 'count' as is to a debug "stream" 
  * 
  * The caller must ensure that the memory area pointed to by 'bytes' is at 
  * least 'count' bytes is size.
@@ -65,7 +65,7 @@ debug_util_print_u64(u64 data, const char *fmt);
 void
 debug_util_print_ulong(unsigned long data, const char *fmt);
 
-/* Outputs a sequence of bytes of length 'count' to a debug 'stream'. 
+/* Outputs a sequence of bytes of length 'count' to a debug "stream". 
  * Each byte is output as a hex number, the consecutive bytes are separated
  * by spaces, e.g. "0D FA 7E".
  * 
@@ -75,5 +75,16 @@ debug_util_print_ulong(unsigned long data, const char *fmt);
  * This function cannot be used in atomic context. */
 void
 debug_util_print_hex_bytes(const void *bytes, unsigned int count);
+
+/* Outputs a formatted string to a debug "stream". The rules for the format
+ * and the arguments are the same as for snprintf(). 
+ * If the function is successful, it returns the number of characters 
+ * it has written to the stream, also similar to snprintf() and the like. 
+ * If the function fails, it returns a negative error code (e.g. -ENOMEM if
+ * it has failed to allocate the internal buffer). 
+ *
+ * This function cannot be used in atomic context. */
+int
+debug_util_print(const char *fmt, ...);
 
 #endif // DEBUG_UTIL_H_1104_INCLUDED

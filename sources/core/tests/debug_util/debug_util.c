@@ -128,18 +128,18 @@ output_buffer_resize(struct debug_output_buffer *ob, size_t new_size)
 
 /* Appends the specified byte sequence to the buffer, enlarging the latter 
  * if necessary. */
-static void
+static int
 output_buffer_append_bytes(struct debug_output_buffer *ob, 
 	const void *bytes, unsigned int count)
 {
-	int ret;
+	int ret = 0;
 
 	BUG_ON(ob == NULL);
 	BUG_ON(ob->buf[ob->data_len] != 0);
 	BUG_ON(bytes == NULL);
 	
 	if (count == 0)
-		return; /* nothing to do */
+		return 0; /* nothing to do */
 
 	/* Make sure the buffer is large enough. 
 	 * (+1) is just in case we are to output a string and count is
@@ -149,31 +149,29 @@ output_buffer_append_bytes(struct debug_output_buffer *ob,
 	 * Note also that the buffer is not going to shrink */
 	ret = output_buffer_resize(ob, ob->data_len + count + 1);
 	if (ret != 0)
-		return; /* the error has already been reported to the log */
+		return ret;
 
 	memcpy(&(ob->buf[ob->data_len]), bytes, count);
 	ob->data_len += count;
-	return;
+	return 0;
 }
 
 /* Appends the specified string to the buffer, enlarging the latter 
  * if necessary. */
-static void
+static int
 output_buffer_append_string(struct debug_output_buffer *ob, const char *s)
 {
 	size_t len = strlen(s);
 	if (len == 0)
-		return; /* nothing to do */
+		return 0; /* nothing to do */
 	
-	output_buffer_append_bytes(ob, s, (unsigned int)len);
 	/* The terminating \0 is already in place because the buffer is
 	 * filled with 0s on allocation and when it is resized. It never 
 	 * shrinks, so the sequence of bytes in it always ends with \0. */
-	
-	return;
+	return output_buffer_append_bytes(ob, s, (unsigned int)len);
 }
-
 /* ====================================================================== */
+
 /* A convenience macro to define variable of type struct file_operations
  * for a read only file in debugfs associated with the specified output
  * buffer.
@@ -426,4 +424,40 @@ debug_util_print_hex_bytes(const void *bytes, unsigned int count)
 	return;
 }
 
+int
+debug_util_print(const char *fmt, ...)
+{
+	int ret = 0;
+	int err = 0;
+	va_list args, args1;
+	char *buf = NULL;
+	int len;
+	
+	if (mutex_lock_killable(output_buffer.lock) != 0)
+		return -EINTR;
+	
+	va_start(args, fmt);
+	va_copy(args1, args);
+	
+	len = vsnprintf(NULL, 0, fmt, args) + 1;
+	buf = kzalloc((size_t)len, GFP_KERNEL);
+	if (buf != NULL)
+		ret = vsnprintf(buf, len, fmt, args1);
+	else
+		ret = -ENOMEM;
+	
+	va_end(args);
+	va_end(args1);
+	
+	if (ret < 0)
+		goto out;
+	
+	err = output_buffer_append_bytes(&output_buffer, buf, ret);
+	kfree(buf);
+	if (err != 0)
+		ret = err;
+out:
+	mutex_unlock(output_buffer.lock);
+	return ret;
+}
 /* ====================================================================== */
