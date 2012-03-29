@@ -1,0 +1,14 @@
+FENTRY name="kedr_test_calls_jumps2_jcc"
+CALL_PRE pc=kedr_test_calls_jumps2_jcc+0x3/0x16 [test_ir_transform] name="kedr_test_calls_jumps2_aux1"
+FENTRY name="kedr_test_calls_jumps2_aux1"
+FEXIT name="kedr_test_calls_jumps2_aux1"
+CALL_POST pc=kedr_test_calls_jumps2_jcc+0x3/0x16 [test_ir_transform] name="kedr_test_calls_jumps2_aux1"
+CALL_PRE pc=kedr_test_calls_jumps2_jcc+0xf/0x16 [test_ir_transform] name="kedr_test_calls_jumps2_aux2"
+FENTRY name="kedr_test_calls_jumps2_aux2"
+FEXIT name="kedr_test_calls_jumps2_aux2"
+CALL_POST pc=kedr_test_calls_jumps2_jcc+0xf/0x16 [test_ir_transform] name="kedr_test_calls_jumps2_aux2"
+FEXIT name="kedr_test_calls_jumps2_jcc"
+
+
+
+

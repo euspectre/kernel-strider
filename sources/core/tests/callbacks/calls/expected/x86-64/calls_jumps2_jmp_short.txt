@@ -1,0 +1,6 @@
+FENTRY name="kedr_test_calls_jumps2_jmp_short"
+CALL_PRE pc=kedr_test_calls_jumps2_jmp_short+0x6/0x8 [test_ir_transform] name="kedr_test_calls_jumps2_aux1"
+FENTRY name="kedr_test_calls_jumps2_aux1"
+FEXIT name="kedr_test_calls_jumps2_aux1"
+CALL_POST pc=kedr_test_calls_jumps2_jmp_short+0x6/0x8 [test_ir_transform] name="kedr_test_calls_jumps2_aux1"
+FEXIT name="kedr_test_calls_jumps2_jmp_short"
