@@ -13,7 +13,9 @@ struct module;
  *	tid - ID of the relevant thread
  *	func - address of the original function (except in on_call_pre/post)
  *	data - additional pointer needed when recording memory events
- *	num_events - number of the memory events to record
+ *	num_events - maximum number of the memory events that could happen
+ *		in the block (the number of the actually happened events can
+ * 		be smaller)
  *	pc - "program counter", the address in the original code 
  *		corresponding to the event
  *	addr - address of the affected (allocated, freed, read from or 
@@ -70,17 +72,20 @@ struct kedr_event_handlers
 	void (*on_call_post)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, unsigned long func);
 	
-	/* Memory events: read & write 
-	 * These handlers are called as follows (when the block of 
-	 * operations ends):
+	/* Memory events: reads, writes, updates
+	 * These handlers are called as follows when the block of 
+	 * operations ends:
 	 * 	void *data = NULL;
 	 *	begin_memory_events(eh, tid, num_events, &data);
-	 *	for each event happened in the block {
+	 *	for each event that could happen in the block {
 	 *		on_memory_event(eh, tid, pc, addr, size, type,
 	 *			data);
 	 *	}
 	 *	end_memory_events(eh, tid, data);
-	 */
+	 *
+	 * Note that if an event did not actually happen, on_memory_event()
+	 * will be called for it with 0 as 'addr'. This is makes the 
+	 * implementation of the core a bit simpler. */
 	void (*begin_memory_events)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long num_events, 
 		void **pdata /* out param*/);
