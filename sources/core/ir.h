@@ -213,8 +213,11 @@ struct kedr_ir_node
 		
 	/* Nonzero if the node represents a jump which destination is not 
 	 * 'dest_inner->first' as for many other nodes but rather 
-	 * 'dest_inner->last->(next)'. A jump past the end of the block is
-	 * one of the examples. Default value: 0. */
+	 * 'dest_inner->last->(next)'. Among reference nodes, this is the 
+	 * case only for the forward jumps out of a common block.
+	 * This flag can also be set for some nodes added during the 
+	 * instrumentation if they represent jumps with destination being
+	 * 'dest_inner->last->(next)'. Default value: 0. */
 	unsigned int jump_past_last : 1;
 	
 	/* Nonzero if this IR node corresponds to a start of a code block

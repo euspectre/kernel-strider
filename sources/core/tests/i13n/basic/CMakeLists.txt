@@ -10,6 +10,9 @@ configure_file (
 kedr_test_add_script (mem_core.i13n.basic.01
 	test.sh 3
 )
+kedr_test_add_script (mem_core.i13n.basic.02
+	test.sh 2 "process_stack_accesses"
+)
 
 # A simple test on a target module with jump tables.
 configure_file (
@@ -17,6 +20,6 @@ configure_file (
 	"${CMAKE_CURRENT_BINARY_DIR}/test_jtable.sh"
 	@ONLY
 )
-kedr_test_add_script (mem_core.i13n.basic.02
+kedr_test_add_script (mem_core.i13n.basic.03
 	test_jtable.sh
 )

@@ -199,6 +199,80 @@ struct list_head *
 kedr_mk_mov_value32_to_slot(u32 value32, u8 base, u32 offset, 
 	struct list_head *item, int in_place, int *err);
 
-// TODO: more functions to generate necessary instructions
+/* mov value8, <offset>(%base) 
+ * see c6 (Move imm8 to r/m8). */
+struct list_head *
+kedr_mk_mov_value8_to_slot(u8 value8, u8 base, u32 offset, 
+	struct list_head *item, int in_place, int *err);
+
+/* An inner jmp rel32 or call rel32 (depending on 'is_jmp').
+ * The destination node is 'dest'. */
+struct list_head * 
+kedr_mk_call_jmp_to_inner(struct kedr_ir_node *dest, int is_jmp, 
+	struct list_head *item, int in_place, int *err);
+
+/* pushfq/pushfd */
+struct list_head *
+kedr_mk_pushf(struct list_head *item, int in_place, int *err);
+
+/* popfq/popfd */
+struct list_head *
+kedr_mk_popf(struct list_head *item, int in_place, int *err);
+
+/* jmp *<offset>(%base) */
+struct list_head *
+kedr_mk_jmp_offset_base(u8 base, u32 offset, struct list_head *item, 
+	int in_place, int *err);
+
+/* xchg %reg1, %reg2 */
+struct list_head *
+kedr_mk_xchg_reg_reg(u8 reg1, u8 reg2, struct list_head *item, int in_place, 
+	int *err);
+
+/* or value32, <offset>(%base)
+ * OR the 32-bit bit mask (sign-extended to 64 bits on x86-64) to the 
+ * full-sized value at <offset>(%base).
+ * This can be used to accumulate the read and write mask bits if they are
+ * set in two or more stages.
+ * x86-64: when using the result of the generated instruction, the higher 
+ * 32 bits should be ignored. */
+struct list_head *
+kedr_mk_or_value32_to_slot(u32 value32, u8 base, u32 offset, 
+	struct list_head *item, int in_place, int *err);
+	
+/* add <offset_bx>(%base), %rax
+ * This instruction is used when handling XLAT. */
+struct list_head *
+kedr_mk_add_slot_bx_to_ax(u8 base, struct list_head *item, int in_place, 
+	int *err);
+	
+/* add %rbx, %rax
+ * This instruction is used when handling XLAT. */
+struct list_head *
+kedr_mk_add_bx_to_ax(struct list_head *item, int in_place, int *err);
+
+/* movzx %al, %rax (or, with another memonic, "movzbq %al, %rax")
+ * This instruction is used when handling XLAT. */
+struct list_head *
+kedr_mk_movzx_al_ax(struct list_head *item, int in_place, int *err);
+
+/* sub %reg_what, %reg_from 
+ * (%reg_from -= %reg_what)
+ * The instruction is used when handling string operations, for example. */
+struct list_head *
+kedr_mk_sub_reg_reg(u8 reg_what, u8 reg_from, 
+	struct list_head *item, int in_place, int *err);
+
+/* add <value8>, %reg
+ * <value8> - a 8-bit unsigned value, less than 128. 
+ * The instruction is used when handling string operations, for example. */
+struct list_head *
+kedr_mk_add_value8_to_reg(u8 value8, u8 reg, struct list_head *item, 
+	int in_place, int *err);
+
+/* neg %reg 
+ * The instruction is used when handling string operations, for example. */
+struct list_head *
+kedr_mk_neg_reg(u8 reg, struct list_head *item, int in_place, int *err);
 
 #endif // INSN_GEN_H_1759_INCLUDED

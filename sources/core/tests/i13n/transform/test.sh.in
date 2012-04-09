@@ -83,6 +83,16 @@ doTest()
 		cleanupAll
 		exit 1
 	fi
+	
+	# Unload the target. The test functions will be called from the 
+	# cleanup function of the target module and will produce the events
+	# to be analyzed later.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
 
 	# Save the information about the function of the target obtained by 
 	# the test module.
@@ -113,14 +123,7 @@ doTest()
 		exit 1
 	fi
 	
-	# Unload the modules, they are no longer needed
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
-	if test $? -ne 0; then
-		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
-		cleanupAll
-		exit 1
-	fi
-
+	# Unload the remaining modules, they are no longer needed
 	/sbin/rmmod "${ACCESSOR_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the test module: ${ACCESSOR_MODULE_NAME}\n"

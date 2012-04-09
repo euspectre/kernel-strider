@@ -8,7 +8,10 @@
 # even when instrumented.
 # 
 # Usage: 
-#   sh test.sh <num_repeat>
+#   sh test.sh <num_repeat> [process_stack_accesses]
+#
+# If the second parameter is "process_stack_accesses", the accesses 
+# relative to %esp/%rsp will also be processed in the target.
 ########################################################################
 
 ########################################################################
@@ -108,7 +111,7 @@ doTest()
 {
     /sbin/insmod "${CORE_MODULE}" \
         target_name="${TARGET_MODULE_NAME}" \
-        umh_dir="@KEDR_UMH_DIR@" || exit 1
+        umh_dir="@KEDR_UMH_DIR@" ${PROCESS_STACK} || exit 1
 
     ii=0
     while test ${ii} -lt ${NUM_REPEAT}; do
@@ -124,8 +127,8 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
-if test $# -ne 1; then
-    printf "Usage:\n\tsh $0 <num_repeat>\n"
+if test $# -lt 1; then
+    printf "Usage:\n\tsh $0 <num_repeat> [process_stack_accesses]\n"
     exit 1
 fi
 
@@ -133,6 +136,12 @@ CORE_MODULE_NAME="@CORE_MODULE_NAME@"
 CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
 
 NUM_REPEAT="$1"
+
+if test "t$2" = "tprocess_stack_accesses"; then
+    PROCESS_STACK="process_stack_accesses=1"
+else
+    PROCESS_STACK="process_stack_accesses=0"
+fi
 
 TARGET_MODULE_NAME="kedr_sample_target"
 TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"

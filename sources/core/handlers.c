@@ -154,17 +154,16 @@ KEDR_DEFINE_WRAPPER(kedr_on_function_entry);
 /* ====================================================================== */
 
 static __used void
-kedr_on_function_exit(unsigned long pstorage)
+kedr_on_function_exit(unsigned long storage)
 {
 	struct kedr_local_storage *ls = 
-		(struct kedr_local_storage *)pstorage;
+		(struct kedr_local_storage *)storage;
 	
 	if (eh_current->on_function_exit != NULL)
 		eh_current->on_function_exit(eh_current, ls->tid, 
 			ls->orig_func);
 
 	ls_allocator->free_ls(ls_allocator, ls);
-	return; 
 }
 KEDR_DEFINE_WRAPPER(kedr_on_function_exit);
 /* ====================================================================== */
@@ -207,7 +206,187 @@ kedr_fill_call_info(unsigned long ci)
 	info->repl = info->target;
 	info->pre_handler = default_pre_handler;
 	info->post_handler = default_post_handler;
-	return;
 }
 KEDR_DEFINE_WRAPPER(kedr_fill_call_info);
+/* ====================================================================== */
+
+/* For each memory access event that could happen in the block, executes 
+ * on_memory_event() handler if set. 
+ * 'data' is the pointer, the address of which has been passed to 
+ * begin_memory_events() callback. */
+static void
+report_events(struct kedr_local_storage *ls, void *data)
+{
+	unsigned long i;
+	unsigned long nval = 0;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	u32 mask_bit = 1;
+	u32 write_mask = info->write_mask | ls->write_mask;
+	
+	if (eh_current->on_memory_event == NULL)
+		return;
+	
+	for (i = 0; i < info->max_events; ++i, mask_bit <<= 1) {
+		unsigned long n = nval;
+		unsigned long size;
+		enum kedr_memory_event_type type = KEDR_ET_MREAD;
+		
+		if (info->string_mask & mask_bit) {
+			size = ls->values[n + 1];
+			nval += 2;
+		}
+		else {
+			size = info->events[i].size;
+			nval += 1;
+		}
+		
+		if (write_mask & mask_bit) {
+			type = ((info->read_mask & mask_bit) != 0) ? 
+				KEDR_ET_MUPDATE :
+				KEDR_ET_MWRITE;
+		}
+		
+		eh_current->on_memory_event(eh_current, ls->tid, 
+			info->events[i].pc, ls->values[n], size, type,
+			data);
+	}
+}
+
+static __used void
+kedr_on_common_block_end(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	
+	void *data = NULL;
+	
+	if (eh_current->begin_memory_events != NULL) {
+		eh_current->begin_memory_events(eh_current, ls->tid, 
+			info->max_events, &data);
+	}
+	
+	report_events(ls, data);
+	
+	if (eh_current->end_memory_events != NULL)
+		eh_current->end_memory_events(eh_current, ls->tid, data);
+	
+	/* Prepare the storage for later use. */
+	memset(&ls->values[0], 0, 
+		KEDR_MAX_LOCAL_VALUES * sizeof(unsigned long));
+	ls->write_mask = 0;
+	ls->dest_addr = 0;
+}
+KEDR_DEFINE_WRAPPER(kedr_on_common_block_end);
+/* ====================================================================== */
+
+static __used void
+kedr_on_locked_op_pre(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	
+	if (eh_current->on_locked_op_pre != NULL) {
+		ls->temp = 0;
+		eh_current->on_locked_op_pre(eh_current, ls->tid,
+			info->events[0].pc, (void **)&ls->temp);
+	}
+}
+KEDR_DEFINE_WRAPPER(kedr_on_locked_op_pre);
+
+static __used void
+kedr_on_locked_op_post(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	
+	/* [NB] Here we make use of the fact that a locked update cannot be
+	 * a string operation. */
+	
+	if (eh_current->on_locked_op_post != NULL) {
+		eh_current->on_locked_op_post(eh_current, ls->tid,
+			info->events[0].pc, ls->values[0], 
+			info->events[0].size, KEDR_ET_MUPDATE, 
+			(void *)ls->temp);
+	}
+	
+	/* Prepare the storage for later use. */
+	ls->values[0] = 0;
+	ls->write_mask = 0;
+}
+KEDR_DEFINE_WRAPPER(kedr_on_locked_op_post);
+/* ====================================================================== */
+
+static __used void
+kedr_on_io_mem_op_pre(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	
+	if (eh_current->on_io_mem_op_pre != NULL) {
+		ls->temp = 0;
+		eh_current->on_io_mem_op_pre(eh_current, ls->tid,
+			info->events[0].pc, (void **)&ls->temp);
+	}
+}
+KEDR_DEFINE_WRAPPER(kedr_on_io_mem_op_pre);
+
+static __used void
+kedr_on_io_mem_op_post(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
+	
+	/* [NB] Here we make use of the fact that an instruction in this 
+	 * block is INS or OUTS, that is, a string operation of type X or Y
+	 * but not XY. It is either read or write but not update. */
+	
+	if (eh_current->on_io_mem_op_post != NULL) {
+		enum kedr_memory_event_type type = KEDR_ET_MREAD;
+		if (info->write_mask & 1)
+			type = KEDR_ET_MWRITE;
+	
+		eh_current->on_io_mem_op_post(eh_current, ls->tid, 
+			info->events[0].pc, ls->values[0], ls->values[1],
+			type, (void *)ls->temp);
+	}
+	
+	/* Prepare the storage for later use. */
+	ls->values[0] = 0;
+	ls->values[1] = 0;
+}
+KEDR_DEFINE_WRAPPER(kedr_on_io_mem_op_post);
+/* ====================================================================== */
+
+static __used void
+kedr_on_barrier_pre(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	enum kedr_barrier_type bt = (enum kedr_barrier_type)(u8)ls->temp;
+	unsigned long pc = ls->temp1;
+	
+	if (eh_current->on_memory_barrier_pre != NULL)
+		eh_current->on_memory_barrier_pre(eh_current, ls->tid, pc,
+			bt);
+}
+KEDR_DEFINE_WRAPPER(kedr_on_barrier_pre);
+
+static __used void
+kedr_on_barrier_post(unsigned long storage)
+{
+	struct kedr_local_storage *ls = 
+		(struct kedr_local_storage *)storage;
+	enum kedr_barrier_type bt = (enum kedr_barrier_type)(u8)ls->temp;
+	unsigned long pc = ls->temp1;
+	
+	if (eh_current->on_memory_barrier_post != NULL)
+		eh_current->on_memory_barrier_post(eh_current, ls->tid, pc,
+			bt);
+}
+KEDR_DEFINE_WRAPPER(kedr_on_barrier_post);
 /* ====================================================================== */

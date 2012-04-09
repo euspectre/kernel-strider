@@ -518,6 +518,11 @@ kedr_i13n_process_module(struct module *target)
 		fixup_fallback_jump_tables(func, i13n);
 	
 	detour_original_functions(i13n);
+	/*list_for_each_entry(func, &i13n->ifuncs, list) {
+		pr_info("[DBG] "
+		"Function %s, instrumented instance is at 0x%lx\n",
+			func->name, (unsigned long)func->i_addr);
+	}*/
 	return i13n;
 
 out_free_functions:

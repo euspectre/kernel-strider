@@ -299,30 +299,29 @@ is_insn_movbe(struct insn *insn)
 		(opcode[2] == 0xf0 || opcode[2] == 0xf1));
 }
 
-// TODO: uncomment when implementing the instrumentation
-//static int
-//is_insn_setcc(struct insn *insn)
-//{
-//	u8 *opcode = insn->opcode.bytes;
-//	u8 modrm = insn->modrm.bytes[0];
-//	
-//	/* SETcc: 0F 90 - 0F 9F */
-//	return (opcode[0] == 0x0f && 
-//		((opcode[1] & 0xf0) == 0x90) &&
-//		X86_MODRM_MOD(modrm) != 3);
-//}
-//
-//static int
-//is_insn_cmovcc(struct insn *insn)
-//{
-//	u8 *opcode = insn->opcode.bytes;
-//	u8 modrm = insn->modrm.bytes[0];
-//	
-//	/* CMOVcc: 0F 40 - 0F 4F */
-//	return (opcode[0] == 0x0f && 
-//		((opcode[1] & 0xf0) == 0x40) &&
-//		X86_MODRM_MOD(modrm) != 3);
-//}
+static int
+is_insn_setcc(struct insn *insn)
+{
+	u8 *opcode = insn->opcode.bytes;
+	u8 modrm = insn->modrm.bytes[0];
+	
+	/* SETcc: 0F 90 - 0F 9F */
+	return (opcode[0] == 0x0f && 
+		((opcode[1] & 0xf0) == 0x90) &&
+		X86_MODRM_MOD(modrm) != 3);
+}
+
+static int
+is_insn_cmovcc(struct insn *insn)
+{
+	u8 *opcode = insn->opcode.bytes;
+	u8 modrm = insn->modrm.bytes[0];
+	
+	/* CMOVcc: 0F 40 - 0F 4F */
+	return (opcode[0] == 0x0f && 
+		((opcode[1] & 0xf0) == 0x40) &&
+		X86_MODRM_MOD(modrm) != 3);
+}
 
 /* Checks if the instruction has addressing method (type) E and its Mod R/M 
  * expression refers to memory.
@@ -534,7 +533,6 @@ is_insn_jump_far(struct insn *insn)
 	return (opcode == 0xea || 
 		(opcode == 0xff && X86_MODRM_REG(modrm) == 5));
 }
-
 /* ====================================================================== */
 
 /* A padding byte sequence is "00 00" (looks like "add al, (%rax)"). 
@@ -832,6 +830,19 @@ is_tracked_memory_op(struct insn *insn)
 	
 	if (insn_is_noop(insn))
 		return 0;
+	
+	/* Locked updates should always be tracked, because they are 
+	 * memory barriers among other things.
+	 * "lock add $0, (%esp)" is used, for example, when "mfence" is not
+	 * available. Note that this locked instruction addresses the stack
+	 * so we must not filter out locked updates even if they refer to
+	 * the stack. 
+	 * 
+	 * [NB] I/O instructions accessing memory should always be tracked 
+	 * too but this is fulfilled automatically because these are string 
+	 * operations. */
+	if (insn_is_locked_op(insn))
+		return 1;
 	
 	if (is_insn_type_e(insn) || is_insn_movbe(insn) || 
 	    is_insn_cmpxchg8b_16b(insn)) {
@@ -2298,6 +2309,203 @@ is_simple_function_exit(struct insn *insn)
 	return 0;
 }
 
+/* Instrument the instruction in the given node. The instruction is assumed 
+ * to perform a tracked memory operation. 
+ * '*num' is the number of the instruction in the block (can be needed to set
+ * the appropriate bits in the masks, etc.)
+ * '*nval' is the number of the first slot in local_storage::values[] that
+ * the instruction can use. Some instruction (e.g. string operations) may
+ * need more than one slot. 
+ * The function updates '*num' and '*nval' to make them suitable for the 
+ * next instruction.
+ *
+ * [NB] The new IR nodes can be inserted before 'node->first' and/or after
+ * 'node->last'. */
+static int 
+instrument_tracked_insn(struct kedr_ir_node *node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int *num, unsigned int *nval)
+{
+	int ret = 0;
+	BUG_ON(num == NULL || *num >= KEDR_MAX_LOCAL_VALUES);
+	BUG_ON(nval == NULL || *nval >= KEDR_MAX_LOCAL_VALUES);
+	
+	if (is_insn_cmovcc(&node->insn) || is_insn_setcc(&node->insn)){
+		ret = kedr_handle_setcc_cmovcc(node, base, *num, *nval);
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_cmpxchg(&node->insn)) {
+		/* CMPXCHG counts as one operation, which is either
+		 * "read" or "update". */
+		ret = kedr_handle_cmpxchg(node, base, *num, *nval);
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_cmpxchg8b_16b(&node->insn)) {
+		/* CMPXCHG8b_16b also counts as a single operation. */
+		ret = kedr_handle_cmpxchg8b_16b(node, base, *num, *nval);
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_type_e(&node->insn) || is_insn_movbe(&node->insn)) {
+		/* SETcc, CMOVcc and CMPXCHG* are also of type E or M, so
+		 * we check the most generic case last. */
+		ret = kedr_handle_type_e_and_m(node, base, *num, *nval);	
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_xlat(&node->insn)) {
+		ret = kedr_handle_xlat(node, base, *num, *nval);
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_direct_offset_mov(&node->insn)) {
+		ret = kedr_handle_direct_offset_mov(node, base, *num, *nval);
+		*num += 1;
+		*nval += 1;
+	}
+	else if (is_insn_type_xy(&node->insn)) {
+		/* An instruction of type XY counts as two memory 
+		 * operations: "read" + "write" for MOVS, "read" + "read" 
+		 * for CMPS. Each operation needs two slots in 'values[]',
+		 * one for the address and one for the size of the accessed
+		 * memory area. 
+		 * [NB] As an instruction of type XY is also the instruction
+		 * of type X and of type Y, we process type XY first. */
+		ret = kedr_handle_type_xy(node, info, base, *num, *nval);
+		*num += 2;
+		*nval += 4;
+	}
+	else if (is_insn_type_x(&node->insn)) {
+		/* An instruction of type X counts as one operation that
+		 * needs two slots in 'values[]'. */
+		ret = kedr_handle_type_x(node, info, base, *num, *nval);
+		*num += 1;
+		*nval += 2;
+	}
+	else if (is_insn_type_y(&node->insn)) {
+		/* An instruction of type Y counts as one operation that
+		 * needs two slots in 'values[]'. */
+		ret = kedr_handle_type_y(node, info, base, *num, *nval);
+		*num += 1;
+		*nval += 2;
+	}
+	else {
+		/* Some type of the tracked instructions has not been 
+		 * mentioned here. See is_tracked_memory_op(). */
+		BUG();
+	}
+	return ret;
+}
+
+/* In instrument_*_block(), 'start' is the first reference node of the 
+ * block, 'base' is the base register. */
+static int 
+instrument_common_block(struct kedr_ir_node *start, u8 base)
+{
+	int ret = 0;
+	struct kedr_ir_node *node;
+	struct list_head *pos;
+	struct list_head *end;
+	struct list_head *n;
+	unsigned int max_events;
+	
+	/* The number the instruction has in the block, starting from 0. */
+	unsigned int num = 0;
+	
+	/* The number of the first slot in local_storage::values[] that the
+	 * instruction can use. */
+	unsigned int nval = 0;
+	
+	BUG_ON(start->block_info == NULL);
+	BUG_ON(start->end_node == NULL);
+	
+	/* We need to determine 'end' before the loop, because the 
+	 * expression 'start->end_node->list.next' may change in the loop. 
+	 */
+	end = start->end_node->list.next;
+	max_events = (unsigned int)start->block_info->max_events;
+	
+	/* Similar to list_for_each_safe but for [start; start->end_node] */
+	for (pos = &start->list, n = pos->next; 
+		pos != end; pos = n, n = pos->next) {
+		node = list_entry(pos, struct kedr_ir_node, list);
+		
+		if (!is_reference_node(node))
+			continue;
+		
+		/* Check if we've erroneously got past the head of the list.
+		 * [NB] 'node' is a reference node, so 'node->orig_addr' is
+		 * not 0. */
+		BUG_ON(node->orig_addr < start->orig_addr);
+		
+		if (node->is_tracked_mem_op) {
+			/* Helps check if more nodes are processed than 
+			 * there should be. */
+			BUG_ON(num >= max_events);
+			BUG_ON(nval >= KEDR_MAX_LOCAL_VALUES);
+			ret = instrument_tracked_insn(node, 
+				start->block_info, base, &num, &nval);
+			/* Just in case a string operation is located at 
+			 * the end of the block while it should be in 
+			 * the next block... */
+			BUG_ON(num > max_events);
+			BUG_ON(nval > KEDR_MAX_LOCAL_VALUES);
+		}
+		else if (node->jump_past_last) {
+			BUG_ON(!start->block_has_jumps_out);
+			ret = kedr_handle_jump_out_of_block(node, 
+				start->end_node, base);
+		}
+		if (ret != 0)
+			return ret;
+	}
+	
+	ret = (start->block_has_jumps_out) ?
+		kedr_handle_block_end(start, start->end_node, base) :
+		kedr_handle_block_end_no_jumps(start, start->end_node, base);
+	return ret;
+}
+
+static int 
+instrument_locked_op_block(struct kedr_ir_node *start, u8 base)
+{
+	/* Instrument the memory access first, then add the prologue and the
+	 * epilogue for the block. */
+	int ret = 0;
+	unsigned int num = 0;
+	unsigned nval = 0;
+	
+	BUG_ON(start->block_info == NULL);
+	
+	ret = instrument_tracked_insn(start, start->block_info, base, &num, 
+		&nval);
+	if (ret != 0)
+		return ret;
+
+	return kedr_handle_locked_op(start, base);
+}
+
+static int 
+instrument_io_mem_op_block(struct kedr_ir_node *start, u8 base)
+{
+	/* Instrument the memory access first, then add the prologue and the
+	 * epilogue for the block. */
+	int ret = 0;
+	unsigned int num = 0;
+	unsigned nval = 0;
+	
+	BUG_ON(start->block_info == NULL);
+	
+	ret = instrument_tracked_insn(start, start->block_info, base, &num, 
+		&nval);
+	if (ret != 0)
+		return ret;
+
+	return kedr_handle_io_mem_op(start, base);
+}
+
 int 
 kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir)
 {
@@ -2352,8 +2560,35 @@ kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir)
 			return ret;
 	}
 	
-	// TODO: Phase 2
-	// TODO: Do not forget to process barriers
+	/* Phase 2: processing memory accesses and memory barriers.
+	 * Only the blocks of the following types are processed: 
+	 * - common block containing tracked memory operations;
+	 * - block for a locked update insruction; 
+	 * - block for an I/O instruction accessing memory; 
+	 * - block for a memory barrier of some other kind. */
+	list_for_each_entry_safe(node, tmp, ir, list) {
+		if (!node->block_starts)
+			continue;
+		
+		switch (node->cb_type) {
+		case KEDR_CB_COMMON:
+			ret = instrument_common_block(node, base);
+			break;
+		case KEDR_CB_LOCKED_UPDATE:
+			ret = instrument_locked_op_block(node, base);
+			break;
+		case KEDR_CB_IO_MEM_OP:
+			ret = instrument_io_mem_op_block(node, base);
+			break;
+		case KEDR_CB_BARRIER_OTHER:
+			ret = kedr_handle_barrier_other(node, base);
+			break;
+		default: 
+			break;
+		}
+		if (ret < 0)
+			return ret;
+	}
 	return 0;
 }
 /* ====================================================================== */
@@ -2391,19 +2626,9 @@ ir_resolve_dest_inner(struct list_head *ir)
 			continue; 
 		
 		if (node->jump_past_last) {
-			//<> TODO: Uncomment when the instrumentation of
-			// the ends of the common blocks is implemented.
-			// Remove "dest = dest->first;" statement.
-			// This is a temporary "short-circuit" change to 
-			// be able to test detoured execution before the
-			// rest of the core is prepared.
-			dest = dest->first;
-			/*
 			BUG_ON(dest->last->list.next == ir);
 			dest = list_entry(dest->last->list.next,
 				struct kedr_ir_node, list);
-			*/
-			//<>
 		}
 		else {
 			dest = dest->first;
@@ -2501,7 +2726,6 @@ ir_set_inner_jump_disp(struct list_head *ir)
 			block) or something like call $+5; imm32 assumed. */
 			*(u32 *)pos = (u32)disp;
 		}
-		
 	}
 }
 

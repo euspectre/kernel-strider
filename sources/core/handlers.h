@@ -82,7 +82,148 @@ KEDR_DECLARE_WRAPPER(kedr_fill_call_info);
 void
 kedr_fill_call_info(unsigned long ci);
 
-// TODO: add block end handlers here if needed.
+/* kedr_on_common_block_end 
+ * Called after a common block containing one or more tracked memory 
+ * operations ends. Calls the user-defined handlers (if present):
+ * begin_memory_events(), end_memory_events(), on_memory_event().
+ *
+ * On entry, local_storage::info should be the address of the block_info
+ * instance for the block. The fields 'values[]', 'tid', 'write_mask' are 
+ * also used when necessary.
+ * [NB] If some address stored in 'values[]' is NULL, it is assumed that the
+ * corresponding memory operation did not happen.
+ *
+ * After the function has called all the appropriate handlers for the block,
+ * 'values[]', 'write_mask' and 'dest_addr' are zeroed in the local storage,
+ * other fields remain unchanged. This prepares the local storage for the 
+ * execution of a subsequent code block.
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_common_block_end);
+
+/* kedr_on_locked_op_pre
+ * Called before the locked update operation. The operation is expected to 
+ * be the only one in the block.
+ * Calls on_locked_op_pre() if that handler is present, with the address 
+ * of local_storage::temp as 'pdata'. That handler may store some data there
+ * that the corresponding post handler might need (see below).
+ *
+ * After this function has been called, local_storage::temp must not be used
+ * in the instrumented code until the corresponding post handler is called.
+ *
+ * On entry, local_storage::info should be the address of the block_info
+ * instance for the block. 
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_locked_op_pre);
+
+/* kedr_on_locked_op_post
+ * Called after the locked update operation. The operation is expected to 
+ * be the only one in the block.
+ * Calls on_locked_op_post() if that handler is present, with 
+ * local_storage::temp as 'data'. The corresponding pre handler might have 
+ * stored some data in that field that the post handler needs.
+ *
+ * On entry, local_storage::info should be the address of the block_info
+ * instance for the block. The fields 'values[]', 'tid', 'write_mask' are 
+ * also used when necessary.
+ *
+ * After the function has called the appropriate handler, 'values[0]' and
+ * 'write_mask' are zeroed in the local storage, other fields remain 
+ * unchanged. This prepares the local storage for the execution of a 
+ * subsequent code block.
+ * [NB] It is enough to clear only values[0] rather than the whole values[]
+ * because the operation is alone in the block, has only one memory access
+ * (even CMPXCHG*) and it cannot be a string operation, see the list of 
+ * the operations that can be locked in the description of LOCK in the 
+ * Intel's manual, vol. 2A. 
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_locked_op_post);
+
+/* kedr_on_io_mem_op_pre
+ * Called before the I/O operation accessing memory. The operation is
+ * expected to be the only one in the block.
+ * Calls on_io_mem_op_pre() if that handler is present, with the address 
+ * of local_storage::temp as 'pdata'. That handler may store some data there
+ * that the corresponding post handler might need (see below).
+ *
+ * After this function has been called, local_storage::temp must not be used
+ * in the instrumented code until the corresponding post handler is called.
+ *
+ * On entry, local_storage::info should be the address of the block_info
+ * instance for the block. 
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_io_mem_op_pre);
+
+/* kedr_on_io_mem_op_post
+ * Called after the I/O operation accessing memory. The operation is 
+ * expected to be the only one in the block.
+ * Calls on_io_mem_op_post() if that handler is present, with 
+ * local_storage::temp as 'data'. The corresponding pre handler might have 
+ * stored some data in that field that the post handler needs.
+ *
+ * On entry, local_storage::info should be the address of the block_info
+ * instance for the block. The fields 'values[]' and 'tid', are also used 
+ * when necessary. 
+ *
+ * After the function has called the appropriate handler, 'values[0]' and
+ * values[1] are zeroed in the local storage, other fields remain unchanged.
+ * This prepares the local storage for the execution of a subsequent code 
+ * block.
+ * [NB] As the operation in this block is either INS or OUTS, we only need
+ * to clear the first two elements of 'values[]'. 'write_mask' must remain
+ * 0 anyway (it is only changed by CMPXCHG* which must not occur here), so 
+ * there is no need to clear it.
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_io_mem_op_post);
+
+/* kedr_on_barrier_pre
+ * Called before a memory barrier operation which is not a tracked memory 
+ * access. The operation is expected to be the only one in the block.
+ * Calls on_memory_barrier_pre() if that handler is present.
+ *
+ * On entry, local_storage::temp should be the type of the barrier, 
+ * local_storage::temp1 should be the value of PC (program counter) for the
+ * original instruction. kedr_on_barrier_pre() does not change these values.
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_barrier_pre);
+
+/* kedr_on_barrier_post
+ * Called after a memory barrier operation which is not a tracked memory 
+ * access. The operation is expected to be the only one in the block.
+ * Calls on_memory_barrier_post() if that handler is present.
+ *
+ * On entry, local_storage::temp should be the type of the barrier, 
+ * local_storage::temp1 should be the value of PC (program counter) for the
+ * original instruction.  
+ * 
+ * Parameter:
+ *   unsigned long storage - address of the local storage.
+ * Return value:
+ *   none. */
+KEDR_DECLARE_WRAPPER(kedr_on_barrier_post);
 /* ====================================================================== */
 
 #endif // HANDLERS_H_1810_INCLUDED

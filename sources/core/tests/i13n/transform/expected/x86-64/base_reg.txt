@@ -47,7 +47,7 @@ Block (type: 2)
 
 0x1c: 4d 31 f6
 
-0xadded: 49 89 44 24 00
+0xadded: 49 89 04 24
 
 0xadded: 4c 89 e0
 
@@ -59,7 +59,7 @@ Block (type: 2)
 
 0xadded: 49 89 c4
 
-0xadded: 49 8b 44 24 00
+0xadded: 49 8b 04 24
 
 0x22: 41 5e
 

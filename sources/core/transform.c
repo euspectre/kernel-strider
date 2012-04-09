@@ -709,13 +709,13 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base)
 		return -EILSEQ;
 	}
 	
-	/* adding code before the instruction sequence */
+	/* adding code before the instruction */
 	item = kedr_mk_store_reg_to_spill_slot(wreg, base, item, 0, &err);
 	first_item = item;
 	item = kedr_mk_mov_reg_to_reg(base, wreg, item, 0, &err);
 	item = kedr_mk_load_reg_from_spill_slot(base, wreg, item, 0, &err);
 	
-	/* adding code after the instruction sequence */
+	/* adding code after the instruction */
 	item = &ref_node->list;
 	item = kedr_mk_store_reg_to_spill_slot(base, wreg, item, 0, &err);
 	item = kedr_mk_mov_reg_to_reg(wreg, base, item, 0, &err);
@@ -727,11 +727,1109 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base)
 		ref_node->last = 
 			list_entry(item, struct kedr_ir_node, list);
 	}
-	else
+	else {
 		warn_fail(ref_node);
+	}
 		
 	return err;
 }
 
-// TODO
+/* ====================================================================== */
+/* Transformation of the IR, phase 2 */
+/* ====================================================================== */
+
+/* A helper function that generates the instructions necessary to copy the
+ * pointer to 'block_info' instance to <offset_info>(%base).
+ *
+ * On x86-32 this is done as follows:
+ *	mov <block_info>, <offset_info>(%base)
+ * 
+ * On x86-64 this is done as follows:
+ *	mov <block_info>, %rax
+ *	mov %rax, <offset_info>(%base)
+ * # Saving and restoring %rax is the caller's job.
+ *
+ * Similar to how kedr_mk_* functions behave, the function returns the last 
+ * created item if successful. In case of an error, it also returns some 
+ * valid item. 'err' is also handled according to the same rules that hold 
+ * for kedr_mk_*() functions. */
+static struct list_head *
+mk_mov_block_info_ptr_to_ls(struct kedr_block_info *info, u8 base, 
+	struct list_head *item, int *err)
+{
+	if (*err != 0)
+		return item;
+	
+#ifdef CONFIG_X86_64
+	item = kedr_mk_mov_imm64_to_rax((u64)info, item, 0, err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
+		offsetof(struct kedr_local_storage, info), item, 0, err);
+#else /* x86-32 */
+	item = kedr_mk_mov_value32_to_slot(
+		(unsigned long)info, base,
+		offsetof(struct kedr_local_storage, info), item, 0, err);
+#endif
+	return item;
+}
+
+/* A helper function that generates the instructions to call the given 
+ * wrapper of some handler. It is assumed that no special operations are
+ * needed here except passing the address of the local storage to the 
+ * wrapper in %rax (hence "simple" in the name).
+ * The rules concerning 'item' and 'err' are the same as for kedr_mk_*().
+ *
+ * Code:
+ * 	push %rax
+ *	mov %base, %rax
+ *	call <wrapper_addr>
+ *	pop %rax
+ */
+static struct list_head *
+mk_call_wrapper_simple(unsigned long wrapper_addr, u8 base, 
+	struct list_head *item, int *err)
+{
+	if (*err != 0)
+		return item;
+	
+	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, err);
+	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, err);
+	item = kedr_mk_call_rel32(wrapper_addr, item, 0, err);
+	item = kedr_mk_pop_reg(INAT_REG_CODE_AX, item, 0, err);
+	return item;
+}
+
+/* A helper function that generates the instructions to copy the pointer to 
+ * a block_info instance to local_storage::info and then call the given 
+ * wrapper of a handler. 
+ * The rules concerning 'item' and 'err' are the same as for kedr_mk_*().
+ *
+ * Code:
+ * 	push %rax
+ *	<mov block_info to <offset_info>(%base)> # may use %rax
+ *	mov %base, %rax
+ *	call <wrapper_addr>
+ *	pop %rax
+ */
+static struct list_head *
+mk_call_wrapper_with_info(struct kedr_block_info *info, 
+	unsigned long wrapper_addr, u8 base, struct list_head *item, 
+	int *err)
+{
+	if (*err != 0)
+		return item;
+	
+	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, err);
+	item = mk_mov_block_info_ptr_to_ls(info, base, item, err);
+	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, err);
+	item = kedr_mk_call_rel32(wrapper_addr, item, 0, err);
+	item = kedr_mk_pop_reg(INAT_REG_CODE_AX, item, 0, err);
+	return item;
+}
+
+/* Process the end of a common block that has no jumps out. It is enough to
+ * save the pointer to the block_info instance in local_storage::info and
+ * call kedr_on_common_block_end_wrapper(). */
+int 
+kedr_handle_block_end_no_jumps(struct kedr_ir_node *start_node, 
+	struct kedr_ir_node *end_node, u8 base)
+{
+	int err = 0;
+	
+	BUG_ON(start_node->block_info == NULL);
+	mk_call_wrapper_with_info(start_node->block_info,
+		(unsigned long)&kedr_on_common_block_end_wrapper, base,
+		&end_node->last->list, &err);
+	
+	if (err != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to add code at %pS, after the end of the block.\n",
+			(void *)end_node->orig_addr);
+	}
+	return err;
+}
+
+/* Process the end of a common block that has jumps out of it.
+ * [NB] These jumps are not necessarily performed. If one of such jumps is 
+ * performed, 'dest_addr' field of the local storage will contain the 
+ * address of the intended destination. If none of the jumps are performed,
+ * 'dest_addr' will be 0. 
+ * 
+ * 'temp' field is used as a scratch area. kedr_on_common_block_end() 
+ * does not change it. But it zeroes 'dest_addr' to make sure it is 0 
+ * when each block begins.
+ * 
+ * [NB] We make use of the fact that the wrapper functions preserve all the
+ * registers except %rax. So we can be sure %rdx will not be changed by
+ * kedr_on_common_block_end_wrapper().
+ *
+ * [NB] We must preserve the values of flags in this code. 'test' may change
+ * them, so pushf/popf are necessary.
+ *
+ * Code:
+ * block_end:
+ *	pushf
+ * 	mov   %rdx, <offset_dx>(%base)
+ *	mov   <offset_dest_addr>(%base), %rdx
+ * 	push  %rax
+ *	<mov start_node->block_info to <offset_info>(%base)> # may use %rax
+ * 	mov   %base, %rax
+ * 	call  <kedr_on_common_block_end_wrapper>  # [NB] zeroes 'dest_addr'.
+ * 	pop   %rax
+ * We need %rdx restored before the jump so we save the destination in a 
+ * temporary.
+ * 	mov   %rdx, <offset_temp>(%base) 
+ * 	test  %rdx, %rdx
+ * 	mov   <offset_dx>(%base), %rdx
+ * 	jz    go_on
+ *	popf
+ *	jmp   *<offset_temp>(%base)
+ * go_on:
+ *	popf
+ * next_block:
+ */
+int 
+kedr_handle_block_end(struct kedr_ir_node *start_node, 
+	struct kedr_ir_node *end_node, u8 base)
+{
+	struct kedr_ir_node *node;
+	struct kedr_ir_node *node_jz;
+	struct list_head *item = NULL;
+	int err = 0;
+	
+	/* Create the first node of the sequence and place it after
+	 * 'end_node->last', then create the node for 'jz'. 
+	 * [NB] If the second allocation fails, the memory will be reclaimed
+	 * anyway when the IR is destroyed. */
+	node = kedr_ir_node_create();
+	if (node == NULL)
+		return -ENOMEM;
+	list_add(&node->list, &end_node->last->list);
+	
+	node_jz = kedr_ir_node_create();
+	if (node_jz == NULL)
+		return -ENOMEM;
+	
+	item = kedr_mk_pushf(&node->list, 1, &err);
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_DX, base,
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_mem(INAT_REG_CODE_DX, base, 
+		(unsigned long)offsetof(struct kedr_local_storage, 
+			dest_addr),
+		item, 0, &err);
+	item = mk_call_wrapper_with_info(start_node->block_info,
+		(unsigned long)&kedr_on_common_block_end_wrapper, base,
+		item, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, base,
+		(unsigned long)offsetof(struct kedr_local_storage, temp),
+		item, 0, &err);
+	item = kedr_mk_test_reg_reg(INAT_REG_CODE_DX, item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_DX, base, 
+		item, 0, &err);
+	
+	list_add(&node_jz->list, item);	
+	/* [NB] The destination node will be changed below. */
+	item = kedr_mk_jcc(INAT_CC_Z, node, &node_jz->list, 1, &err);
+	item = kedr_mk_popf(item, 0, &err);
+	
+	item = kedr_mk_jmp_offset_base(base, 
+		(unsigned long)offsetof(struct kedr_local_storage, temp),
+		item, 0, &err);
+	item = kedr_mk_popf(item, 0, &err);
+
+	if (err == 0) {
+		node->last = 
+			list_entry(item, struct kedr_ir_node, list);
+		node_jz->dest_inner = node->last; 
+		/* 'jz' jumps to the last 'popf' */
+	}
+	else {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to add code at %pS, after the end of the block.\n",
+			(void *)end_node->orig_addr);
+	}
+	return err;
+}
+
+/* Process a block with a single operation, e.g. a locked update. The 
+ * block is expected to have block_info instance associated with it.
+ * Note that the blocks for memory barrier instructions not accessing 
+ * memory are processed differently (see kedr_handle_barrier_other()).
+ *
+ * Part 1, apply it before the instruction sequence.
+ * Code:
+ *	push %rax
+ *	<mov ref_node->block_info to <offset_info>(%base)> # may use %rax
+ *	# The handlers expect their only argument to be in %rax
+ *	mov %base, %rax
+ *	call pre_wrapper
+ *	pop %rax
+ *
+ * Part 2, apply it after the instruction sequence.
+ * Code:
+ * 	push %rax
+ * 	mov %base, %rax
+ * 	call post_wrapper
+ *	pop %rax
+ */
+static int 
+handle_single_op_block(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned long pre_wrapper, unsigned long post_wrapper)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	
+	/* adding code before the instruction sequence */
+	item = mk_call_wrapper_with_info(ref_node->block_info, pre_wrapper,
+		base, insert_after, &err);
+	
+	/* adding code after the instruction sequence */
+	item = &ref_node->last->list;
+	item = mk_call_wrapper_simple(post_wrapper, base, item, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = 
+			list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+/* Process a block containing only a locked update operation. */
+int 
+kedr_handle_locked_op(struct kedr_ir_node *ref_node, u8 base)
+{
+	return handle_single_op_block(ref_node, base, 
+		(unsigned long)&kedr_on_locked_op_pre_wrapper,
+		(unsigned long)&kedr_on_locked_op_post_wrapper);
+}
+
+/* Process a block containing only an I/O operation accessing memory. */
+int 
+kedr_handle_io_mem_op(struct kedr_ir_node *ref_node, u8 base)
+{
+	return handle_single_op_block(ref_node, base, 
+		(unsigned long)&kedr_on_io_mem_op_pre_wrapper,
+		(unsigned long)&kedr_on_io_mem_op_post_wrapper);
+}
+
+/* Process a block containing only one operation, a memory barrier not 
+ * accessing memory. 
+ * 
+ * Part 1, apply it before the instruction sequence.
+ * Code:
+ * 	push %rax
+ *	# "MOV imm8, mem" because <barrier_type> should fit in one byte.
+ * 	mov <barrier_type>, <offset_temp>(%base)
+ *	(x86-32) mov <pc>, <offset_temp1>(%base)
+ *	# Same opcode but the insn also performs sign-extension on x86-64
+ *	(x86-64) mov <lower_32_bits_of_pc>, <offset_temp1>(%base)
+ *	mov %base, %rax
+ *	call kedr_on_barrier_pre_wrapper
+ *	pop %rax
+ *
+ * Part 2, apply it after the instruction sequence.
+ * Code:
+ *	# Neither the pre handler nor the instruction sequence itself change
+ *	# the fields 'temp' and 'temp1' of the local storage. So they have 
+ *	# the needed values already.
+ *	push %rax
+ *	mov %base, %rax
+ *	call kedr_on_barrier_post_wrapper
+ *	pop %rax
+ */
+int 
+kedr_handle_barrier_other(struct kedr_ir_node *ref_node, u8 base)
+{
+	int err = 0;
+	struct list_head *item = ref_node->first->list.prev;
+	struct list_head *first_item;
+	
+	/* adding code before the instruction sequence */
+	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
+	first_item = item;
+	
+	item = kedr_mk_mov_value8_to_slot((u8)ref_node->barrier_type, base,
+		offsetof(struct kedr_local_storage, temp), item, 0, &err);
+	item = kedr_mk_mov_value32_to_slot((u32)ref_node->orig_addr, base,
+		offsetof(struct kedr_local_storage, temp1), item, 0, &err);
+	
+	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, &err);
+	item = kedr_mk_call_rel32(
+		(unsigned long)&kedr_on_barrier_pre_wrapper, item, 0, &err);
+	item = kedr_mk_pop_reg(INAT_REG_CODE_AX, item, 0, &err);
+	
+	/* adding code after the instruction sequence */
+	item = &ref_node->last->list;
+	item = mk_call_wrapper_simple(
+		(unsigned long)&kedr_on_barrier_post_wrapper, base, item, 
+		&err);
+	
+	if (err == 0) {
+		ref_node->first = 
+			list_entry(first_item, struct kedr_ir_node, list);
+		ref_node->last = 
+			list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+/* Process a direct jump (call/jmp near, jcc near) from a block to 
+ * another block. We need to make sure a handler function for the block end
+ * is called before the execution of another block begins.
+ *
+ * insn: <op> <disp32>
+ * 
+ * During the instrumentation, we know the destination node of the jump
+ * ('node->dest_inner') but the exact address is not known until the end. 
+ * Therefore, we will need a kind of "relocation" that will replace the 
+ * 32-bit value (<val32>) in 'mov' with the lower 32 bits of 
+ *   SignExt(<val32>) + <Address_of_mov> + <Length_of_mov>.
+ * That is, <dest32> is the value in the lower 32 bits of the destination 
+ * address (automatic sign extension will give the full address on x86-64).
+ * In turn, <val32> is calculated during the code generation phase before
+ * relocation. It is the offset of the jump destination from the end of 
+ * that 'mov' instruction.
+ * 
+ * Code for jmp <disp32>:
+ *	mov <dest32>, <offset_dest_addr>(%base)
+ * 	jmp <disp_end>
+ *
+ * Code for call <disp32>:
+ *	mov <dest32>, <offset_dest_addr>(%base)
+ * 	call <disp_end>
+ * 
+ * Code for jcc <disp32>:
+ *	j<not cc> go_on
+ *	mov <dest32>, <offset_dest_addr>(%base)
+ * 	jmp <disp_end>
+ * go_on:
+ *	# NB> <dest_addr> remains 0 in the storage if the jump is not taken.
+ * 
+ * <disp_end> is a displacement of the position just past the end of what
+ * the last instruction of the block transforms to. A "block_end" handler
+ * will be placed there that will dispatch the jump properly.
+ * Set 'dest_inner' to the last node of the block for the insn above.
+ * A flag should have been already set in the node to indicate it is a 
+ * jump out ouf a block. So <disp_end> will be set properly during code
+ * generation as the displacement of the node just after 'end_node->last'.*/
+int
+kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node, 	
+	struct kedr_ir_node *end_node, u8 base)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct kedr_ir_node *first = NULL;
+	struct kedr_ir_node *node_jnotcc = NULL;
+	struct kedr_ir_node *node_mov = NULL;
+	struct insn *insn = &ref_node->insn;
+	u8 opcode;
+	u8 cc;
+	
+	BUG_ON(ref_node->jump_past_last == 0);
+	
+	opcode = insn->opcode.bytes[0];
+	
+	/* First, create and add the node for 'mov'. */
+	node_mov = kedr_ir_node_create();
+	if (node_mov == NULL)
+		return -ENOMEM;
+	list_add(&node_mov->list, insert_after);
+	kedr_mk_mov_value32_to_slot(0, base, 
+		(u32)offsetof(struct kedr_local_storage, dest_addr),
+		&node_mov->list, 1, &err);
+		
+	/* Set 'dest_inner' for the node with 'mov' to be able to properly 
+	 * relocate imm32 there later. */
+	node_mov->dest_inner = ref_node->dest_inner;
+	node_mov->needs_addr32_reloc = 1;
+	first = node_mov;
+	
+	/* If it was a conditional jump originally, place 'j<not cc>' before
+	 * 'mov'. */
+	if (opcode == 0x0f && (insn->opcode.bytes[1] & 0xf0) == 0x80) {
+		/* Prepare the condition code for the inverted condition. */
+		cc = insn->opcode.bytes[1] & 0x0f;
+		cc ^= 1;
+		
+		node_jnotcc = kedr_ir_node_create();
+		if (node_jnotcc == NULL)
+			return -ENOMEM;
+		list_add(&node_jnotcc->list, insert_after);
+		kedr_mk_jcc(cc, ref_node, &node_jnotcc->list, 1, &err);
+		node_jnotcc->jump_past_last = 1;
+		
+		first = node_jnotcc;
+	}
+	
+	/* Replace the original jump with a call/jump to the end of the 
+	 * block. */
+	kedr_mk_call_jmp_to_inner(end_node, (opcode != KEDR_OP_CALL_REL32), 
+		&ref_node->list, 1, &err);
+	/* 'jump_past_last' remains 1, which is what we need. */
+	
+	if (err == 0)
+		ref_node->first = first;
+	else
+		warn_fail(ref_node);
+	return err;
+}
+/* ====================================================================== */
+
+/* The offset of values[_index] in struct kedr_local_storage. */
+#define KEDR_OFFSET_VALUES_N(_index) \
+	((unsigned int)offsetof(struct kedr_local_storage, values) + \
+	(unsigned int)((_index) * sizeof(unsigned long)))
+
+/* A helper function that generates the code given below to record the 
+ * memory access from the instruction of type E or M in the given node. 
+ * 
+ * There are 2 cases: 
+ * - %base is not used in the memory addressing expression <expr>; 
+ * - %base is used there. 
+ * %wreg is selected among the registers not used in <expr>, it should be
+ * different from %base too.
+ *
+ * <offset_values[nval]> - offset of values[nval] in the local storage.
+ *
+ * Code: 
+ * 
+ * Case 1: %base is not used in <expr>
+ *	mov  %wreg, <offset_wreg>(%base)
+ *	lea  <expr>, %wreg
+ * The following part is the same in both cases:
+ *	mov  %wreg, <offset_values[nval]>(%base)
+ * 	mov  <offset_wreg>(%base), %wreg
+ *
+ * ---------------------------------------------------
+ * Case 2: %base is used in <expr>. 
+ *	mov  %wreg, <offset_wreg>(%base)
+ * 	mov  %base, %wreg
+ * 	mov  <offset_base>(%wreg), %base
+ *	lea  <expr>, %base
+ *	xchg %base, %wreg
+ * The following part is the same in both cases:
+ *	mov  %wreg, <offset_values[nval]>(%base)
+ * 	mov  <offset_wreg>(%base), %wreg 
+ * 
+ * The rules concerning 'item' and 'err' are the same as for kedr_mk_*(). */
+static struct list_head *
+mk_record_access_common(struct kedr_ir_node *node, u8 base, 
+	unsigned int nval, struct list_head *item, int *err)
+{
+	u8 wreg;
+	unsigned int expr_reg_mask;
+	int base_is_used;
+	
+	if (*err != 0)
+		return item;
+	
+	expr_reg_mask = insn_reg_mask_for_expr(&node->insn);
+	base_is_used = (expr_reg_mask & X86_REG_MASK(base));
+	
+	wreg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(expr_reg_mask | X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (wreg == KEDR_REG_NONE) {
+		warn_no_wreg(node, base);
+		*err = -EILSEQ;
+		return item;
+	}
+	
+	item = kedr_mk_store_reg_to_spill_slot(wreg, base, item, 0, err);
+	
+	if (base_is_used) {
+		item = kedr_mk_mov_reg_to_reg(base, wreg, item, 0, err);
+		item = kedr_mk_load_reg_from_spill_slot(base, wreg, item, 0,
+			err);
+		item = kedr_mk_lea_expr_reg(node, base, item, 0, err);
+		item = kedr_mk_xchg_reg_reg(base, wreg, item, 0, err);
+	}
+	else {
+		item = kedr_mk_lea_expr_reg(node, wreg, item, 0, err);
+	}
+	
+	item = kedr_mk_store_reg_to_mem(wreg, base, 
+		KEDR_OFFSET_VALUES_N(nval), item, 0, err);
+	
+	item = kedr_mk_load_reg_from_spill_slot(wreg, base, item, 0, err);
+	return item;
+}
+
+/* Process memory accesses for the following instructions:
+ * 	SETcc and CMOVcc
+ *
+ * Apply this before the instruction sequence.
+ * 
+ * Code:
+ *	j<not cc> go_over
+ * 	... # see mk_record_access_common()
+ * go_over:
+ */
+int
+kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	struct insn *insn = &ref_node->insn;
+	struct kedr_ir_node *node_jcc;
+	u8 cc;
+	
+	/* Obtain the condition code from the last opcode byte, then invert
+	 * the least significant bit to invert the condition (see Intel's 
+	 * manual vol 2B, "B.1.4.7 Condition Test (tttn) Field"). */
+	BUG_ON(insn->opcode.nbytes == 0);
+	cc = insn->opcode.bytes[insn->opcode.nbytes - 1] & 0x0f;
+	cc ^= 1;
+	
+	node_jcc = kedr_ir_node_create();
+	if (node_jcc == NULL)
+		return -ENOMEM;
+	node_jcc->jump_past_last = 1;
+	list_add(&node_jcc->list, insert_after);
+	
+	/* A jump to the node following 'node_jcc->last'.
+	 * [NB] We cannot make ref_node the destination of this jump because 
+	 * our system will later set the destination to 'ref_node->first'
+	 * instead. That is, the jump will lead to itself in that case. */
+	item = kedr_mk_jcc(cc, node_jcc, &node_jcc->list, 1, &err);
+	item = mk_record_access_common(ref_node, base, nval, item, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		node_jcc->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	
+	return err;
+}
+
+/* Processing memory accesses for CMPXCHG*.
+ *
+ * <set_bit_N> is a 32-bit value where only the bit at position N is 1.
+ * When written to the appropriate slot in the storage, it is sign-extended
+ * but only the lower 32 bits are used when analysing.
+ * N is the number of the memory access in the block.
+ *
+ * [NB] Use "or" rather than "mov" to update the mask: other instructions 
+ * of this kind in the block may do the same.
+ * 
+ * Part 1: record read (happens always, should be taken into account in 
+ * read_mask). Apply this before the instruction sequence.
+ * Code:
+ *	... # same as "E-general"
+ * 
+ * Part 2: update the data if write happens. Apply this after the 
+ * instruction sequence.
+ * If ZF is 0, it is read operation again, nothing to do.
+ * Code: 
+ *	jnz   go_on
+ *	pushf
+ *	or  <set_bit_N>, <offset_write_mask>(%base)
+ *	popf
+ * go_on:
+ */
+static int
+handle_cmpxchg_impl(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_jnz;
+	
+	/* Create the node for 'jnz' (to be filled later) */
+	node_jnz = kedr_ir_node_create();
+	if (node_jnz == NULL)
+		return -ENOMEM;
+	
+	mk_record_access_common(ref_node, base, nval, insert_after, &err);
+	list_add(&node_jnz->list, &ref_node->last->list);
+	
+	/* Make sure the jump will lead to the node following the 
+	 * instruction sequence. */
+	item = kedr_mk_jcc(INAT_CC_NZ, ref_node, &node_jnz->list, 1, &err);
+	node_jnz->jump_past_last = 1;
+	
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_or_value32_to_slot(((u32)1 << num), base, 
+		offsetof(struct kedr_local_storage, write_mask), item, 0, 
+		&err);
+	item = kedr_mk_popf(item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+int
+kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	return handle_cmpxchg_impl(ref_node, base, num, nval);
+}
+
+int
+kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	return handle_cmpxchg_impl(ref_node, base, num, nval);
+}
+
+int
+kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	
+	mk_record_access_common(ref_node, base, nval, insert_after, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+/* Processing memory access for XLAT instruction. 
+ * Apply this before the instruction sequence.
+ *
+ * There are 2 cases: 
+ * 	1) %base is %rbx - the instructions that should be used in this 
+ * case only are enclosed in [].
+ * 	2) %base is not %rbx  - the instructions that should be used in 
+ * this case only are enclosed in {}. 
+ * The instructions that are not in brackets are the same in both cases.
+ *
+ * Note that both on x86-32 and on x86-64 the instructions listed below 
+ * deal with the full-sized registers (except %al).
+ * To simplify things a bit, we also assume that XLAT itself uses full-sized
+ * register as a base, that is, %ebx on x86-32 and %rbx on x86-64. In the 
+ * latter case, this means that REX.W must be present. It seems to be 
+ * unlikely that %ebx is used to contain the address of the XLAT table 
+ * on x86-64 rather than %rbx and the values of %rbx and (extended) %ebx
+ * are not the same.
+ *
+ * [NB] MOVZBL is sometimes used as another mnemonic for the variant of 
+ * MOVZX we use below.
+ *
+ * Code:
+ *	mov  %rax, <offset_ax>(%base)
+ * On entry, %al contains an unsigned index to the table XLAT uses.
+ *	movzx %al, %rax  # zero-extend the unsigned index...
+ * ...and add the original value of %rbx to it:
+ *	pushf	# 'add' affects flags, so we need to preserve them
+ *	[add <offset_bx>(%base), %rax]	# use this one if %base is %rbx...
+ *	{add %rbx, %rax}		# ...or this one if not
+ * 	popf
+ * Now %rax contains the address of the byte to be accessed by XLAT.
+ *	mov  %rax, <offset_values[nval]>(%base)
+ * 	mov  <offset_ax>(%base), %rax	# restore %rax
+ */
+int
+kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_AX, base,
+		insert_after, 0, &err);
+	item = kedr_mk_movzx_al_ax(item, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	
+	if (base == INAT_REG_CODE_BX)
+		item = kedr_mk_add_slot_bx_to_ax(base, item, 0, &err);
+	else
+		item = kedr_mk_add_bx_to_ax(item, 0, &err);
+	
+	item = kedr_mk_popf(item, 0, &err);
+	
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
+		KEDR_OFFSET_VALUES_N(nval), item, 0, &err);
+	
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_AX, base,
+		item, 0, &err);
+
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+/* Processing memory accesses for direct memory offset MOVs (opcodes A0-A3).
+ * 
+ * Apply this before the instruction sequence.
+ * Code for x86-32:
+ *	mov  <addr>, <offset_values[nval]>(%base)
+ *
+ * Code for x86-64:
+ *	push %rax
+ *	mov <addr>, %rax
+ *	mov %rax, <offset_values[nval]>(%base)
+ *	pop %rax
+ */
+int
+kedr_handle_direct_offset_mov(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct insn *insn = &ref_node->insn;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item;
+	
+	item = insert_after;
+	
+#ifdef CONFIG_X86_64
+	{
+		u64 addr64 = ((u64)insn->moffset2.value << 32) | 
+			(u64)insn->moffset1.value; 
+		item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
+		item = kedr_mk_mov_imm64_to_rax(addr64, item, 0, &err);
+		item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base,
+			KEDR_OFFSET_VALUES_N(nval), item, 0, &err);
+		item = kedr_mk_pop_reg(INAT_REG_CODE_AX, item, 0, &err);
+	}
+#else /* x86-32 */
+	item = kedr_mk_mov_value32_to_slot((u32)insn->moffset1.value, base, 
+		KEDR_OFFSET_VALUES_N(nval), item, 0, &err);
+#endif
+
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+/* Processing memory accesses for the instruction with addressing methods 
+ * "X" and "Y" (but not "XY"). The method is specified via 'amethod'.
+ * [NB] REP* prefixes are taken into account automatically.
+ *
+ * %key_reg is %rsi for "X" and %rdi for "Y".
+ * %wreg is a register not used by the instruction and different 
+ * from %base as usual. It must not be %rsp either.
+ * %treg is a register different from %base, %wreg, %rsp and %key_reg.
+ *
+ * Note that the policy used to select %base guarantees that %base is not
+ * used by the instructions with X and Y addressing methods. %base is 
+ * selected from non-scratch registers, so it cannot be %ax, %cx or %dx used
+ * by some of such instructions. On x86-64, it can be neither %rsi nor %rdi 
+ * for the same reason. On x86-32, the policy requires that %esi and %edi 
+ * must not be chosen as %base for a function if there are X- or 
+ * Y-instructions in the function. To sum up, we can rely on the fact that 
+ * the instruction does not use %base.
+ *
+ * Part 1, apply it before the instruction.
+ * Code:
+ *	mov  %wreg, <offset_wreg>(%base)
+ * 	mov  %key_reg, %wreg	# start position
+ * ----------------------------------------------
+ *
+ * Part 2, apply it after the instruction.
+ * Now %key_reg is the position past the end by the size of the element 
+ * (S: 1, 2, 4 or 8). 
+ * [NB] The size of the element was saved in block_info on the previous 
+ * stages of the instrumentation.
+ *
+ * We need to determine the beginning and the length of the accessed
+ * memory area taking the direction of processing in to account.
+ * Code:
+ * 	mov  %treg, <offset_treg>(%base)
+ *	pushf	
+ *	mov  %key_reg, %treg 	# treg - position past the end by S
+ *	sub  %wreg, %treg	# treg -= wreg => treg := +/- length
+ *	jz out			# length == 0, nothing has been processed
+ *	ja record_access	# common case: forward processing
+ * The data have been processed backwards.
+ *	mov  %key_reg, %wreg	# set the real start: new %key_reg + S
+ *	add  <S>, %wreg		# S<=8 => 8 bits are more than enough
+ * 	neg  %treg		# treg = -treg; now treg == length
+ *
+ * record_access:
+ *
+ * No matter in which direction the data processing was made, %wreg is now 
+ * the start address of the accessed memory block and %treg is the length of
+ * the block in bytes. [%wreg, %wreg + %treg)
+ *	mov  %wreg, <offset_values[nval]>(%base)
+ *	mov  %treg, <offset_values[nval+1]>(%base)
+ * out:
+ *	popf
+ *	mov  <offset_treg>(%base), %treg
+ *	mov  <offset_wreg>(%base), %wreg 
+ */
+static int 
+handle_type_x_and_y_impl(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval, u8 amethod)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_record_access = NULL;
+	struct kedr_ir_node *node_out = NULL;
+	
+	u8 wreg;
+	u8 treg;
+	u8 key_reg = (amethod == INAT_AMETHOD_X ? 
+		INAT_REG_CODE_SI :
+		INAT_REG_CODE_DI);
+	
+	u8 sz = (u8)info->events[num].size;
+	
+	wreg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(ref_node->reg_mask | X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (wreg == KEDR_REG_NONE) {
+		warn_no_wreg(ref_node, base);
+		return -EILSEQ;
+	}
+	
+	treg = kedr_choose_work_register(X86_REG_MASK_ALL,
+		(X86_REG_MASK(wreg) | X86_REG_MASK(key_reg) | 
+			X86_REG_MASK(INAT_REG_CODE_SP)), 
+		base);
+	if (treg == KEDR_REG_NONE) {
+		warn_no_wreg(ref_node, base);
+		return -EILSEQ;
+	}
+	
+	node_record_access = kedr_ir_node_create();
+	if (node_record_access == NULL)
+		return -ENOMEM;
+	node_out = kedr_ir_node_create();
+	if (node_out == NULL) {
+		kedr_ir_node_destroy(node_record_access);
+		return -ENOMEM;
+	}
+	
+	/* Part 1 - added before the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(wreg, base, insert_after,
+		0, &err);
+	item = kedr_mk_mov_reg_to_reg(key_reg, wreg, item, 0, &err);
+	
+	/* Part 2 - added after the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(treg, base, 
+		&ref_node->last->list, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(key_reg, treg, item, 0, &err);
+	item = kedr_mk_sub_reg_reg(wreg, treg, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_Z, node_out, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_A, node_record_access, item, 0, &err);
+	
+	item = kedr_mk_mov_reg_to_reg(key_reg, wreg, item, 0, &err);
+	item = kedr_mk_add_value8_to_reg(sz, wreg, item, 0, &err);
+	item = kedr_mk_neg_reg(treg, item, 0, &err);
+	
+	kedr_mk_store_reg_to_mem(wreg, base, KEDR_OFFSET_VALUES_N(nval), 
+		&node_record_access->list, 1, &err);
+	list_add(&node_record_access->list, item);
+	item = &node_record_access->list;
+		
+	item = kedr_mk_store_reg_to_mem(treg, base,
+		KEDR_OFFSET_VALUES_N(nval + 1), item, 0, &err);
+	
+	kedr_mk_popf(&node_out->list, 1, &err);
+	list_add(&node_out->list, item);
+	item = &node_out->list;
+	
+	item = kedr_mk_load_reg_from_spill_slot(treg, base, item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(wreg, base, item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
+
+int
+kedr_handle_type_x(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	return handle_type_x_and_y_impl(ref_node, info, base, num, nval, 
+		INAT_AMETHOD_X);
+}
+
+int
+kedr_handle_type_y(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	return handle_type_x_and_y_impl(ref_node, info, base, num, nval, 
+		INAT_AMETHOD_Y);
+}
+
+/* Processing memory accesses for the instruction with "X" and "Y" addressing 
+ * modes (when both modes are used for an instruction):
+ * MOVS, CMPS
+ * 
+ * [NB] REP* prefixes are taken into account automatically.
+ *
+ * We make use of the fact that %rax and %rdx are not used by MOVS and CMPS.
+ * These registers are used as work registers.
+ * After the instruction completes, we may use %rcx too, and it is
+ * convenient to make it the third work register we need. 
+ *
+ * Part 1, apply it before the instruction
+ * Code:
+ *	mov  %rax, <offset_ax>(%base)
+ *	mov  %rdx, <offset_dx>(%base)
+ * 	mov  %rsi, %rax
+ * 	mov  %rdi, %rdx
+ * ----------------------------------------
+ *
+ *
+ * Part 2, apply it after the instruction
+ * Code:
+ * 	mov  %rcx, <offset_cx>(%base)
+ *	pushfq
+ * 	mov  %rsi, %rcx		# rcx - position past the end by S
+ *	sub  %rax, %rcx		# rcx -= (old rsi) => wreg := +/- length
+ *	jz out			# length == 0, nothing has been processed
+ *	ja record_access	# common case: forward processing
+ * The data have been processed backwards (rcx is negative).
+ *	mov  %rsi, %rax		# set the real start position: new %rsi + S
+ *	add  <S>, %rax		# <S> is 1, 2, 4, or 8 => 8 bits is enough
+ *	mov  %rdi, %rdx		# ... same for %rdi
+ *	add  <S>, %rdx
+ * 	neg  %rcx		# rcx = -rcx; now rcx == length
+ *
+ * record_access:
+ *
+ * Record accesses to [%rax, %rax + %rcx) and [%rdx, %rdx + %rcx)
+ *	mov  %rax, <offset_values[nval]>(%base)
+ *	mov  %rcx, <offset_values[nval+1]>(%base)
+ *	mov  %rdx, <offset_values[nval+2]>(%base)
+ *	mov  %rcx, <offset_values[nval+3]>(%base)
+ * out:
+ *	popfq
+ *	mov  <offset_cx>(%base), %rcx
+ *	mov  <offset_dx>(%base), %rdx
+ *	mov  <offset_ax>(%base), %rax
+ */
+int
+kedr_handle_type_xy(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval)
+{
+	int err = 0;
+	struct list_head *insert_after = ref_node->first->list.prev;
+	struct list_head *item = NULL;
+	struct kedr_ir_node *node_record_access = NULL;
+	struct kedr_ir_node *node_out = NULL;
+	
+	u8 sz = (u8)info->events[num].size;
+	
+	node_record_access = kedr_ir_node_create();
+	if (node_record_access == NULL)
+		return -ENOMEM;
+	node_out = kedr_ir_node_create();
+	if (node_out == NULL) {
+		kedr_ir_node_destroy(node_record_access);
+		return -ENOMEM;
+	}
+	
+	/* Part 1 - added before the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_AX, base, 
+		insert_after, 0, &err);
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_DX, base,
+		item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_AX, 
+		item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_DI, INAT_REG_CODE_DX, 
+		item, 0, &err);
+	
+	/* Part 2 - added after the instruction */
+	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_CX, base, 
+		&ref_node->last->list, 0, &err);
+	item = kedr_mk_pushf(item, 0, &err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_CX,
+		item, 0, &err);
+	item = kedr_mk_sub_reg_reg(INAT_REG_CODE_AX, INAT_REG_CODE_CX, 
+		item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_Z, node_out, item, 0, &err);
+	item = kedr_mk_jcc(INAT_CC_A, node_record_access, item, 0, &err);
+	
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SI, INAT_REG_CODE_AX,
+		item, 0, &err);
+	item = kedr_mk_add_value8_to_reg((u8)sz, INAT_REG_CODE_AX, item, 0,
+		&err);
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_DI, INAT_REG_CODE_DX,
+		item, 0, &err);
+	item = kedr_mk_add_value8_to_reg((u8)sz, INAT_REG_CODE_DX, item, 0,
+		&err);
+	item = kedr_mk_neg_reg(INAT_REG_CODE_CX, item, 0, &err);
+	
+	/* Record accesses to [%rax, %rax + %rcx) and [%rdx, %rdx + %rcx) */
+	kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
+		KEDR_OFFSET_VALUES_N(nval), &node_record_access->list, 1, 
+		&err);
+	list_add(&node_record_access->list, item);
+	item = &node_record_access->list;
+	
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_CX, base,
+		KEDR_OFFSET_VALUES_N(nval + 1), item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, base, 
+		KEDR_OFFSET_VALUES_N(nval + 2), item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_CX, base,
+		KEDR_OFFSET_VALUES_N(nval + 3), item, 0, &err);
+
+	/* out: */
+	kedr_mk_popf(&node_out->list, 1, &err);
+	list_add(&node_out->list, item);
+	item = &node_out->list;
+	
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_CX, base, 
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_DX, base, 
+		item, 0, &err);
+	item = kedr_mk_load_reg_from_spill_slot(INAT_REG_CODE_AX, base, 
+		item, 0, &err);
+	
+	if (err == 0) {
+		ref_node->first = list_entry(insert_after->next, 
+			struct kedr_ir_node, list);
+		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+	}
+	else {
+		warn_fail(ref_node);
+	}
+	return err;
+}
 /* ====================================================================== */

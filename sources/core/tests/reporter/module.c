@@ -11,8 +11,8 @@
  * from that function in the same thread will be reported (and only the 
  * events from that thread will be reported) if enabled by "report_*".
  * 
- * [NB] In the second mode, the module cannot handle the targets where that
- * function is called recursively (the reporter must not crash but the 
+ * Note that in the second mode, the module cannot handle the targets where
+ * that function is called recursively (the reporter must not crash but the 
  * report itself is likely to contain less data than expected).
  * 
  * Format of the output records is as follows (the leading spaces are only 
@@ -26,9 +26,13 @@
  * - Format of the records for "call post" events:
  *	TID=<tid,0x%lx> CALL_POST pc=<pc,%pS> name="<name of the callee>"
  *
- * [NB] If a function to be mentioned in the report is in "init" area of the
- * target module, its name may sometimes be resolved incorrectly (usually,
- * to an empty string). */
+ * [NB] The reporter does not report the events that occur during the 
+ * initialization of the target module. For these events, symbol resolution
+ * is unsafe and may sometimes lead to system crashes. Symbol resolution is
+ * used, for example, when printing with "%pf", "%pS" or similar specifiers.
+ * After the init function of the target module has finished, the module 
+ * loader changes some fields in struct module that kallsyms subsystem uses.
+ * It is better to avoid reporting events in such situations. */
 
 /* ========================================================================
  * Copyright (C) 2012, KEDR development team
@@ -134,6 +138,9 @@ static unsigned long target_start = 0;
 /* The ID of the thread to report the events for. If it is KEDR_ALL_THREADS,
  * no restriction on thread ID is imposed. */
 static unsigned long target_tid = KEDR_ALL_THREADS;
+
+/* The target. */
+static struct module *target_module = NULL;
 /* ====================================================================== */
 
 /* The structures containing the data to be passed to the workqueue. 
@@ -285,6 +292,9 @@ report_event_allowed(unsigned long tid)
 	if (ecount >= max_events)
 		return 0;
 	
+	if (target_module == NULL || target_module->module_init != NULL)
+		return 0;
+	
 	if (!restrict_to_func)
 		return 1;
 	
@@ -294,17 +304,18 @@ report_event_allowed(unsigned long tid)
 /* ====================================================================== */
 
 static void 
-on_load(struct kedr_event_handlers *eh, struct module *target_module)
+on_load(struct kedr_event_handlers *eh, struct module *mod)
 {
 	int ret;
 	
 	reset_counters();
-	debug_util_clear();	
+	debug_util_clear();
+	target_module = mod;
 	
 	if (!restrict_to_func)
 		return;
 	
-	ret = kallsyms_on_each_symbol(symbol_walk_callback, target_module);
+	ret = kallsyms_on_each_symbol(symbol_walk_callback, mod);
 	if (ret < 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 			"Failed to search for the function \"%s\".\n", 
@@ -313,7 +324,7 @@ on_load(struct kedr_event_handlers *eh, struct module *target_module)
 	else if (ret == 0) {
 		pr_info(KEDR_MSG_PREFIX 
 			"The function \"%s\" was not found in \"%s\".\n", 
-			target_function, module_name(target_module));
+			target_function, module_name(mod));
 	}
 	else { /* Must have found the target function. */
 		BUG_ON(target_start == 0);
@@ -321,9 +332,12 @@ on_load(struct kedr_event_handlers *eh, struct module *target_module)
 }
 
 static void 
-on_unload(struct kedr_event_handlers *eh, struct module *target_module)
+on_unload(struct kedr_event_handlers *eh, struct module *mod)
 {
 	flush_workqueue(wq);
+	/* Reporting must have been finished for all the previous events
+	 * by now, so it is safe to reset 'target_module'. */
+	target_module = NULL;
 }
 
 static void 

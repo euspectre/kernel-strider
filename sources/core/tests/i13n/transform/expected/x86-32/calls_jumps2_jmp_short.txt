@@ -27,7 +27,7 @@ Jump to 0x5
 0x5: 58
 
 Block (type: 8)
-0xadded: 89 43 00
+0xadded: 89 03
 
 Ref. to call_info for the node at 0x6
 0xadded: c7 83 ac 00 00 00 00 00 00 00

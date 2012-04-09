@@ -20,14 +20,14 @@ Jump to 0xadded
 
 0xadded: 58
 
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
 0xadded: 8b 58 0c
 
 Block (type: 3)
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
@@ -39,11 +39,11 @@ Block (type: 3)
 
 0xadded: 89 c3
 
-0xadded: 8b 43 00
+0xadded: 8b 03
 
 0x1: 55
 
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
@@ -55,7 +55,7 @@ Block (type: 3)
 
 0xadded: 89 c3
 
-0xadded: 8b 43 00
+0xadded: 8b 03
 
 0x4: 89 fd
 
@@ -63,11 +63,59 @@ Block (type: 3)
 
 0xb: bf 00 00 00 00
 
+0xadded: 89 03
+
+0xadded: 89 53 08
+
+0xadded: 89 f0
+
+0xadded: 89 fa
+
 0x10: a6
+
+0xadded: 89 4b 04
+
+0xadded: 9c
+
+0xadded: 89 f1
+
+0xadded: 29 c1
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 89 f0
+
+0xadded: 83 c0 01
+
+0xadded: 89 fa
+
+0xadded: 83 c2 01
+
+0xadded: f7 d9
+
+0xadded: 89 43 20
+
+0xadded: 89 4b 24
+
+0xadded: 89 53 28
+
+0xadded: 89 4b 2c
+
+0xadded: 9d
+
+0xadded: 8b 4b 04
+
+0xadded: 8b 53 08
+
+0xadded: 8b 03
 
 0x11: 89 ef
 
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
@@ -79,9 +127,9 @@ Block (type: 3)
 
 0xadded: 89 c3
 
-0xadded: 8b 43 00
+0xadded: 8b 03
 
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
@@ -93,13 +141,13 @@ Block (type: 3)
 
 0xadded: 89 c3
 
-0xadded: 8b 43 00
+0xadded: 8b 03
 
 0x16: 45
 
 0x17: 5d
 
-0xadded: 89 43 00
+0xadded: 89 03
 
 0xadded: 89 d8
 
@@ -111,7 +159,7 @@ Block (type: 3)
 
 0xadded: 89 c3
 
-0xadded: 8b 43 00
+0xadded: 8b 03
 
 Block (type: 12)
 0xadded: 50

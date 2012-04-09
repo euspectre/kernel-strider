@@ -7,6 +7,7 @@
 
 struct kedr_ir_node;
 struct kedr_ifunc;
+struct kedr_block_info;
 struct list_head;
 /* ====================================================================== */
 
@@ -23,10 +24,11 @@ struct list_head;
  *   'base' - the code of the base register chosen for the function. 
  *   'func' - the struct kedr_ifunc instance corresponding to the function
  * to be instrumented. 
- *
- * [TODO: revisit]:
- * 'num'  - the number (index) of the current memory accessing instruction
- * in the block. */
+ *   'num' - the number of the tracked memory operation in the block, 
+ * starting from 0.
+ *   'nval' - the number of the first slot in local_storage::values[] that
+ * the instruction can use. Some instruction (e.g. string operations) may
+ * need more than one slot. */
 
 /* ====================================================================== */
 /* Transformation of the IR, phase 1 */
@@ -38,14 +40,12 @@ kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func,
 int
 kedr_handle_function_exit(struct kedr_ir_node *ref_node, u8 base);
 
-// TODO
 int
 kedr_handle_call_indirect(struct kedr_ir_node *ref_node, u8 base);
 
 int
 kedr_handle_jmp_indirect_inner(struct kedr_ir_node *ref_node, u8 base);
 
-// TODO
 int
 kedr_handle_jmp_indirect_out(struct kedr_ir_node *ref_node, u8 base);
 
@@ -67,46 +67,65 @@ kedr_handle_general_case(struct kedr_ir_node *ref_node, u8 base);
 /* ====================================================================== */
 /* Transformation of the IR, phase 2 */
 /* ====================================================================== */
+int 
+kedr_handle_block_end_no_jumps(struct kedr_ir_node *start_node, 
+	struct kedr_ir_node *end_node, u8 base);
 
-/* '*_mask' - read, write and lock masks created when analyzing the 
- * instructions of this block. */
-/*int
-kedr_handle_end_of_normal_block(struct kedr_ir_node *end_node, u8 base,
-	u32 read_mask, u32 write_mask, u32 lock_mask);*/
+int 
+kedr_handle_block_end(struct kedr_ir_node *start_node, 
+	struct kedr_ir_node *end_node, u8 base);
 
-/* 'end_node' - the last reference node of the block that 'node' belongs to.
- */
-/*int
+int 
+kedr_handle_locked_op(struct kedr_ir_node *ref_node, u8 base);
+
+int 
+kedr_handle_io_mem_op(struct kedr_ir_node *ref_node, u8 base);
+
+int 
+kedr_handle_barrier_other(struct kedr_ir_node *ref_node, u8 base);
+
+int
 kedr_handle_jump_out_of_block(struct kedr_ir_node *ref_node, 	
 	struct kedr_ir_node *end_node, u8 base);
 
 int
-kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_setcc_cmovcc(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_cmpxchg(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_cmpxchg8b_16b(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_xlat(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_type_e_and_m(struct kedr_ir_node *ref_node, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
 kedr_handle_direct_offset_mov(struct kedr_ir_node *ref_node, u8 base, 
-	u8 num);
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_type_x(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_type_x(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_type_y(struct kedr_ir_node *ref_node, u8 base, u8 num);
+kedr_handle_type_y(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval);
 
 int
-kedr_handle_type_xy(struct kedr_ir_node *ref_node, u8 base, u8 num);*/
+kedr_handle_type_xy(struct kedr_ir_node *ref_node, 
+	struct kedr_block_info *info, u8 base, 
+	unsigned int num, unsigned int nval);
 /* ====================================================================== */
 
 #endif // TRANSFORM_H_1609_INCLUDED

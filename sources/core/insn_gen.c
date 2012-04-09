@@ -129,10 +129,27 @@ write_rex_prefix(u8 *write_at, int full_size_default,
 }
 #endif
 
+static u8 *
+write_modrm_expr_no_disp(u8 *write_at, u8 r_base, u8 r_reg)
+{
+	*write_at++ = KEDR_MK_MODRM(0, r_reg, r_base);
+	
+	/* If ESP/RSP or R12 as a base => use SIB == 0x24: 
+	 * 00100100(b): 
+	 * scale == 0; index == 100(b) - no index; base == 100(b). */
+	if ((r_base & 0x07) == 4)
+		*write_at++ = 0x24; 
+
+	return write_at;
+}
+
 /* write_modrm_expr() writes ModR/M, SIB (if necessary) and the displacement
  * to encode the expression <offset>(%base) at the specified position 
  * (pointed to by 'write_at'). Returns the pointer to the location 
  * immediately following the last byte it has written. 
+ * 
+ * If offset is 0 and it is possible to get away without displacement, this
+ * function does so.
  * 
  * The function takes into account that the base register ('r_base') can be
  * ESP/RSP or R12 and uses SIB form in such situations. 
@@ -143,6 +160,11 @@ static u8 *
 write_modrm_expr(u8 *write_at, u8 r_base, u8 r_reg, int is_disp8, 
 	unsigned long offset)
 {
+	/* If the offset is 0 and neither %rbp nor %r13 is the base 
+	 * register, a form without displacement can be used. */
+	if (offset == 0 && ((r_base & 0x07) != 5))
+		return write_modrm_expr_no_disp(write_at, r_base, r_reg);
+	
 	*write_at++ = KEDR_MK_MODRM((is_disp8 ? 1 : 2), r_reg, r_base);
 	
 	/* If ESP/RSP or R12 as a base => use SIB == 0x24: 
@@ -687,6 +709,368 @@ kedr_mk_mov_value32_to_slot(u32 value32, u8 base, u32 offset,
 	return &node->list;
 }
 
-// TODO: more functions
+/* mov value8, <offset>(%base) */
+struct list_head *
+kedr_mk_mov_value8_to_slot(u8 value8, u8 base, u32 offset, 
+	struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED, 
+		base);
+	*pos++ = 0xc6; /* opcode: C6/0 */
+	pos = write_modrm_expr(pos, base, 0, 0, (unsigned long)offset);
+	*(u8 *)pos = value8;
+	pos++;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
 
+/* An inner jmp rel32 or call rel32 (depending on 'is_jmp'). The destination
+ * node is 'dest'. */
+struct list_head * 
+kedr_mk_call_jmp_to_inner(struct kedr_ir_node *dest, int is_jmp, 
+	struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	BUG_ON(dest == NULL);
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	*pos++ = (is_jmp ? 0xe9 : 0xe8);
+	*(u32 *)pos = 0; /* the offset does not really matter ... */
+	pos += 4;
+	
+	/* ... but 'dest_inner' matters. */
+	node->dest_inner = dest;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* pushfq/pushfd */
+struct list_head *
+kedr_mk_pushf(struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	*pos++ = 0x9c;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* popfq/popfd */
+struct list_head *
+kedr_mk_popf(struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	*pos++ = 0x9d;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* jmp *<offset>(%base) */
+struct list_head *
+kedr_mk_jmp_offset_base(u8 base, u32 offset, struct list_head *item, 
+	int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 1, KEDR_REG_UNUSED, KEDR_REG_UNUSED, 
+		base);
+	*pos++ = 0xff; /* Opcode: FF/4 */
+	pos = write_modrm_expr(pos, base, 4, 0, (unsigned long)offset);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* xchg %reg1, %reg2 */
+struct list_head *
+kedr_mk_xchg_reg_reg(u8 reg1, u8 reg2, struct list_head *item, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, reg1, KEDR_REG_UNUSED, reg2);
+	*pos++ = 0x87;
+	*pos++ = KEDR_MK_MODRM(3, reg1, reg2); 
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* or value32, <offset>(%base) */
+struct list_head *
+kedr_mk_or_value32_to_slot(u32 value32, u8 base, u32 offset, 
+	struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	int is_value8 = (value32 < 0x7F); 
+	/* 0x7F rather than 0x100 because of sign extension */
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED, 
+		base);
+	*pos++ = (is_value8) ? 0x83 : 0x81; /* opcode: 83/1 or 81/1 */
+	pos = write_modrm_expr(pos, base, 1, 0, (unsigned long)offset);
+	
+	if (is_value8) {
+		*pos++ = (u8)value32;
+	}
+	else {
+		*(u32 *)pos = value32;
+		pos += 4;
+	}
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* add <offset_bx>(%base), %rax */
+struct list_head *
+kedr_mk_add_slot_bx_to_ax(u8 base, struct list_head *item, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	BUG_ON(base >= X86_REG_COUNT);
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		base);
+	
+	*pos++ = 0x03; /* opcode */
+	pos = write_modrm_expr(pos, base, INAT_REG_CODE_AX, 1, 
+		(unsigned long)(INAT_REG_CODE_BX * sizeof(unsigned long)));
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* add %rbx, %rax */
+struct list_head *
+kedr_mk_add_bx_to_ax(struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		INAT_REG_CODE_BX);
+	
+	*pos++ = 0x03; /* opcode */
+	*pos++ = KEDR_MK_MODRM(3, INAT_REG_CODE_AX, INAT_REG_CODE_BX);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* movzx %al, %rax (movzbq/movzbl %al, %rax/%eax) */
+struct list_head *
+kedr_mk_movzx_al_ax(struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, INAT_REG_CODE_AX, KEDR_REG_UNUSED, 
+		INAT_REG_CODE_AX);
+	
+	*pos++ = 0x0f; /* opcode: 0F B6/r */
+	*pos++ = 0xb6;
+	*pos++ = KEDR_MK_MODRM(3, INAT_REG_CODE_AX, INAT_REG_CODE_AX);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* sub %reg_what, %reg_from 
+ * (%reg_from -= %reg_what) */
+struct list_head *
+kedr_mk_sub_reg_reg(u8 reg_what, u8 reg_from, struct list_head *item, 
+	int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, reg_what, KEDR_REG_UNUSED, 
+		reg_from);
+	*pos++ = 0x29;
+	*pos++ = KEDR_MK_MODRM(3, reg_what, reg_from);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* add <value8>, %reg */
+struct list_head *
+kedr_mk_add_value8_to_reg(u8 value8, u8 reg, struct list_head *item, 
+	int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED,
+		reg);
+	*pos++ = 0x83; /* Opcode: 83/0 */
+	*pos++ = KEDR_MK_MODRM(3, 0, reg);
+	*pos++ = value8;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
+
+/* neg %reg */
+struct list_head *
+kedr_mk_neg_reg(u8 reg, struct list_head *item, int in_place, int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED,
+		reg);
+	*pos++ = 0xf7; /* Opcode: F7/3 */
+	*pos++ = KEDR_MK_MODRM(3, 3, reg);
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
+}
 /* ====================================================================== */
