@@ -185,6 +185,11 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 		pos = buf + insn_offset_immediate(insn);
 		*(u32 *)pos = 0;
 	}
+	else if (opcode >= 0xa0 && opcode <= 0xa3) {
+		/* direct offset MOV, zero the address */
+		pos = buf + insn_offset_immediate(insn);
+		*(unsigned long *)pos = 0;
+	}
 	
 	debug_util_print_ulong(offset_for_node(func, node), "0x%lx: ");
 	debug_util_print_hex_bytes(&buf[0], insn->length);

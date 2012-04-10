@@ -1,0 +1,322 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 58
+
+Block (type: 3)
+0x0: 56
+
+0x1: 57
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 04 25 00 00 00 00
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0x2: 66 8b 14 25 00 00 00 00
+
+0xa: 48 c7 c0 00 00 00 00
+
+0x11: 48 c7 c2 00 00 00 00
+
+0x18: 48 89 c6
+
+0x1b: 48 89 d7
+
+0x1e: fc
+
+0x1f: 48 c7 c1 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 89 53 10
+
+0xadded: 48 89 f0
+
+0xadded: 48 89 fa
+
+0x26: f3 a4
+
+0xadded: 48 89 4b 08
+
+0xadded: 9c
+
+0xadded: 48 89 f1
+
+0xadded: 48 29 c1
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 48 89 f0
+
+0xadded: 48 83 c0 01
+
+0xadded: 48 89 fa
+
+0xadded: 48 83 c2 01
+
+0xadded: 48 f7 d9
+
+0xadded: 48 89 83 88 00 00 00
+
+0xadded: 48 89 8b 90 00 00 00
+
+0xadded: 48 89 93 98 00 00 00
+
+0xadded: 48 89 8b a0 00 00 00
+
+0xadded: 9d
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 8b 53 10
+
+0xadded: 48 8b 03
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0x28
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0x28: e8 00 00 00 00
+
+Block (type: 3)
+0x2d: 48 c7 c0 00 00 00 00
+
+0x34: 48 c7 c2 00 00 00 00
+
+0x3b: 48 8d 70 28
+
+0x3f: 48 8d 7a 28
+
+0x43: fd
+
+0x44: 48 c7 c1 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 89 53 10
+
+0xadded: 48 89 f0
+
+0xadded: 48 89 fa
+
+0x4b: f3 a7
+
+0xadded: 48 89 4b 08
+
+0xadded: 9c
+
+0xadded: 48 89 f1
+
+0xadded: 48 29 c1
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 48 89 f0
+
+0xadded: 48 83 c0 04
+
+0xadded: 48 89 fa
+
+0xadded: 48 83 c2 04
+
+0xadded: 48 f7 d9
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 89 8b 88 00 00 00
+
+0xadded: 48 89 93 90 00 00 00
+
+0xadded: 48 89 8b 98 00 00 00
+
+0xadded: 9d
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 8b 53 10
+
+0xadded: 48 8b 03
+
+0x4d: fc
+
+0x4e: 48 89 c6
+
+0x51: 48 89 d7
+
+Jump to 0x59
+0x54: 0f 84 00 00 00 00
+
+0x56: 48 31 c9
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 f1
+
+0x59: 66 ad
+
+0xadded: 48 89 03
+
+0xadded: 9c
+
+0xadded: 48 89 f0
+
+0xadded: 48 29 c8
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 48 89 f1
+
+0xadded: 48 83 c1 02
+
+0xadded: 48 f7 d8
+
+0xadded: 48 89 8b a0 00 00 00
+
+0xadded: 48 89 83 a8 00 00 00
+
+0xadded: 9d
+
+0xadded: 48 8b 03
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 f9
+
+0x5b: aa
+
+0xadded: 48 89 03
+
+0xadded: 9c
+
+0xadded: 48 89 f8
+
+0xadded: 48 29 c8
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 48 89 f9
+
+0xadded: 48 83 c1 01
+
+0xadded: 48 f7 d8
+
+0xadded: 48 89 8b b0 00 00 00
+
+0xadded: 48 89 83 b8 00 00 00
+
+0xadded: 9d
+
+0xadded: 48 8b 03
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 05 00 00 00 00
+
+0xadded: 48 89 83 c0 00 00 00
+
+0xadded: 48 8b 03
+
+0x5c: 48 8b 05 00 00 00 00
+
+0x63: 48 31 c0
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 f9
+
+0x66: 48 af
+
+0xadded: 48 89 03
+
+0xadded: 9c
+
+0xadded: 48 89 f8
+
+0xadded: 48 29 c8
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 48 89 f9
+
+0xadded: 48 83 c1 08
+
+0xadded: 48 f7 d8
+
+0xadded: 48 89 8b c8 00 00 00
+
+0xadded: 48 89 83 d0 00 00 00
+
+0xadded: 9d
+
+0xadded: 48 8b 03
+
+0xadded: 48 8b 4b 08
+
+0x68: 5f
+
+0x69: 5e
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x6a: c3
+

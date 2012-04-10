@@ -1,0 +1,186 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 58
+
+Block (type: 3)
+0x0: 55
+
+0x1: 48 89 e5
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x4: 53
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0x5: 48 89 e8
+
+0x8: 48 89 c5
+
+0xb: 48 89 e8
+
+0xe: 48 89 c5
+
+0x11: 4c 89 e0
+
+0x14: 49 89 c4
+
+0x17: 4c 89 e0
+
+0x1a: 49 89 c4
+
+0x1d: 4c 89 e0
+
+0x20: 49 89 c4
+
+0x23: 4c 89 e0
+
+0x26: 49 89 c4
+
+0x29: 4c 89 e8
+
+0x2c: 49 89 c5
+
+0x2f: 4c 89 e8
+
+0x32: 49 89 c5
+
+0x35: 4c 89 e8
+
+0x38: 49 89 c5
+
+0x3b: 4c 89 e8
+
+0x3e: 49 89 c5
+
+0x41: 4c 89 f0
+
+0x44: 49 89 c6
+
+0x47: 4c 89 f0
+
+0x4a: 49 89 c6
+
+0x4d: 4c 89 f0
+
+0x50: 49 89 c6
+
+0x53: 4c 89 f0
+
+0x56: 49 89 c6
+
+0x59: 4c 89 f8
+
+0x5c: 49 89 c7
+
+0x5f: 4c 89 f8
+
+0x62: 49 89 c7
+
+0x65: 4c 89 f8
+
+0x68: 49 89 c7
+
+0x6b: 4c 89 f8
+
+0x6e: 49 89 c7
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x71: 48 c7 c3 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0x78: b0 02
+
+0xadded: 48 89 03
+
+0xadded: 48 0f b6 c0
+
+0xadded: 9c
+
+0xadded: 48 03 43 18
+
+0xadded: 9d
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 d9
+
+0xadded: 48 8b 59 18
+
+0x7a: d7
+
+0xadded: 48 89 59 18
+
+0xadded: 48 89 cb
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x7b: 5b
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0x7c: 5d
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x7d: c3
+

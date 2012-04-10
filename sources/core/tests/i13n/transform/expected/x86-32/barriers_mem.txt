@@ -1,0 +1,223 @@
+IR:
+0xadded: 50
+
+0xadded: b8 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 89 68 14
+
+0xadded: 89 c5
+
+0xadded: 58
+
+Block (type: 2)
+0x0: 53
+
+0x1: 9c
+
+0x2: 58
+
+0x3: 89 c1
+
+0x5: 35 00 00 20 00
+
+0xa: 50
+
+0xb: 9d
+
+0xc: 9c
+
+0xd: 58
+
+0xe: 39 c8
+
+Jump to 0x3c
+0x10: 0f 84 00 00 00 00
+
+0x12: b8 00 00 00 00
+
+Block (type: 6)
+0xadded: 50
+
+0xadded: c6 85 b4 00 00 00 00
+
+0xadded: c7 85 b8 00 00 00 00 00 00 00
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x17: 0f a2
+
+0xadded: 50
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+Block (type: 3)
+0x19: f7 c2 00 00 00 04
+
+Jump to 0x1f
+0xadded: 0f 85 00 00 00 00
+
+Jump to 0x3c
+Ref. to call_info for the node at 0x19
+0xadded: c7 85 b0 00 00 00 00 00 00 00
+
+Jump to 0x26
+0x1f: e9 00 00 00 00
+
+0x21: bb 00 00 00 00
+
+0xadded: 89 45 00
+
+0xadded: 8d 03
+
+0xadded: 89 45 20
+
+0xadded: 8b 45 00
+
+0x26: 8b 03
+
+Block (type: 6)
+0xadded: 50
+
+0xadded: c6 85 b4 00 00 00 01
+
+0xadded: c7 85 b8 00 00 00 00 00 00 00
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x28: 0f ae e8
+
+0xadded: 50
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+Block (type: 3)
+0xadded: 89 45 00
+
+0xadded: 8d 43 10
+
+0xadded: 89 45 20
+
+0xadded: 8b 45 00
+
+0x2b: 89 43 10
+
+Block (type: 6)
+0xadded: 50
+
+0xadded: c6 85 b4 00 00 00 02
+
+0xadded: c7 85 b8 00 00 00 00 00 00 00
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x2e: 0f ae f8
+
+0xadded: 50
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+Block (type: 3)
+0xadded: 89 45 00
+
+0xadded: 8d 43 04
+
+0xadded: 89 45 20
+
+0xadded: 8b 45 00
+
+0x31: ff 43 04
+
+0xadded: 89 45 00
+
+0xadded: 8d 43 0c
+
+0xadded: 89 45 24
+
+0xadded: 8b 45 00
+
+0x34: ff 4b 0c
+
+Block (type: 6)
+0xadded: 50
+
+0xadded: c6 85 b4 00 00 00 00
+
+0xadded: c7 85 b8 00 00 00 00 00 00 00
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x37: 0f ae f0
+
+0xadded: 50
+
+0xadded: 89 e8
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+Block (type: 3)
+0xadded: 89 45 00
+
+0xadded: 8d 03
+
+0xadded: 89 45 20
+
+0xadded: 8b 45 00
+
+0x3a: 8b 03
+
+0x3c: 5b
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 89 e8
+
+0xadded: 8b 68 14
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x3d: c3
+

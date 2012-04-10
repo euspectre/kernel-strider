@@ -1,0 +1,406 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 58
+
+Block (type: 3)
+0x0: 55
+
+0x1: 48 89 e5
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x4: 53
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0x5: 48 89 e8
+
+0x8: 48 89 c5
+
+0xb: 48 89 e8
+
+0xe: 48 89 c5
+
+0x11: 4c 89 e0
+
+0x14: 49 89 c4
+
+0x17: 4c 89 e0
+
+0x1a: 49 89 c4
+
+0x1d: 4c 89 e0
+
+0x20: 49 89 c4
+
+0x23: 4c 89 e0
+
+0x26: 49 89 c4
+
+0x29: 4c 89 e8
+
+0x2c: 49 89 c5
+
+0x2f: 4c 89 e8
+
+0x32: 49 89 c5
+
+0x35: 4c 89 e8
+
+0x38: 49 89 c5
+
+0x3b: 4c 89 e8
+
+0x3e: 49 89 c5
+
+0x41: 4c 89 f0
+
+0x44: 49 89 c6
+
+0x47: 4c 89 f0
+
+0x4a: 49 89 c6
+
+0x4d: 4c 89 f0
+
+0x50: 49 89 c6
+
+0x53: 4c 89 f0
+
+0x56: 49 89 c6
+
+0x59: 4c 89 f8
+
+0x5c: 49 89 c7
+
+0x5f: 4c 89 f8
+
+0x62: 49 89 c7
+
+0x65: 4c 89 f8
+
+0x68: 49 89 c7
+
+0x6b: 4c 89 f8
+
+0x6e: 49 89 c7
+
+0x71: 48 83 ec 10
+
+0x75: 48 31 c0
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 44 24 08
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0x78: 48 89 44 24 08
+
+0x7d: 48 c7 c2 00 00 00 00
+
+0x84: 48 85 c0
+
+Jump to 0x8e
+0x87: 0f 84 00 00 00 00
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 8d 4c 82 08
+
+0xadded: 48 89 8b 88 00 00 00
+
+0xadded: 48 8b 4b 08
+
+0x89: ff 74 82 08
+
+0x8d: 59
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0x8e: 48 89 d3
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 d9
+
+0xadded: 48 8b 59 18
+
+0xadded: 48 8d 5c 83 08
+
+0xadded: 48 87 d9
+
+0xadded: 48 89 8b 90 00 00 00
+
+0xadded: 48 8b 4b 08
+
+0xadded: 48 89 4b 08
+
+0xadded: 48 89 d9
+
+0xadded: 48 8b 59 18
+
+0x91: ff 44 83 08
+
+0xadded: 48 89 59 18
+
+0xadded: 48 89 cb
+
+0xadded: 48 8b 4b 08
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0x95
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0x95: e8 00 00 00 00
+
+Block (type: 3)
+0x9a: 48 c7 c2 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 04 25 00 00 00 00
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0xa1: 48 8b 0c 25 00 00 00 00
+
+0xa9: 48 8d 4a 04
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 01
+
+0xadded: 48 89 83 88 00 00 00
+
+0xadded: 48 8b 03
+
+0xad: 48 8b 01
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 04 24
+
+0xadded: 48 89 83 90 00 00 00
+
+0xadded: 48 8b 03
+
+0xb0: 48 89 04 24
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0xb4
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0xb4: e8 00 00 00 00
+
+Block (type: 2)
+0xb9: 48 85 c0
+
+Jump to 0xe3
+0xbc: 0f 85 00 00 00 00
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0xbe
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0xbe: e8 00 00 00 00
+
+Block (type: 3)
+0xc3: 48 85 c0
+
+Jump to 0xc6
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xe3
+Ref. to call_info for the node at 0xc3
+0xadded: 48 c7 83 a0 01 00 00 00 00 00 00
+
+Jump to 0xdc
+0xc6: e9 00 00 00 00
+
+0xc8: 48 c7 c2 00 00 00 00
+
+0xcf: 48 85 d2
+
+Jump to 0xd7
+0xd2: 0f 84 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 02
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0xd4: 48 8b 02
+
+0xd7: 48 85 c0
+
+Jump to 0xe3
+Ref. to call_info for the node at 0xc3
+0xadded: 48 c7 83 a0 01 00 00 00 00 00 00
+
+Jump to 0xdc
+0xda: e9 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 02
+
+0xadded: 48 89 83 88 00 00 00
+
+0xadded: 48 8b 03
+
+0xdc: ff 0a
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0xde
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0xde: e8 00 00 00 00
+
+Block (type: 3)
+0xe3: 48 85 c0
+
+Jump to 0xea
+0xe6: e9 00 00 00 00
+
+Jump to 0xe8
+0xadded: 0f 85 00 00 00 00
+
+Jump to 0xf6
+Ref. to call_info for the node at 0xe3
+0xadded: 48 c7 83 a0 01 00 00 00 00 00 00
+
+Jump to 0xea
+0xe8: e9 00 00 00 00
+
+0xadded: 48 89 03
+
+0xadded: 48 8d 05 00 00 00 00
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0xea: 66 8b 0d 00 00 00 00
+
+Block (type: 7)
+0xadded: 48 89 03
+
+Ref. to call_info for the node at 0xf1
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 83 98 01 00 00
+
+0xadded: 48 89 d8
+
+0xf1: e8 00 00 00 00
+
+Block (type: 3)
+0xadded: 48 89 03
+
+0xadded: 48 8d 02
+
+0xadded: 48 89 83 80 00 00 00
+
+0xadded: 48 8b 03
+
+0xf6: ff 02
+
+0xf8: 48 83 c4 10
+
+0xadded: 48 89 03
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xfc: 5b
+
+0xadded: 48 89 58 18
+
+0xadded: 48 89 c3
+
+0xadded: 48 8b 03
+
+0xfd: 5d
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 48 89 d8
+
+0xadded: 48 8b 58 18
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0xfe: c3
+

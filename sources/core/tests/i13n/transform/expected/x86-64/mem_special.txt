@@ -1,0 +1,220 @@
+IR:
+0xadded: 50
+
+0xadded: 48 c7 c0 00 00 00 00
+
+0xadded: e8 00 00 00 00
+
+0xadded: 48 85 c0
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 58
+
+0xadded: e9 00 00 00 00
+
+0xadded: 48 89 68 28
+
+0xadded: 48 89 c5
+
+0xadded: 58
+
+Block (type: 3)
+0x0: 53
+
+0x1: 48 c7 c3 00 00 00 00
+
+0x8: b0 02
+
+0xadded: 48 89 45 00
+
+0xadded: 48 0f b6 c0
+
+0xadded: 9c
+
+0xadded: 48 03 c3
+
+0xadded: 9d
+
+0xadded: 48 89 85 80 00 00 00
+
+0xadded: 48 8b 45 00
+
+0xa: d7
+
+0xb: 30 c0
+
+0xd: b1 01
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 43 08
+
+0xadded: 48 89 85 88 00 00 00
+
+0xadded: 48 8b 45 00
+
+0xf: 0f b0 4b 08
+
+Jump to 0xf
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 9c
+
+0xadded: 48 83 8d 90 01 00 00 02
+
+0xadded: 9d
+
+Jump to 0x1c
+0x13: 0f 84 00 00 00 00
+
+0x15: 0f b0 c8
+
+0x18: 48 0f 44 c1
+
+Jump to 0xadded
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 43 10
+
+0xadded: 48 89 85 90 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x1c: 0f 94 43 10
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 43 04
+
+0xadded: 48 89 85 98 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x20: 83 7b 04 10
+
+Jump to 0xadded
+0xadded: 0f 8c 00 00 00 00
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 03
+
+0xadded: 48 89 85 a0 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x24: 48 0f 4d 13
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 03
+
+0xadded: 48 89 85 a8 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x28: 48 8b 03
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 43 08
+
+0xadded: 48 89 85 b0 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x2b: 48 8b 4b 08
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 43 08
+
+0xadded: 48 89 85 b8 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x2f: 48 0f b1 4b 08
+
+Jump to 0x2f
+0xadded: 0f 85 00 00 00 00
+
+0xadded: 9c
+
+0xadded: 48 81 8d 90 01 00 00 80 00 00 00
+
+0xadded: 9d
+
+Jump to 0x39
+0x34: 0f 84 00 00 00 00
+
+0xadded: 48 89 45 00
+
+0xadded: 48 8d 03
+
+0xadded: 48 89 85 c0 00 00 00
+
+0xadded: 48 8b 45 00
+
+0x36: 48 89 03
+
+0x39: 31 c0
+
+0xadded: 50
+
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 85 c8 00 00 00
+
+0xadded: 58
+
+0x3b: a0 00 00 00 00 00 00 00 00
+
+0xadded: 50
+
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 85 d0 00 00 00
+
+0xadded: 58
+
+0x44: a2 00 00 00 00 00 00 00 00
+
+0xadded: 50
+
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 85 d8 00 00 00
+
+0xadded: 58
+
+0x4d: 48 a1 00 00 00 00 00 00 00 00
+
+0xadded: 50
+
+0xadded: 48 b8 00 00 00 00 00 00 00 00
+
+0xadded: 48 89 85 e0 00 00 00
+
+0xadded: 58
+
+0x57: 48 a3 00 00 00 00 00 00 00 00
+
+0x61: 5b
+
+Block (type: 12)
+0xadded: 50
+
+0xadded: 48 89 e8
+
+0xadded: 48 8b 68 28
+
+0xadded: e8 00 00 00 00
+
+0xadded: 58
+
+0x62: c3
+

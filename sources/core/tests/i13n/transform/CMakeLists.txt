@@ -59,6 +59,41 @@ kedr_test_add_script (mem_core.i13n.transform.06
 	test.sh "calls_jumps2_jcc_short"
 )
 
+kedr_test_add_script (mem_core.i13n.transform.07
+	test.sh 
+		"common_type_e" 
+		"common_type_e_with_stack" 
+		"process_stack_accesses"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.08
+	test.sh "io_mem"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.09
+	test.sh "common_type_e"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.10
+	test.sh "mem_special"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.11
+	test.sh "mem_special_xlat_bx"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.12
+	test.sh "strings"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.13
+	test.sh "locked_updates2"
+)
+
+kedr_test_add_script (mem_core.i13n.transform.14
+	test.sh "barriers_mem"
+)
+
 # Tests with "NULL Allocator" (checking fallbacks, etc.)
 configure_file (
 	"${CMAKE_CURRENT_SOURCE_DIR}/test_nulla.sh.in"

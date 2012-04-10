@@ -2,12 +2,19 @@
 
 ########################################################################
 # This test checks the IR creation subsystem. The IR is dumped for the
-# given function (kedr_test_<short_target_function_name>) of the target
+# given function (kedr_test_<short_name>) of the target
 # module (see TARGET_MODULE below) and compared with the expected dump 
 # line by line. 
+#
+# If the name of the expected dump file differs from <short_name>,
+# specify it in <expected_name> argument.
+#
+# If the 3rd argument is "process_stack_accesses", the memory operations
+# that access the stack will also be processed by KernelStrider core,
+# except PUSH*/POP*.
 # 
 # Usage: 
-#   sh test.sh <short_target_function_name>
+#   sh test.sh <short_name> [expected_name] [process_stack_accesses]
 ########################################################################
 
 ########################################################################
@@ -68,7 +75,7 @@ doTest()
 {
 	/sbin/insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" || exit 1
+		umh_dir="@KEDR_UMH_DIR@" ${PROCESS_STACK} || exit 1
 
 	/sbin/insmod "${ACCESSOR_MODULE}" target_function="${TARGET_FUNCTION}"
 	if test $? -ne 0; then
@@ -150,8 +157,8 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
-if test $# -ne 1; then
-	printf "Usage: $0 <target_function>\n"
+if test $# -lt 1; then
+	printf "Usage: sh test.sh <short_name> [expected_name] [process_stack_accesses]\n"
 	exit 1
 fi
 
@@ -164,15 +171,26 @@ ACCESSOR_MODULE="accessor2/${ACCESSOR_MODULE_NAME}.ko"
 TARGET_FUNCTION_SHORT=$1
 TARGET_FUNCTION="kedr_test_${TARGET_FUNCTION_SHORT}"
 
+EXPECTED_NAME="${TARGET_FUNCTION_SHORT}"
+if test -n "$2"; then
+	EXPECTED_NAME="$2"
+fi
+
+if test "t$3" = "tprocess_stack_accesses"; then
+    PROCESS_STACK="process_stack_accesses=1"
+else
+    PROCESS_STACK="process_stack_accesses=0"
+fi
+
 TARGET_MODULE_NAME="test_ir_transform"
 TARGET_MODULE="target_common/${TARGET_MODULE_NAME}.ko"
 
-TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${TARGET_FUNCTION_SHORT}"
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${EXPECTED_NAME}"
 TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
 TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/test_accessor2/output"
 
-TEST_DUMP_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}.txt"
-EXPECTED_DUMP_FILE="@KEDR_TEST_EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}.txt"
+TEST_DUMP_FILE="${TEST_TMP_DIR}/${EXPECTED_NAME}.txt"
+EXPECTED_DUMP_FILE="@KEDR_TEST_EXPECTED_DIR@/${EXPECTED_NAME}.txt"
 
 COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
 
