@@ -1,0 +1,36 @@
+/* CTF 1.8 */
+typedef integer {size = 16; align = 16; byte_order = be; signed = true;} int16_t;
+typedef integer {size = 32; align = 32; byte_order = be; signed = true;} int32_t;
+
+struct two_ints
+{
+    int16_t field1;
+    int32_t field2;
+};
+
+trace
+{
+    packet.header := struct two_ints;
+};
+
+variant event_type
+{
+    int32_t complex;
+    int16_t very_complex;
+};
+
+stream
+{
+    enum stream_type {simple, complex = 1, very_complex = 4...7} : int16_t;
+    
+    packet.context := enum stream_type;
+    
+    event.header := struct stream_event_header { int16_t id[5]; };
+};
+
+event
+{
+    context := variant event_type <stream.packet.context>;
+    
+    fields := struct {integer {byte_order = le; signed = false; size = 8; } n; int16_t values[n];};
+};
