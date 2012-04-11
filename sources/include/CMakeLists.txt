@@ -10,6 +10,8 @@ set(KEDR_INCLUDE_FILES_SRC
 	kedr_mem/functions.h
 	event_collector/event_collector.h
 	event_collector/event_handler.h
+	ctf_reader/ctf_reader.h
+	ctf_reader/ctf_meta_types.h
 )
 
 # Copy the headers from the src tree into the build tree
