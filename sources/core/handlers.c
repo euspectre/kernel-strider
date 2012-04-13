@@ -303,12 +303,23 @@ kedr_on_locked_op_post(unsigned long storage)
 	struct kedr_block_info *info = (struct kedr_block_info *)ls->info;
 	
 	/* [NB] Here we make use of the fact that a locked update cannot be
-	 * a string operation. */
-	
+	 * a string operation and it is the only operation 'info' contains
+	 * the data for. 
+	 *
+	 * [NB] A locked operation is not necessarily an update. For 
+	 * example, it can be a "read" in case of CMPXCHG*. */
 	if (eh_current->on_locked_op_post != NULL) {
+		u32 write_mask = info->write_mask | ls->write_mask;
+		enum kedr_memory_event_type type = KEDR_ET_MREAD;
+		if (write_mask & 1) {
+			type = ((info->read_mask & 1) != 0) ? 
+				KEDR_ET_MUPDATE :
+				KEDR_ET_MWRITE;
+		}
+		
 		eh_current->on_locked_op_post(eh_current, ls->tid,
 			info->events[0].pc, ls->values[0], 
-			info->events[0].size, KEDR_ET_MUPDATE, 
+			info->events[0].size, type, 
 			(void *)ls->temp);
 	}
 	
