@@ -1359,8 +1359,12 @@ handle_cmpxchg_impl(struct kedr_ir_node *ref_node, u8 base,
 	list_add(&node_jnz->list, &ref_node->last->list);
 	
 	/* Make sure the jump will lead to the node following the 
-	 * instruction sequence. */
-	item = kedr_mk_jcc(INAT_CC_NZ, ref_node, &node_jnz->list, 1, &err);
+	 * instruction sequence created in this function. Note that the 
+	 * instruction sequence may expand further in the later stages of 
+	 * processing, e.g. when instrumenting LOCK CMPXCHG*. We need to
+	 * make sure the jump leads to the node following the node for POPF
+	 * created here, hence we set 'node_jnz->last' below. */
+	item = kedr_mk_jcc(INAT_CC_NZ, node_jnz, &node_jnz->list, 1, &err);
 	node_jnz->jump_past_last = 1;
 	
 	item = kedr_mk_pushf(item, 0, &err);
@@ -1373,6 +1377,7 @@ handle_cmpxchg_impl(struct kedr_ir_node *ref_node, u8 base,
 		ref_node->first = list_entry(insert_after->next, 
 			struct kedr_ir_node, list);
 		ref_node->last = list_entry(item, struct kedr_ir_node, list);
+		node_jnz->last = list_entry(item, struct kedr_ir_node, list);
 	}
 	else {
 		warn_fail(ref_node);
