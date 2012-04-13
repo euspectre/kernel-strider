@@ -64,5 +64,9 @@ kedr_test_barriers_mem:
 
 .data
 .align 8,0
+
+.global kedr_test_array_bm01
+.type   kedr_test_array_bm01,@object
 kedr_test_array_bm01: .int 0xbee0feed, 0x12345678, 0x0, 0xabcdefab, 0x0, 0x0
+.size kedr_test_array_bm01, .-kedr_test_array_bm01
 /* ====================================================================== */ 

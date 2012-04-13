@@ -39,6 +39,8 @@ kedr_test_strings:
 	mov $kedr_test_strings03, %edx;
 	
 	std;
+	lea 0xc(%eax), %esi
+	lea 0xc(%edx), %edi
 	mov $0x4, %ecx;
 	/* CMPS will process the strings from the end (DF=1) */
 	repe cmpsl;
@@ -47,6 +49,14 @@ kedr_test_strings:
 	mov %edx, %edi;
 	je 1f;
 	xor %ecx, %ecx;
+	jmp 1f;
+	
+	/* This sequence of operations will not be executed. */
+	push %eax;
+	xor %eax, %eax;
+	mov $0xa, %ecx;
+	repne scasl;
+	pop %eax;
 
 1: 	lodsw;
 	stosb;
@@ -70,7 +80,19 @@ kedr_test_strings_aux:
 
 .data
 .align 8,0
+
+.global kedr_test_strings01
+.type   kedr_test_strings01,@object
 kedr_test_strings01: .asciz "A quick brown fox jumps over a lazy dog."
+.size kedr_test_strings01, .-kedr_test_strings01
+
+.global kedr_test_strings02
+.type   kedr_test_strings02,@object
 kedr_test_strings02: .asciz "Pack my box with five dozen liquor jugs."
+.size kedr_test_strings02, .-kedr_test_strings02
+
+.global kedr_test_strings03
+.type   kedr_test_strings03,@object
 kedr_test_strings03: .asciz "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+.size kedr_test_strings03, .-kedr_test_strings03
 /* ====================================================================== */

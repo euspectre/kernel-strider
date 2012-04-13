@@ -1,0 +1,15 @@
+FENTRY name="kedr_test_barriers_mem"
+BARRIER FULL PRE pc=kedr_test_barriers_mem+0x1c 
+BARRIER FULL POST pc=kedr_test_barriers_mem+0x1c 
+READ pc=kedr_test_barriers_mem+0x2e addr=kedr_test_array_bm01+0x0 size=8
+BARRIER LOAD PRE pc=kedr_test_barriers_mem+0x31 
+BARRIER LOAD POST pc=kedr_test_barriers_mem+0x31 
+WRITE pc=kedr_test_barriers_mem+0x34 addr=kedr_test_array_bm01+0x10 size=8
+BARRIER STORE PRE pc=kedr_test_barriers_mem+0x38 
+BARRIER STORE POST pc=kedr_test_barriers_mem+0x38 
+UPDATE pc=kedr_test_barriers_mem+0x3b addr=kedr_test_array_bm01+0x4 size=4
+UPDATE pc=kedr_test_barriers_mem+0x3e addr=kedr_test_array_bm01+0xc size=4
+BARRIER FULL PRE pc=kedr_test_barriers_mem+0x41 
+BARRIER FULL POST pc=kedr_test_barriers_mem+0x41 
+READ pc=kedr_test_barriers_mem+0x44 addr=kedr_test_array_bm01+0x0 size=8
+FEXIT name="kedr_test_barriers_mem"

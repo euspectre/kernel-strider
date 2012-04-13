@@ -1,0 +1,16 @@
+FENTRY name="kedr_test_common_type_e"
+UPDATE pc=kedr_test_common_type_e+0x91 addr=kedr_test_array_cte01+0x8 size=4
+CALL_PRE pc=kedr_test_common_type_e+0x95 name="kedr_test_common_type_e_aux"
+CALL_POST pc=kedr_test_common_type_e+0x95 name="kedr_test_common_type_e_aux"
+READ pc=kedr_test_common_type_e+0xa1 addr=kedr_test_array_cte01+0x0 size=8
+READ pc=kedr_test_common_type_e+0xad addr=kedr_test_array_cte01+0x4 size=8
+CALL_PRE pc=kedr_test_common_type_e+0xb4 name="kedr_test_common_type_e_aux"
+CALL_POST pc=kedr_test_common_type_e+0xb4 name="kedr_test_common_type_e_aux"
+CALL_PRE pc=kedr_test_common_type_e+0xbe name="kedr_test_common_type_e_aux"
+CALL_POST pc=kedr_test_common_type_e+0xbe name="kedr_test_common_type_e_aux"
+READ pc=kedr_test_common_type_e+0xd4 addr=kedr_test_array_cte01+0x0 size=8
+READ pc=kedr_test_common_type_e+0xea addr=kedr_test_common_type_e_aux+0x0 size=2
+CALL_PRE pc=kedr_test_common_type_e+0xf1 name="kedr_test_common_type_e_aux"
+CALL_POST pc=kedr_test_common_type_e+0xf1 name="kedr_test_common_type_e_aux"
+UPDATE pc=kedr_test_common_type_e+0xf6 addr=kedr_test_array_cte01+0x0 size=4
+FEXIT name="kedr_test_common_type_e"

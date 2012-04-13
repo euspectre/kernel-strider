@@ -1,0 +1,11 @@
+FENTRY name="kedr_test_locked_updates2"
+READ pc=kedr_test_locked_updates2+0x6 addr=kedr_test_array_lu01+0x8 size=4
+LOCKED UPDATE pc=kedr_test_locked_updates2+0x9 addr=kedr_test_array_lu01+0x0 size=4
+UPDATE pc=kedr_test_locked_updates2+0xb addr=kedr_test_array_lu01+0x4 size=4
+LOCKED UPDATE pc=kedr_test_locked_updates2+0xf addr=0x0 size=4
+LOCKED UPDATE pc=kedr_test_locked_updates2+0x14 addr=kedr_test_array_lu01+0x0 size=4
+LOCKED UPDATE pc=kedr_test_locked_updates2+0x1a addr=kedr_test_array_lu01+0x10 size=1
+LOCKED UPDATE pc=kedr_test_locked_updates2+0x21 addr=kedr_test_array_lu01+0x8 size=1
+LOCKED UPDATE pc=kedr_test_locked_updates2+0x2c addr=kedr_test_array_lu01+0x0 size=4
+LOCKED READ pc=kedr_test_locked_updates2+0x35 addr=kedr_test_array_lu01+0x0 size=4
+FEXIT name="kedr_test_locked_updates2"

@@ -57,7 +57,7 @@ Block (type: 3)
 
 0xf: 0f b0 4b 08
 
-Jump to 0xf
+Jump to 0xadded
 0xadded: 0f 85 00 00 00 00
 
 0xadded: 9c
@@ -139,7 +139,7 @@ Jump to 0xadded
 
 0x2f: 48 0f b1 4b 08
 
-Jump to 0x2f
+Jump to 0xadded
 0xadded: 0f 85 00 00 00 00
 
 0xadded: 9c

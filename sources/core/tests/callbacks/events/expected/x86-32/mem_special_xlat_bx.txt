@@ -1,0 +1,3 @@
+FENTRY name="kedr_test_mem_special_xlat_bx"
+READ pc=kedr_test_mem_special_xlat_bx+0x33 addr=kedr_test_array_ms01+0x2 size=1
+FEXIT name="kedr_test_mem_special_xlat_bx"

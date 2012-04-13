@@ -206,7 +206,7 @@ Ref. to block_info for the block at 0x25
 
 0x25: f0 0f b0 4b 08
 
-Jump to 0x25
+Jump to 0xadded
 0xadded: 0f 85 00 00 00 00
 
 0xadded: 9c
@@ -311,7 +311,7 @@ Ref. to block_info for the block at 0x39
 
 0x39: f0 48 0f b1 0b
 
-Jump to 0x39
+Jump to 0xadded
 0xadded: 0f 85 00 00 00 00
 
 0xadded: 9c

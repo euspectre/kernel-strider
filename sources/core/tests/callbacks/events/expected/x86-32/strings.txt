@@ -1,0 +1,13 @@
+FENTRY name="kedr_test_strings"
+READ pc=kedr_test_strings+0x2 addr=kedr_test_strings01+0x0 size=2
+READ pc=kedr_test_strings+0x1d addr=kedr_test_strings01+0x0 size=40
+WRITE pc=kedr_test_strings+0x1d addr=kedr_test_strings03+0x0 size=40
+CALL_PRE pc=kedr_test_strings+0x1f name="kedr_test_strings_aux"
+CALL_POST pc=kedr_test_strings+0x1f name="kedr_test_strings_aux"
+READ pc=kedr_test_strings+0x3a addr=kedr_test_strings01+0x0 size=16
+READ pc=kedr_test_strings+0x3a addr=kedr_test_strings03+0x0 size=16
+READ pc=kedr_test_strings+0x52 addr=kedr_test_strings01+0x0 size=2
+WRITE pc=kedr_test_strings+0x54 addr=kedr_test_strings03+0x0 size=1
+READ pc=kedr_test_strings+0x55 addr=kedr_test_strings02+0x0 size=4
+READ pc=kedr_test_strings+0x5c addr=kedr_test_strings03+0x1 size=4
+FEXIT name="kedr_test_strings"

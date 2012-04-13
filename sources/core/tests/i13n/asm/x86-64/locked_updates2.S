@@ -47,5 +47,9 @@ kedr_test_locked_updates2:
 
 .data
 .align 8,0
+
+.global kedr_test_array_lu01
+.type   kedr_test_array_lu01,@object
 kedr_test_array_lu01: .int 0xbee0feed, 0x12345678, 0x0, 0xabcdefab, 0x0, 0x0
+.size kedr_test_array_lu01, .-kedr_test_array_lu01
 /* ====================================================================== */ 

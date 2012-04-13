@@ -45,8 +45,8 @@ kedr_test_strings:
 	 * in that block. */
 	mov $kedr_test_strings01, %rax;
 	mov $kedr_test_strings03, %rdx;
-	lea 0x28(%rax), %rsi; /* %rsi := %rax + 0x28 */
-	lea 0x28(%rdx), %rdi; /* %rdi := %rdx + 0x28 */
+	lea 0xc(%rax), %rsi; /* %rsi := %rax + 0xc */
+	lea 0xc(%rdx), %rdi; /* %rdi := %rdx + 0xc */
 		
 	std;
 	mov $0x4, %rcx;
@@ -57,6 +57,14 @@ kedr_test_strings:
 	mov %rdx, %rdi;
 	je 1f;
 	xor %rcx, %rcx;
+	jmp 1f;
+	
+	/* This sequence of operations will not be executed. */
+	push %rax;
+	xor %rax, %rax;
+	mov $0xa, %rcx;
+	repne scasl;
+	pop %rax;
 
 1: 	lodsw;
 	stosb;
@@ -80,7 +88,19 @@ kedr_test_strings_aux:
 
 .data
 .align 8,0
+
+.global kedr_test_strings01
+.type   kedr_test_strings01,@object
 kedr_test_strings01: .asciz "A quick brown fox jumps over a lazy dog."
+.size kedr_test_strings01, .-kedr_test_strings01
+
+.global kedr_test_strings02
+.type   kedr_test_strings02,@object
 kedr_test_strings02: .asciz "Pack my box with five dozen liquor jugs."
+.size kedr_test_strings02, .-kedr_test_strings02
+
+.global kedr_test_strings03
+.type   kedr_test_strings03,@object
 kedr_test_strings03: .asciz "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+.size kedr_test_strings03, .-kedr_test_strings03
 /* ====================================================================== */

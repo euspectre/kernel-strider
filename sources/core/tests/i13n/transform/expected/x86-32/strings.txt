@@ -114,7 +114,11 @@ Block (type: 3)
 
 0x2e: fd
 
-0x2f: b9 00 00 00 00
+0x2f: 8d 70 0c
+
+0x32: 8d 7a 0c
+
+0x35: b9 00 00 00 00
 
 0xadded: 89 03
 
@@ -124,7 +128,7 @@ Block (type: 3)
 
 0xadded: 89 fa
 
-0x34: f3 a7
+0x3a: f3 a7
 
 0xadded: 89 4b 04
 
@@ -166,22 +170,69 @@ Jump to 0xadded
 
 0xadded: 8b 03
 
-0x36: fc
+0x3c: fc
 
-0x37: 89 c6
+0x3d: 89 c6
 
-0x39: 89 d7
+0x3f: 89 d7
 
-Jump to 0x3f
-0x3b: 0f 84 00 00 00 00
+Jump to 0x52
+0x41: 0f 84 00 00 00 00
 
-0x3d: 31 c9
+0x43: 31 c9
+
+Jump to 0x52
+0x45: e9 00 00 00 00
+
+0x47: 50
+
+0x48: 31 c0
+
+0x4a: b9 00 00 00 00
+
+0xadded: 89 53 08
+
+0xadded: 89 fa
+
+0x4f: f2 af
+
+0xadded: 89 03
+
+0xadded: 9c
+
+0xadded: 89 f8
+
+0xadded: 29 d0
+
+Jump to 0xadded
+0xadded: 0f 84 00 00 00 00
+
+Jump to 0xadded
+0xadded: 0f 87 00 00 00 00
+
+0xadded: 89 fa
+
+0xadded: 83 c2 04
+
+0xadded: f7 d8
+
+0xadded: 89 53 30
+
+0xadded: 89 43 34
+
+0xadded: 9d
+
+0xadded: 8b 03
+
+0xadded: 8b 53 08
+
+0x51: 58
 
 0xadded: 89 4b 04
 
 0xadded: 89 f1
 
-0x3f: 66 ad
+0x52: 66 ad
 
 0xadded: 89 03
 
@@ -203,9 +254,9 @@ Jump to 0xadded
 
 0xadded: f7 d8
 
-0xadded: 89 4b 30
+0xadded: 89 4b 38
 
-0xadded: 89 43 34
+0xadded: 89 43 3c
 
 0xadded: 9d
 
@@ -217,7 +268,7 @@ Jump to 0xadded
 
 0xadded: 89 f9
 
-0x41: aa
+0x54: aa
 
 0xadded: 89 03
 
@@ -239,9 +290,9 @@ Jump to 0xadded
 
 0xadded: f7 d8
 
-0xadded: 89 4b 38
+0xadded: 89 4b 40
 
-0xadded: 89 43 3c
+0xadded: 89 43 44
 
 0xadded: 9d
 
@@ -249,17 +300,17 @@ Jump to 0xadded
 
 0xadded: 8b 4b 04
 
-0xadded: c7 83 40 00 00 00 00 00 00 00
+0xadded: c7 83 48 00 00 00 00 00 00 00
 
-0x42: a1 00 00 00 00
+0x55: a1 00 00 00 00
 
-0x47: 31 c0
+0x5a: 31 c0
 
 0xadded: 89 4b 04
 
 0xadded: 89 f9
 
-0x49: af
+0x5c: af
 
 0xadded: 89 03
 
@@ -281,9 +332,9 @@ Jump to 0xadded
 
 0xadded: f7 d8
 
-0xadded: 89 4b 44
+0xadded: 89 4b 4c
 
-0xadded: 89 43 48
+0xadded: 89 43 50
 
 0xadded: 9d
 
@@ -291,9 +342,9 @@ Jump to 0xadded
 
 0xadded: 8b 4b 04
 
-0x4a: 5f
+0x5d: 5f
 
-0x4b: 5e
+0x5e: 5e
 
 Block (type: 12)
 0xadded: 50
@@ -306,5 +357,5 @@ Block (type: 12)
 
 0xadded: 58
 
-0x4c: c3
+0x5f: c3
 

@@ -1,0 +1,278 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that memory access and memory barrier events
+# are detected by the core and the appropriate handlers are called.
+# The target module for IR transformation tests is also used as a target
+# here.
+# 
+# Only the events starting from the entry to the specified target function
+# (kedr_test_<target_function_short_name>) and up to the exit from that 
+# function are considered.
+# 
+# Usage: 
+#   sh test.sh <target_function_short_name>
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${REPORTER_MODULE}"; then
+		printf "The reporter module is missing: ${REPORTER_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${EXPECTED_TRACE_FILE}"; then
+		printf "The file containing the expected event trace is missing: "
+		printf "${EXPECTED_TRACE_FILE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${SYMBOL_LIST}"; then
+		printf "The file containing the list of symbols is missing: "
+		printf "${SYMBOL_LIST}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# getInfoFromKoFile() - get the information about the data symbols in the
+# target module from the .ko file of that module and save it to 
+# appropriate files:
+# - ${TEST_FILE_HEADER} - the header line that readelf outputs for the
+# 	information about symbols, it is needed to determine the meaning of
+# 	each column;
+# - ${TEST_FILE_DATA} - the information about the symbols.
+# 
+# This is needed because the data symbols are not processes by kallsyms
+# mechanism on some systems (those with CONFIG_KALLSYMS_ALL set to 'n').
+# To get around this problem, we create an additional symbol table for
+# the reporter module.
+########################################################################
+getInfoFromKoFile()
+{
+	readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
+	if test $? -gt 1; then
+		printf "Failed to obtain the list of columns in the symbol table data.\n"
+		exit 1
+	fi
+	
+	readelf -sW "${TARGET_MODULE}" | grep -F -f "${SYMBOL_LIST}" > "${TEST_FILE_DATA}"
+	if test $? -gt 1; then
+		printf "Failed to obtain the symbol table data.\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	getInfoFromKoFile
+	
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	/sbin/insmod "${REPORTER_MODULE}" \
+		target_function="${TARGET_FUNCTION}" \
+		report_calls=1 report_mem=1 zero_unknown=1
+	if test $? -ne 0; then
+		printf "Failed to load the reporter module\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Prepare an additional symbol table (symbols from .data to be resolved
+	# by the reproter) in case the data symbols are not processed by
+	# kallsyms on this machine (CONFIG_KALLSYMS_ALL=n)
+	DATA_ADDR=$(cat "${TARGET_SYSFS_DATA_FILE}")
+	if test -z "${DATA_ADDR}"; then
+		printf "Failed to read the address of .data from ${TARGET_SYSFS_DATA_FILE}.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# [NB] Other necesary files will be loaded by this AWK script 
+    # automatically.
+    LC_ALL=C awk -f "${SYMTAB_SCRIPT}" -v data_address=${DATA_ADDR} \
+    	"${TEST_FILE_DATA}" > "${SYMTAB_DATA_FILE}"
+    if test $? -ne 0; then
+    	printf "Failed to prepare the additional symbol table.\n"
+    	cleanupAll
+    	exit 1
+    fi
+	
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Pass the symbol table to the reporter module
+	cat "${SYMTAB_DATA_FILE}" > "${SYMTAB_DEBUGFS_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to pass the symbol table to the reporter module.\n"
+    	cleanupAll
+    	exit 1
+	fi
+	
+	# Unload the target. The test functions will be called from the 
+	# cleanup function of the target module and will produce the events
+	# to be analyzed later.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Get the trace and preprocess it: remove TID field, symbol size 
+	# and module name, make sure a NULL pointer is reported as "0x0".
+	cat "${TEST_DEBUGFS_FILE}" | sed -e 's/^TID=0x[0-9a-f]*\s*//; s/\/0x[0-9a-f]*\s*/ /g; s/\[[^]]*\]\s*//g; s/\s*(null)/0x0/g' > "${TEST_TRACE_FILE}"	
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	# Save the information obtained by the reporter module.
+	SAVED_TRACE=$(cat "${TEST_TRACE_FILE}")
+	if test -z "${SAVED_TRACE}"; then
+		printf "No data have been obtained for the function ${TARGET_FUNCTION}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Unload the remaining modules, they are no longer needed
+	/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the test module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	
+	# Compare the obtained and the expected data
+	sh "${COMPARE_SCRIPT}" "${EXPECTED_TRACE_FILE}" "${TEST_TRACE_FILE}"
+	if test $? -eq 0; then
+		printf "The obtained event trace matches the expected one.\n"
+	else
+		printf "Error occurred during the comparison "
+		printf "of the obtained event trace and the expected one.\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 1; then
+	printf "Usage: sh $0 <target_function_short_name>\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+REPORTER_MODULE_NAME="kedr_test_reporter"
+REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"
+
+TARGET_FUNCTION_SHORT="$1"
+TARGET_FUNCTION="kedr_test_${TARGET_FUNCTION_SHORT}"
+
+TARGET_MODULE_NAME="test_ir_transform"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/core/tests/i13n/transform/target_common/${TARGET_MODULE_NAME}.ko"
+TARGET_SYSFS_DATA_FILE="/sys/module/${TARGET_MODULE_NAME}/sections/.data"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${TARGET_FUNCTION_SHORT}"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
+
+SYMTAB_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/symbol_table"
+SYMTAB_DATA_FILE="@KEDR_TEST_TEMP_DIR@/symbol_table.txt"
+TEST_FILE_HEADER="@KEDR_TEST_TEMP_DIR@/header.txt"
+TEST_FILE_DATA="@KEDR_TEST_TEMP_DIR@/data.txt"
+SYMBOL_LIST="@CMAKE_CURRENT_SOURCE_DIR@/data_symbols.txt"
+
+TEST_TRACE_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}.txt"
+EXPECTED_TRACE_FILE="@KEDR_TEST_EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}.txt"
+
+SYMTAB_SCRIPT="@CMAKE_CURRENT_BINARY_DIR@/prepare_symbol_table.awk"
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Reporter module: ${REPORTER_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+printf "Trace file to be saved: ${TEST_TRACE_FILE}\n"
+printf "The file with the expected event trace: ${EXPECTED_TRACE_FILE}\n"
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

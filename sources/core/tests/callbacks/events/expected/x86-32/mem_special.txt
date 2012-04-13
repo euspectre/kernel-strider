@@ -1,0 +1,15 @@
+FENTRY name="kedr_test_mem_special"
+READ pc=kedr_test_mem_special+0x8 addr=kedr_test_array_ms01+0x2 size=1
+UPDATE pc=kedr_test_mem_special+0xd addr=kedr_test_array_ms01+0x8 size=1
+WRITE pc=kedr_test_mem_special+0x19 addr=kedr_test_array_ms01+0x10 size=1
+READ pc=kedr_test_mem_special+0x1d addr=kedr_test_array_ms01+0x4 size=4
+READ pc=kedr_test_mem_special+0x21 addr=kedr_test_array_ms01+0x0 size=4
+READ pc=kedr_test_mem_special+0x24 addr=kedr_test_array_ms01+0x0 size=4
+READ pc=kedr_test_mem_special+0x26 addr=kedr_test_array_ms01+0x8 size=4
+READ pc=kedr_test_mem_special+0x29 addr=kedr_test_array_ms01+0x8 size=4
+WRITE pc=kedr_test_mem_special+0x2f addr=kedr_test_array_ms01+0x0 size=4
+READ pc=kedr_test_mem_special+0x33 addr=kedr_test_array_ms01+0x0 size=1
+WRITE pc=kedr_test_mem_special+0x38 addr=kedr_test_array_ms01+0x0 size=1
+READ pc=kedr_test_mem_special+0x3d addr=kedr_test_array_ms01+0x0 size=4
+WRITE pc=kedr_test_mem_special+0x42 addr=kedr_test_array_ms01+0x0 size=4
+FEXIT name="kedr_test_mem_special"

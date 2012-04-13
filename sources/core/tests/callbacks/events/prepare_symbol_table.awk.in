@@ -1,0 +1,138 @@
+#!/bin/awk -f
+# prepare_symbol_table.awk
+# 
+# This script prepares the table of data symbols of the target module.
+# It loads the readelf symbol table header automatically. 
+# All symbols are assumed to belong to .data section.
+# 
+# Usage: 
+#   awk -f prepare_symbol_table.awk \
+#		-v data_address=<.data_address> \
+#		<symbol_data_file> > symbol_table.txt
+# 
+# <symbol_data_file> - the extract from the output of "readelf -sW ..."
+# for the symbols of interest.
+#
+# <.data_address> is the address of .data section of the loaded target
+# module, a hex value, possibly prefixed with "0x". 
+# 
+# The output is written to stdout in the following format. For each
+# symbol of interest a line is written:
+# 	<name> <size> <.data_address> <offset_in_section>
+# "<name>" is a string, "<size>" is a decimal, "<offset_in_section>" 
+# is a hexadecimal number w/o leading zeros (it can also be treated as 
+# a string).
+########################################################################
+
+function load_data_header(  header_file, str, parts, i)
+{
+	header_file = "@KEDR_TEST_TEMP_DIR@/header.txt"
+	
+	# Indices of the columns we need
+	idx_value = -1;
+	idx_size = -1;
+	idx_type = -1;
+	idx_name = -1;
+	
+	str = ""
+	getline str < header_file
+	close(header_file)
+	if (str == "") {
+		printf("Failed to read data header from \"%s\"\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	
+	str = tolower(str)
+	sub("^[ \\t]+", "", str)
+	split(str, parts, "[ \\t]+")
+	for (i in parts) {
+		if (parts[i] == "value") {
+			idx_value = i
+		}
+		else if (parts[i] == "size") {
+			idx_size = i
+		}
+		else if (parts[i] == "type") {
+			idx_type = i
+		}
+		else if (parts[i] == "name") {
+			idx_name = i
+		}
+	}
+	
+	if (idx_value == -1) {
+		printf("Unable to find column \"Value\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_size == -1) {
+		printf("Unable to find column \"Size\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_type == -1) {
+		printf("Unable to find column \"Type\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	if (idx_name == -1) {
+		printf("Unable to find column \"Name\" in %s\n", header_file) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+}
+
+# 'readelf' outputs "Value" field as a hex value with leading zeros. 
+# Remove these zeros (except the last one for 0x0).
+function make_func_offset(s,  offset)
+{
+	offset = s
+	sub("^0+", "", offset)
+	if (offset == "") {
+		offset = "0"
+	}
+	return offset
+}
+
+BEGIN {
+	error_occured = 0
+	
+	if (data_address == "") {
+		printf("Error: \"data_address\" is not set.\n", str) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	
+	load_data_header()
+}
+
+/^.+$/ {
+	str = $0
+	sub("^[ \\t]+", "", str)
+	split(str, fields)
+	name = fields[idx_name]
+	size = fields[idx_size]
+	offset = make_func_offset(fields[idx_value])
+	type = fields[idx_type]
+	
+	if (type != "OBJECT") {
+		next
+	}
+	
+	if (name == "" || offset == "" || size == "") {
+		printf("Unexpected line in the input file: \"%s\"\n", str) > "/dev/stderr"
+		error_occurred = 1
+		exit 1
+	}
+	
+	# <name> <size> <.data_address> <offset_in_section>
+	printf("%s %s %s 0x%s\n", name, size, data_address, offset)
+}
+
+END {
+	if (error_occurred != 0) {
+		exit 1
+	}
+}
+

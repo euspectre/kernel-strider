@@ -1,0 +1,7 @@
+kedr_test_array_cte01
+kedr_test_array_ms01
+kedr_test_strings01
+kedr_test_strings02
+kedr_test_strings03
+kedr_test_array_lu01
+kedr_test_array_bm01
