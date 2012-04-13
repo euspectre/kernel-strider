@@ -3,6 +3,7 @@
 #
 # Constructed metadata may be used for read CTF trace in abstract
 # context.
+set(ctf_meta_constructor_name "ctf_meta_constructor")
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
