@@ -4,21 +4,26 @@
 # Constructed metadata may be used for read CTF trace in abstract
 # context.
 
-set(ctf_meta_constructor_name "ctf_meta_constructor")
-
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 ########################################################################
-# If KEDR_GENERATE_CTF_META_PARSER is defined, C source file implementing
-# parser of CTF metadata will be generated from flex source file.
-# Otherwise C source file will be simply copied from source tree.
+# If KEDR_GENERATE_CTF_META_PARSER is defined, files implementing
+# parser and scanner of CTF metadata will be generated from bison and
+# flex source files correspondingly.
+# Otherwise files implemented parser and scanner are expected to be 
+# already in source tree source and will be simply copied into binary one.
 #
-# In any case, build tree will contain C source file at building stage.
+# In any case, build tree will contain parser and scanner files when
+# the library is compiled.
 ########################################################################
 option(KEDR_GENERATE_CTF_META_PARSER
-	"Generate KEDR Reference Manual from the sources in DocBook XML format." 
-	ON
+	"Whether need to regenerate parser for CTF metadata." 
+	OFF
 )
+
+# Because flex and bison generates header files, binary dir should
+# be included for compile c-sources.
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 # Name of source file implementing scanner without extension
 set(ctf_meta_scanner_basename "ctf_meta_lexer")
@@ -34,12 +39,13 @@ if(KEDR_GENERATE_CTF_META_PARSER)
         message(FATAL_ERROR "Flex is not found")
     endif(FLEX)
 
+    message(STATUS "Checking for bison parser generator")
     find_program(BISON bison)
-    if(FLEX)
-        message(STATUS "Checking for bison parser generator - ${FLEX}")
-    else(FLEX)
+    if(BISON)
+        message(STATUS "Checking for bison parser generator - ${BISON}")
+    else(BISON)
         message(FATAL_ERROR "Bison is not found")
-    endif(FLEX)
+    endif(BISON)
 
     add_custom_command(
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${ctf_meta_parser_basename}.tab.c"
@@ -60,19 +66,19 @@ if(KEDR_GENERATE_CTF_META_PARSER)
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${ctf_meta_scanner_basename}.l"
                 "${CMAKE_CURRENT_BINARY_DIR}/${ctf_meta_parser_basename}.tab.h"
     )
-    # When generate reentrant scanner, additional argument may be not
-    # used by some LEX functions. Disable warnings about unused
-    # arguments when compile generated source.
-    set_source_files_properties("${ctf_meta_scanner_basename}.c"
-        PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter")
-    
-    # Because flex and bison generates header files, binary dir should
-    # be included for compile c-sources.
-    include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 else(KEDR_GENERATE_CTF_META_PARSER)
     rule_copy_source("${ctf_meta_parser_basename}.tab.c")
+    rule_copy_source("${ctf_meta_parser_basename}.tab.h")
     rule_copy_source("${ctf_meta_scanner_basename}.c")
+    rule_copy_source("${ctf_meta_scanner_basename}.h")
 endif(KEDR_GENERATE_CTF_META_PARSER)
+
+# When generate reentrant scanner, additional argument may be not
+# used by some LEX functions. Disable warnings about unused
+# arguments when compile generated source.
+set_source_files_properties("${ctf_meta_scanner_basename}.c"
+    PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter")
+
 
 
 add_library(${ctf_meta_constructor_name} STATIC
