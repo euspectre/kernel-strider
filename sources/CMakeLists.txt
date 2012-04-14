@@ -130,6 +130,11 @@ else(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	message(FATAL_ERROR "Unknown type of build: ${CMAKE_BUILD_TYPE}.")
 endif()
 
+# Flags to compiler when build user-space programs
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -O0 -Wall -Wextra")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -g -Wall -Wextra")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wall")
+
 #######################################################################
 # The path where the user-mode helper scripts are to be installed
 set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
@@ -325,6 +330,9 @@ add_subdirectory(functions)
 
 add_subdirectory(event_collector)
 add_subdirectory(output)
+
+#For tests only. (Later should be building library.)
+add_subdirectory(utils)
 
 #add_subdirectory(converter)
 
