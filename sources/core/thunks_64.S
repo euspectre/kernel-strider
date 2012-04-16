@@ -109,12 +109,31 @@ kedr_thunk_call:
 	 * contain the return value of the replacement function. */
 	mov KEDR_LSTORAGE_ret_val(%rbx), %rax;
 	mov KEDR_LSTORAGE_ret_val_high(%rbx), %rdx;
+
+	/* It seems that the calls to the special Ftrace functions
+	 * like mcount(), etc., give stronger guarantees w.r.t.
+	 * preserving the registers. Namely, some of these functions
+	 * preserve all the registers that can be used for parameter
+	 * transfer (or even all?) and the compiler takes that into
+	 * account. To avoid problems, restore the values of such 
+	 * scratch registers that have not been restored yet.
+	 * Note that %rax and %rdx have the desired values already. */
+#ifdef CONFIG_FUNCTION_TRACER
+	mov KEDR_LSTORAGE_r11(%rbx), %r11;
+	mov KEDR_LSTORAGE_r10(%rbx), %r10;
+	mov KEDR_LSTORAGE_r9(%rbx), %r9;
+	mov KEDR_LSTORAGE_r8(%rbx), %r8;
+	mov KEDR_LSTORAGE_di(%rbx), %rdi;
+	mov KEDR_LSTORAGE_si(%rbx), %rsi;
+	mov KEDR_LSTORAGE_cx(%rbx), %rcx;
+#endif
 	
-	/* Restore %rbx and %rbp. No need to restore more registers:
+	/* Restore %rbx and %rbp. Among the remaining registers,
 	 * %rax and %rdx have already been restored, the non-scratch 
 	 * registers did not change their values except %rbx and %rbp.
 	 * As for the remaining scratch registers, the target itself 
-	 * does not guarantee they will not change. */
+	 * does not guarantee they will not change except if it is
+	 * mcount() or something similar from Ftrace. */
 	mov KEDR_LSTORAGE_temp1(%rbx), %rbp
 	mov KEDR_LSTORAGE_temp(%rbx), %rbx
 
@@ -161,6 +180,16 @@ kedr_thunk_jmp:
 	
 	/* Restore %rbp. */
 	mov KEDR_LSTORAGE_bp(%rbx), %rbp;
+	
+#ifdef CONFIG_FUNCTION_TRACER
+	mov KEDR_LSTORAGE_r11(%rbx), %r11;
+	mov KEDR_LSTORAGE_r10(%rbx), %r10;
+	mov KEDR_LSTORAGE_r9(%rbx), %r9;
+	mov KEDR_LSTORAGE_r8(%rbx), %r8;
+	mov KEDR_LSTORAGE_di(%rbx), %rdi;
+	mov KEDR_LSTORAGE_si(%rbx), %rsi;
+	mov KEDR_LSTORAGE_cx(%rbx), %rcx;
+#endif
 	
 	/* Now all the registers except %rbx have their needed values.
 	 * Restore %rbx and call the exit handler for the function 
