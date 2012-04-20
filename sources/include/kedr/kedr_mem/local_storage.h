@@ -7,7 +7,6 @@
 #include <linux/kernel.h>
 #include <linux/gfp.h>
 
-#include <kedr/asm/insn.h>	/* X86_REG_COUNT */
 #include <kedr/kedr_mem/block_info.h>
 #include <kedr/kedr_mem/functions.h>
 
@@ -26,6 +25,39 @@
  * [NB] This constant must not exceed 32 in the current implementation. */
 #define KEDR_MAX_LOCAL_VALUES 32
 
+/* Number of general-purpose registers. We define it here to avoid
+ * dependency on the core's internal headers. */
+#ifdef CONFIG_X86_64
+# define KEDR_X86_REG_COUNT 16
+
+#else /* CONFIG_X86_32 */
+# define KEDR_X86_REG_COUNT 8
+
+#endif
+
+struct kedr_ls_regs
+{
+	unsigned long ax;
+	unsigned long cx;
+	unsigned long dx;
+	unsigned long bx;
+	unsigned long sp;
+	unsigned long bp;
+	unsigned long si;
+	unsigned long di;
+
+#ifdef CONFIG_X86_64
+	unsigned long r8;
+	unsigned long r9;
+	unsigned long r10;
+	unsigned long r11;
+	unsigned long r12;
+	unsigned long r13;
+	unsigned long r14;
+	unsigned long r15;
+#endif
+};
+
 /* The local storage. */
 struct kedr_local_storage 
 {
@@ -33,17 +65,20 @@ struct kedr_local_storage
 	 * where the values from a register can be temporarily stored while
 	 * the register is used for some other purpose. 
 	 * See arch/x86/include/kedr/asm/inat.h for the list of the register
-	 * codes, these are to be used as the indexes into this array.
+	 * codes, these are to be used as the indexes into regs[] array.
 	 * 
 	 * This array is located at the beginning of the local storage 
 	 * because this allows to address the spill slots using only 8-bit
 	 * offsets from the beginning of the storage even on x86-64 systems
 	 * (the offsets are signed 8-bit values).
 	 * The largest offset is 
-	 *     sizeof(unsigned long) * (X86_REG_COUNT - 1)
+	 *     sizeof(unsigned long) * (KEDR_X86_REG_COUNT - 1)
 	 * On x86-64, this is 8 * 15 = 120 < 127, which is the maximum 8-bit
 	 * positive offset. */
-	unsigned long regs[X86_REG_COUNT];
+	union {
+		unsigned long regs[KEDR_X86_REG_COUNT];
+		struct kedr_ls_regs r;
+	};
 	
 	/* The slots for another group of local values. The addresses of 
 	 * the accessed memory areas are stored here. For a string 
@@ -103,6 +138,17 @@ struct kedr_local_storage
 	 *  ret_addr - the saved intermediate return address for a 
 	 * function call. */
 	unsigned long ret_addr;
+	
+	/* This slot can be used if it is necessary to pass data from a
+	 * pre handler of some event to the corresponding post handler.
+	 * One situation when this can be necessary is handling of a
+	 * call to a function that receives its arguments on stack. The
+	 * function is allowed to change the contents of these stack 
+	 * areas at a whim. So if a post handler for that function needs
+	 * some of these stack parameters, the pre handler could save 
+	 * these in 'data' (or allocate a structure and save its address
+	 * in data). */
+	unsigned long data;
 };
 
 /* The allocator of kedr_local_storage instances. 

@@ -1,0 +1,7 @@
+[group]
+	# Name of the target function
+	function.name = krealloc
+	
+	# The handlers are defined in the template because they are
+	# function-specific.
+#######################################################################

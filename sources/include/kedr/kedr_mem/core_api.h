@@ -220,7 +220,7 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
 
 /* Returns the current set of event handlers. It is only safe to call this 
  * function and use its result when the target is in memory and hence the 
- * provider of the event handlers is unloadable. During that period, the 
+ * provider of the event handlers is not unloadable. During that period, the 
  * handlers remain valid and do not change. */
 struct kedr_event_handlers *
 kedr_get_event_handlers(void);

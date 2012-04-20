@@ -1,0 +1,16 @@
+[group]
+	# Name of the target function
+	function.name = kzfree
+	
+	# The following code snippets prepare the arguments needed
+	# to call the pre- and post-event handlers based on the data
+	# contained in the local storage (pointed to by 'ls'). 
+	# The variables for the arguments are declared in the template.
+	prepare_args.pre =>>
+		addr = KEDR_LS_ARG1(ls);
+	<<
+	
+	prepare_args.post =>>
+		addr = KEDR_LS_ARG1(ls);
+	<<
+#######################################################################

@@ -76,8 +76,9 @@ function(kmodule_try_compile RESULT_VAR bindir srcfile)
 	set("${RESULT_VAR}" "${result_tmp}" PARENT_SCOPE)
 endfunction(kmodule_try_compile RESULT_VAR bindir srcfile)
 
-# List of unreliable functions,
-# which existance in system map doesn't prove existance in headers.
+# List of unreliable functions, that is, the functions that may be
+# be exported and mentioned in System.map but still cannot be used
+# because no header provides their declarations.
 set(unreliable_functions_list
     "__kmalloc_node"
 	"kmem_cache_alloc_node"

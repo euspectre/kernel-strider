@@ -1,0 +1,18 @@
+[group]
+	# Name of the target function
+	function.name = mutex_lock_interruptible
+	
+	# The following code snippets prepare the arguments needed
+	# to call the pre- and post-event handlers based on the data
+	# contained in the local storage (pointed to by 'ls'). 
+	# The variables for the arguments are declared in the template.
+	prepare_args.pre =>>
+		lock_type = KEDR_LT_MUTEX;
+		lock_id = KEDR_LS_ARG1(ls);
+	<<
+	
+	prepare_args.post =>>
+		lock_type = KEDR_LT_MUTEX;
+		lock_id = KEDR_LS_ARG1(ls);
+	<<
+#######################################################################
