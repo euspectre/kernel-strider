@@ -19,23 +19,51 @@
  * has a non-zero value (the leading spaces are only for readability). 
  * - Format of the records for function entry events:
  *	TID=<tid,0x%lx> FENTRY name="<%pf for the function>"
+ *
  * - Format of the records for function exit events:
  *	TID=<tid,0x%lx> FEXIT name="<%pf for the function>"
+ *
  * - Format of the records for "call pre" events:
  *	TID=<tid,0x%lx> CALL_PRE pc=<pc,%pS> name="<%pf for the callee>"
+ *
  * - Format of the records for "call post" events:
  *	TID=<tid,0x%lx> CALL_POST pc=<pc,%pS> name="<%pf for the callee>"
+ *
  * - Format of the records for memory access events:
  *	TID=<tid,0x%lx> <type> pc=<pc,%pS> addr=<addr,%pS> size=<%lu>
  * <type> is the type of the access, namely READ, WRITE or UPDATE.
+ *
  * - Format of the records for locked update events:
  *	TID=<tid,0x%lx> LOCKED <type> pc=<pc,%pS> addr=<addr,%pS> size=<%lu>
+ *
  * - Format of the records for I/O memory events:
  *	TID=<tid,0x%lx> IO_MEM <type> pc=<pc,%pS> addr=<addr,%pS> size=<%lu>
+ *
  * - Format of the records for pre-/post- memory barrier events: 
  * 	TID=<tid,0x%lx> BARRIER <btype> PRE pc=<pc,%pS>
  * 	TID=<tid,0x%lx> BARRIER <btype> POST pc=<pc,%pS>
  * <btype> is the type of the barrier, namely FULL, LOAD or STORE.
+ *
+ * - Format of the records for pre/post alloc and free events:
+ *	TID=<tid,0x%lx> ALLOC PRE pc=<pc,%pS> size=<%lu>
+ *	TID=<tid,0x%lx> ALLOC POST pc=<pc,%pS> addr=<%p> size=<%lu>
+ *	TID=<tid,0x%lx> FREE PRE pc=<pc,%pS> addr=<%p>
+ *	TID=<tid,0x%lx> FREE POST pc=<pc,%pS> addr=<%p>
+ *
+ * - Format of the records for pre/post lock and unlock events:
+ *	TID=<tid,0x%lx> LOCK <ltype> PRE pc=<pc,%pS> id=<lock_id,0x%lx>
+ *	TID=<tid,0x%lx> LOCK <ltype> POST pc=<pc,%pS> id=<lock_id,0x%lx>
+ *	TID=<tid,0x%lx> UNLOCK <ltype> PRE pc=<pc,%pS> id=<lock_id,0x%lx>
+ *	TID=<tid,0x%lx> UNLOCK <ltype> POST pc=<pc,%pS> id=<lock_id,0x%lx>
+ * <ltype> is the type of the sync primitive: MUTEX, SPINLOCK.
+ *
+ * - Format of the records for pre/post signal and wait events:
+ *	TID=<tid,0x%lx> SIGNAL <otype> PRE pc=<pc,%pS> id=<obj_id,0x%lx>
+ *	TID=<tid,0x%lx> SIGNAL <otype> POST pc=<pc,%pS> id=<obj_id,0x%lx>
+ *	TID=<tid,0x%lx> WAIT <otype> PRE pc=<pc,%pS> id=<obj_id,0x%lx>
+ *	TID=<tid,0x%lx> WAIT <otype> POST pc=<pc,%pS> id=<obj_id,0x%lx>
+ * <otype> is the type of the sync primitive: COMMON (currently, the only 
+ * type).
  *
  * If 'resolve_symbols' parameter is 0, the format is almost the same as 
  * described above except the following:
@@ -127,8 +155,8 @@ module_param(target_function, charp, S_IRUGO);
 unsigned int max_events = 65536;
 module_param(max_events, uint, S_IRUGO);
 
-/* If non-zero, call pre/post and function entry/exit events will be 
- * reported. */
+/* If non-zero, call pre/post, function entry/exit events as well as 
+ * alloc/free, lock/unlock and signal/wait events will be reported. */
 int report_calls = 0;
 module_param(report_calls, int, S_IRUGO);
 
@@ -575,26 +603,18 @@ static const struct file_operations symtab_file_ops = {
 };
 /* ====================================================================== */
 
-static const char* mem_event_type[] = {
-	"READ", "WRITE", "UPDATE", "*UNKNOWN*"
-};
-
-static const char* mem_barrier_type[] = {
-	"FULL", "LOAD", "STORE", "*UNKNOWN*"
-};
-
 static const char *
 type_to_string(enum kedr_memory_event_type t)
 {
 	switch (t) {
 	case KEDR_ET_MREAD: 
-		return mem_event_type[0];
+		return "READ";
 	case KEDR_ET_MWRITE:
-		return mem_event_type[1];
+		return "WRITE";
 	case KEDR_ET_MUPDATE:
-		return mem_event_type[2];
+		return "UPDATE";
 	default:
-		return mem_event_type[3];
+		return "*UNKNOWN*";
 	}
 }
 
@@ -603,13 +623,37 @@ barrier_type_to_string(enum kedr_barrier_type bt)
 {
 	switch (bt) {
 	case KEDR_BT_FULL:
-		return mem_barrier_type[0];
+		return "FULL";
 	case KEDR_BT_LOAD:
-		return mem_barrier_type[1];
+		return "LOAD";
 	case KEDR_BT_STORE:
-		return mem_barrier_type[2];
+		return "STORE";
 	default:
-		return mem_barrier_type[3];
+		return "*UNKNOWN*";
+	}
+}
+
+static const char *
+lock_type_to_string(enum kedr_lock_type t)
+{
+	switch (t) {
+	case KEDR_LT_MUTEX: 
+		return "MUTEX";
+	case KEDR_LT_SPINLOCK:
+		return "SPINLOCK";
+	default:
+		return "*UNKNOWN*";
+	}
+}
+
+static const char *
+sw_type_to_string(enum kedr_lock_type t)
+{
+	switch (t) {
+	case KEDR_SWT_COMMON: 
+		return "COMMON";
+	default:
+		return "*UNKNOWN*";
 	}
 }
 /* ====================================================================== */
@@ -661,6 +705,39 @@ struct kr_work_on_barrier
 	void *pc;
 	int is_post; /* "barrier pre" if 0, "barrier post" otherwise */
 };
+
+struct kr_work_on_alloc_free
+{
+	struct work_struct work;
+	unsigned long tid;
+	unsigned long size; /* set to 0 if not used */
+	unsigned long addr; /* set to 0 if not used */
+	void *pc;
+	int is_alloc; /* nonzero for "alloc", 0 for "free" */
+	int is_post;  /* nonzero for "post" event, 0 for "pre" event */
+};
+
+struct kr_work_on_lock_unlock
+{
+	struct work_struct work;
+	unsigned long tid;
+	unsigned long lock_id;
+	enum kedr_lock_type type;
+	void *pc;
+	int is_lock; /* nonzero for "lock", 0 for "unlock" */
+	int is_post; /* nonzero for "post" event, 0 for "pre" event */
+};
+
+struct kr_work_on_signal_wait
+{
+	struct work_struct work;
+	unsigned long tid;
+	unsigned long obj_id;
+	enum kedr_sw_object_type type;
+	void *pc;
+	int is_signal; /* nonzero for "signal", 0 for "wait" */
+	int is_post; /* nonzero for "post" event, 0 for "pre" event */
+};
 /* ====================================================================== */
 
 /* This function will be called for each symbol known to the system.
@@ -691,8 +768,9 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
  * longer needed. 
  * NULL is returned if there is not enough memory.
  * 
- * Should only be called for the addresses to be resolved to 
- * "symbol+offset [...]" like printing with "%pS" specifier does. 
+ * If symbol resolution is to be done, the function prints the address in a 
+ * way similar to printing with "%pS" specifier. Otherwise, the function 
+ * prints the address using "%p" specifier.
  *
  * The function must not be called in atomic context. */
 static char *
@@ -704,7 +782,13 @@ print_address(void *addr)
 	int len;
 	const struct kr_symbol *sym;
 	
-	BUG_ON(!resolve_symbols);
+	if (!resolve_symbols) {
+		len = snprintf(NULL, 0, "%p", addr) + 1;
+		buf = kzalloc((size_t)len, GFP_KERNEL);
+		if (buf != NULL)
+			snprintf(buf, len, "%p", addr);
+		return buf;
+	}
 	
 	/* First, lookup the the symbol in 'symbol_list'. */
 	if (mutex_lock_killable(&symtab_mutex) != 0)
@@ -1039,36 +1123,139 @@ static void
 work_func_barrier(struct work_struct *work)
 {
 	static const char *fmt = "TID=0x%lx BARRIER %s %s pc=%s\n";
-	static const char *fmt_no_sym = "TID=0x%lx BARRIER %s %s pc=%p\n";
-
 	char *str_pc;
 	int ret = 0;	
 	struct kr_work_on_barrier *wob = container_of(work, 
 		struct kr_work_on_barrier, work);
 	
-	if (resolve_symbols) {
-		str_pc = print_address(wob->pc);
-		if (str_pc == NULL) {
-			ret = -ENOMEM;
-			goto out;
-		}
-		
-		ret = debug_util_print((resolve_symbols ? fmt : fmt_no_sym), 
-			wob->tid, barrier_type_to_string(wob->btype), 
-			(wob->is_post ? "POST" : "PRE"), str_pc);
-		kfree(str_pc);
+	str_pc = print_address(wob->pc);
+	if (str_pc == NULL) {
+		ret = -ENOMEM;
+		goto out;
 	}
-	else {
-		ret = debug_util_print(fmt_no_sym, wob->tid, 
-			barrier_type_to_string(wob->btype), 
-			(wob->is_post ? "POST" : "PRE"), wob->pc);
-	}
+	
+	ret = debug_util_print(fmt, wob->tid, 
+		barrier_type_to_string(wob->btype), 
+		(wob->is_post ? "POST" : "PRE"), str_pc);
+	kfree(str_pc);
 out:
 	if (ret < 0)
 		pr_warning(KEDR_MSG_PREFIX 
 		"work_func_barrier(): output failed, error code: %d.\n", 
 			ret);
 	kfree(wob);
+}
+
+/* Reports "alloc/free" pre and post events.
+ * 'work' should be &kr_work_on_alloc_free::work. */
+static void 
+work_func_alloc_free(struct work_struct *work)
+{
+	static const char *fmt_alloc_pre = 
+		"TID=0x%lx ALLOC PRE pc=%s size=%lu\n";
+	static const char *fmt_alloc_post = 
+		"TID=0x%lx ALLOC POST pc=%s addr=%p size=%lu\n";
+	static const char *fmt_free = 
+		"TID=0x%lx FREE %s pc=%s addr=%p\n";
+
+	char *str_pc;
+	int ret = 0;	
+	struct kr_work_on_alloc_free *woaf = container_of(work, 
+		struct kr_work_on_alloc_free, work);
+	
+	str_pc = print_address(woaf->pc);
+	if (str_pc == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	if (woaf->is_alloc) {
+		if (woaf->is_post)
+			ret = debug_util_print(fmt_alloc_post, woaf->tid,
+				str_pc, (void *)woaf->addr, woaf->size);
+		else 
+			ret = debug_util_print(fmt_alloc_pre, woaf->tid,
+				str_pc, woaf->size);
+	}
+	else {
+		ret = debug_util_print(fmt_free, woaf->tid,
+			(woaf->is_post ? "POST" : "PRE"), str_pc, 
+			(void *)woaf->addr);
+	}
+	kfree(str_pc);
+	
+out:
+	if (ret < 0)
+		pr_warning(KEDR_MSG_PREFIX 
+		"work_func_alloc_free(): output failed, error code: %d.\n", 
+			ret);
+	kfree(woaf);
+}
+
+/* Reports "lock/unlock" pre and post events.
+ * 'work' should be &kr_work_on_lock_unlock::work. */
+static void 
+work_func_lock_unlock(struct work_struct *work)
+{
+	static const char *fmt = "TID=0x%lx %s %s %s pc=%s id=0x%lx\n";
+
+	char *str_pc;
+	int ret = 0;	
+	struct kr_work_on_lock_unlock *wolu = container_of(work, 
+		struct kr_work_on_lock_unlock, work);
+	
+	str_pc = print_address(wolu->pc);
+	if (str_pc == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ret = debug_util_print(fmt, wolu->tid,
+		(wolu->is_lock ? "LOCK" : "UNLOCK"), 
+		lock_type_to_string(wolu->type),
+		(wolu->is_post ? "POST" : "PRE"), str_pc, 
+		wolu->lock_id);
+	kfree(str_pc);
+	
+out:
+	if (ret < 0)
+		pr_warning(KEDR_MSG_PREFIX 
+		"work_func_lock_unlock(): output failed, error code: %d.\n", 
+			ret);
+	kfree(wolu);
+}
+
+/* Reports "signal/wait" pre and post events.
+ * 'work' should be &kr_work_on_signal_wait::work. */
+static void 
+work_func_signal_wait(struct work_struct *work)
+{
+	static const char *fmt = "TID=0x%lx %s %s %s pc=%s id=0x%lx\n";
+
+	char *str_pc;
+	int ret = 0;	
+	struct kr_work_on_signal_wait *wosw = container_of(work, 
+		struct kr_work_on_signal_wait, work);
+	
+	str_pc = print_address(wosw->pc);
+	if (str_pc == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ret = debug_util_print(fmt, wosw->tid,
+		(wosw->is_signal ? "SIGNAL" : "WAIT"), 
+		sw_type_to_string(wosw->type),
+		(wosw->is_post ? "POST" : "PRE"), str_pc, 
+		wosw->obj_id);
+	kfree(str_pc);
+	
+out:
+	if (ret < 0)
+		pr_warning(KEDR_MSG_PREFIX 
+		"work_func_signal_wait(): output failed, error code: %d.\n", 
+			ret);
+	kfree(wosw);
 }
 /* ====================================================================== */
 
@@ -1539,7 +1726,380 @@ out:
 	spin_unlock_irqrestore(&wq_lock, irq_flags);
 }
 
-struct kedr_event_handlers eh = {
+static void 
+on_alloc_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long size)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_alloc_free *woaf = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+		
+	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
+	if (woaf == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_alloc_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	woaf->tid = tid;
+	woaf->pc = (void *)pc;
+	woaf->size = size;
+	woaf->is_alloc = 1;
+		
+	INIT_WORK(&woaf->work, work_func_alloc_free);
+	queue_work(wq, &woaf->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_alloc_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long size, unsigned long addr)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_alloc_free *woaf = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
+	if (woaf == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_alloc_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	woaf->tid = tid;
+	woaf->pc = (void *)pc;
+	woaf->size = size;
+	woaf->addr = addr;
+	woaf->is_alloc = 1;
+	woaf->is_post = 1;
+	
+	INIT_WORK(&woaf->work, work_func_alloc_free);
+	queue_work(wq, &woaf->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_free_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long addr)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_alloc_free *woaf = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
+	if (woaf == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_free_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	woaf->tid = tid;
+	woaf->pc = (void *)pc;
+	woaf->addr = addr;
+	
+	INIT_WORK(&woaf->work, work_func_alloc_free);
+	queue_work(wq, &woaf->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_free_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long addr)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_alloc_free *woaf = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
+	if (woaf == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_free_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	woaf->tid = tid;
+	woaf->pc = (void *)pc;
+	woaf->addr = addr;
+	woaf->is_post = 1;
+	
+	INIT_WORK(&woaf->work, work_func_alloc_free);
+	queue_work(wq, &woaf->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_lock_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long lock_id, enum kedr_lock_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_lock_unlock *wolu = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
+	if (wolu == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_lock_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wolu->tid = tid;
+	wolu->pc = (void *)pc;
+	wolu->is_lock = 1;
+	wolu->lock_id = lock_id;
+	wolu->type = type;
+	
+	INIT_WORK(&wolu->work, work_func_lock_unlock);
+	queue_work(wq, &wolu->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_lock_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long lock_id, enum kedr_lock_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_lock_unlock *wolu = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
+	if (wolu == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_lock_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wolu->tid = tid;
+	wolu->pc = (void *)pc;
+	wolu->is_lock = 1;
+	wolu->is_post = 1;
+	wolu->lock_id = lock_id;
+	wolu->type = type;
+	
+	INIT_WORK(&wolu->work, work_func_lock_unlock);
+	queue_work(wq, &wolu->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_unlock_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long lock_id, enum kedr_lock_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_lock_unlock *wolu = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
+	if (wolu == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_unlock_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wolu->tid = tid;
+	wolu->pc = (void *)pc;
+	wolu->lock_id = lock_id;
+	wolu->type = type;
+	
+	INIT_WORK(&wolu->work, work_func_lock_unlock);
+	queue_work(wq, &wolu->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_unlock_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long lock_id, enum kedr_lock_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_lock_unlock *wolu = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
+	if (wolu == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_unlock_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wolu->tid = tid;
+	wolu->pc = (void *)pc;
+	wolu->is_post = 1;
+	wolu->lock_id = lock_id;
+	wolu->type = type;
+	
+	INIT_WORK(&wolu->work, work_func_lock_unlock);
+	queue_work(wq, &wolu->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_signal_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long obj_id, 
+	enum kedr_sw_object_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_signal_wait *wosw = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
+	if (wosw == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_signal_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wosw->tid = tid;
+	wosw->pc = (void *)pc;
+	wosw->obj_id = obj_id;
+	wosw->type = type;
+	wosw->is_signal = 1;
+	
+	INIT_WORK(&wosw->work, work_func_signal_wait);
+	queue_work(wq, &wosw->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_signal_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long obj_id, 
+	enum kedr_sw_object_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_signal_wait *wosw = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
+	if (wosw == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_signal_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wosw->tid = tid;
+	wosw->pc = (void *)pc;
+	wosw->obj_id = obj_id;
+	wosw->type = type;
+	wosw->is_signal = 1;
+	wosw->is_post = 1;
+	
+	INIT_WORK(&wosw->work, work_func_signal_wait);
+	queue_work(wq, &wosw->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_wait_pre(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long obj_id, 
+	enum kedr_sw_object_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_signal_wait *wosw = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
+	if (wosw == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_wait_pre(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wosw->tid = tid;
+	wosw->pc = (void *)pc;
+	wosw->obj_id = obj_id;
+	wosw->type = type;
+	
+	INIT_WORK(&wosw->work, work_func_signal_wait);
+	queue_work(wq, &wosw->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void 
+on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
+	unsigned long pc, unsigned long obj_id, 
+	enum kedr_sw_object_type type)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_signal_wait *wosw = NULL;
+	
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	if (!report_calls || !report_event_allowed(tid))
+		goto out;
+	
+	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
+	if (wosw == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_wait_post(): out of memory.\n");
+			goto out;
+	}
+	
+	++ecount;
+	wosw->tid = tid;
+	wosw->pc = (void *)pc;
+	wosw->obj_id = obj_id;
+	wosw->type = type;
+	wosw->is_post = 1;
+	
+	INIT_WORK(&wosw->work, work_func_signal_wait);
+	queue_work(wq, &wosw->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static struct kedr_event_handlers eh = {
 	.owner = THIS_MODULE,
 	.on_target_loaded = on_load,
 	.on_target_about_to_unload = on_unload,
@@ -1556,6 +2116,18 @@ struct kedr_event_handlers eh = {
 	.on_io_mem_op_post = on_io_mem_op_post,
 	.on_memory_barrier_pre = on_memory_barrier_pre,
 	.on_memory_barrier_post = on_memory_barrier_post,
+	.on_alloc_pre = on_alloc_pre,
+	.on_alloc_post = on_alloc_post,
+	.on_free_pre = on_free_pre,
+	.on_free_post = on_free_post,
+	.on_lock_pre = on_lock_pre,
+	.on_lock_post = on_lock_post,
+	.on_unlock_pre = on_unlock_pre,
+	.on_unlock_post = on_unlock_post,
+	.on_signal_pre = on_signal_pre,
+	.on_signal_post = on_signal_post,
+	.on_wait_pre = on_wait_pre,
+	.on_wait_post = on_wait_post,
 	/* [NB] Add more handlers here if necessary. */
 };
 /* ====================================================================== */
