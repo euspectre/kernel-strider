@@ -129,12 +129,10 @@ kedr_thunk_call:
 kedr_thunk_jmp:
 	/* This thunk gets called via JMP instruction. All registers except
 	 * %eax are restored before that and the original value of %eax is
-	 * in its spill slot. Two important consequences:
+	 * in its spill slot. An important consequence:
 	 * - unlike kedr_thunk_call(), the spill slots can now be used to
 	 * store the values of %ebx and %ebp in the thunk, the saving and
-	 * restoring instructions will be 3 bytes shorter;
-	 * - unlike kedr_thunk_call(), no manipulations with stack are 
-	 * necessary, it is already in the needed state. */
+	 * restoring instructions will be 3 bytes shorter. */
 	mov %ebx, KEDR_LSTORAGE_bx(%eax)
 	mov %eax, %ebx
 
@@ -146,7 +144,21 @@ kedr_thunk_jmp:
 	
 	restore_scratch_but_ax;
 	mov KEDR_LSTORAGE_ax(%ebx), %eax;
+	
+	/* The thunk has been called using JMP instruction, so the return
+	 * address for the function the thunk has been called from 
+	 * ("caller") should now be on the top of the stack.
+	 * Below it lies the stack that the target function might expect.
+	 * The target/replacement function will be called with CALL rather
+	 * than with JMP instruction. To make sure the callee will find
+	 * the stack-based arguments exactly where it expects them, we 
+	 * need to remove the return address from the stack here and 
+	 * place it there back again after the callee exits. */
+	popl KEDR_LSTORAGE_ret_addr(%ebx);
+	
 	call *KEDR_CALL_INFO_repl(%ebp);
+	
+	pushl KEDR_LSTORAGE_ret_addr(%ebx); 
 	
 	/* Save the possible return value of the function. */
 	mov %eax, KEDR_LSTORAGE_ret_val(%ebx);
