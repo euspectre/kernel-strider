@@ -45,8 +45,9 @@ test_cleanup_module(void)
 static int __init
 test_init_module(void)
 {
-	kedr_set_function_handlers(&test_fh);
-	return 0;
+	int ret;
+	ret = kedr_set_function_handlers(&test_fh);
+	return ret;
 }
 
 module_init(test_init_module);

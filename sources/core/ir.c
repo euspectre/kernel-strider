@@ -2514,6 +2514,9 @@ kedr_ir_instrument(struct kedr_ifunc *func, struct list_head *ir)
 	struct kedr_ir_node *node;
 	struct kedr_ir_node *tmp;
 	
+	/* Consistency check */
+	BUILD_BUG_ON(KEDR_X86_REG_COUNT != X86_REG_COUNT);
+	
 	BUG_ON(ir == NULL);
 	
 	ret = ir_choose_base_register(func, ir);

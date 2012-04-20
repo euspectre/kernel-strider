@@ -606,7 +606,7 @@ out:
 EXPORT_SYMBOL(kedr_set_core_hooks);
 /* ====================================================================== */
 
-void
+int
 kedr_set_function_handlers(struct kedr_function_handlers *fh)
 {
 	int ret = 0;
@@ -623,6 +623,7 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh)
 			"Attempt to change the function handlers "
 			"while the target is loaded. "
 			"The handlers will not be changed.\n");
+		ret = -EBUSY;
 		goto out_unlock;
 	}
 	
@@ -631,6 +632,7 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh)
 			pr_warning(KEDR_MSG_PREFIX
 	"Attempt to set the function handlers while custom ones are still "
 	"active. The handlers will not be changed.\n");
+			ret = -EBUSY;
 			goto out_unlock;
 		}
 		function_handlers = fh;
@@ -644,7 +646,7 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh)
 out_unlock:	
 	mutex_unlock(&target_mutex);
 out:
-	return;
+	return ret;
 }
 EXPORT_SYMBOL(kedr_set_function_handlers);
 /* ====================================================================== */
