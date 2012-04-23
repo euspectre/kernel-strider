@@ -1,0 +1,233 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that function entry/exit and call pre/post events
+# are detected by the core and the appropriate handlers are called.
+# 
+# Only the events starting from the entry to the specified target function
+# (kedr_test_<target_function_short_name>) and up to the exit from that 
+# function are considered.
+# 
+# Usage: 
+#   sh test.sh <target_function_short_name>
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${REPORTER_MODULE}"; then
+		printf "The reporter module is missing: ${REPORTER_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${EXPECTED_TRACE_FILE}"; then
+		printf "The file containing the expected event trace is missing: "
+		printf "${EXPECTED_TRACE_FILE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/insmod "${REPORTER_MODULE}" \
+		target_function="${TARGET_FUNCTION}" \
+		report_calls=1
+	if test $? -ne 0; then
+		printf "Failed to load the reporter module\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	/sbin/insmod "${TARGET_MODULE}" test_jmp=${TEST_JMP}
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+
+	# Trigger the test and check the result in the module's parameter.
+	echo 1 > "${TEST_DEBUGFS_DIR}/${TARGET_MODULE_NAME}/do_test"
+	if test $? -ne 0; then
+		printf "Failed to write to ${TEST_DEBUGFS_DIR}/${TARGET_MODULE_NAME}/do_test.\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	OUT_PARAM_FILE="/sys/module/${TARGET_MODULE_NAME}/parameters/test_failed"
+	if test ! -e "${OUT_PARAM_FILE}"; then
+		printf "Parameter file does not exist: ${OUT_PARAM_FILE}\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+
+	# Save the result to be analyzed below
+	TEST_FAILED=$(cat "${OUT_PARAM_FILE}")
+
+	# Unload the target.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+
+	# Save the information obtained by the reporter module.
+	# Get the trace and preprocess it (remove TID field).
+	cat "${TEST_DEBUGFS_FILE}" | sed -ne 's/^TID=0x[0-9a-f]*\s*//;p;' > "${TEST_TRACE_FILE}"	
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	SAVED_TRACE=$(cat "${TEST_TRACE_FILE}")
+	if test -z "${SAVED_TRACE}"; then
+		printf "No data have been obtained for the function ${TARGET_FUNCTION}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Unload the remaining modules, they are no longer needed
+	/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the test module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	
+	if test "t${TEST_FAILED}" != "t0"; then
+		printf "Test failed ('test_failed' parameter is '${TEST_FAILED}').\n"
+		exit 1
+	fi 
+	
+	# Compare the obtained and the expected data
+	sh "${COMPARE_SCRIPT}" "${EXPECTED_TRACE_FILE}" "${TEST_TRACE_FILE}"
+	if test $? -eq 0; then
+		printf "The obtained event trace matches the expected one.\n"
+	else
+		printf "Error occurred during the comparison "
+		printf "of the obtained event trace and the expected one.\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 1; then
+	printf "Usage: sh $0 <target_function_short_name>\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+REPORTER_MODULE_NAME="kedr_test_reporter"
+REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"
+
+TARGET_FUNCTION_SHORT="$1"
+TARGET_FUNCTION="kedr_test_${TARGET_FUNCTION_SHORT}"
+
+TARGET_MODULE_NAME="@TEST_TARGET_NAME@"
+TARGET_MODULE="@TEST_TARGET_DIR@/${TARGET_MODULE_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${TARGET_FUNCTION_SHORT}"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
+
+TEST_TRACE_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}.txt"
+EXPECTED_TRACE_FILE="@EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}.txt"
+
+TEST_JMP=0
+if test "t${TARGET_FUNCTION_SHORT}" = "tstack_on_jmp"; then
+	TEST_JMP=1
+fi
+
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Reporter module: ${REPORTER_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+printf "Trace file to be saved: ${TEST_TRACE_FILE}\n"
+printf "The file with the expected event trace: ${EXPECTED_TRACE_FILE}\n"
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

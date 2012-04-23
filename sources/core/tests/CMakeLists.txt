@@ -23,4 +23,5 @@ add_subdirectory(module_ms_alloc)
 add_subdirectory(i13n)
 add_subdirectory(reporter)
 add_subdirectory(callbacks)
+add_subdirectory(stack_on_call)
 ########################################################################
