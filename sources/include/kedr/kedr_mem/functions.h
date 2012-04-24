@@ -86,6 +86,11 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
  * obtain that value. The KEDR_LS_ARGn(ls) returns the value as unsigned 
  * long.
  *
+ * [NB] The saved value of %rsp/%esp is as it should be before the call 
+ * to the target in the original code. That is, if the target receives some
+ * of its arguments on stack, the saved %rsp/%esp will point to the first 
+ * ("top-most") of such arguments.
+ *
  * KEDR_LS_ARGn() macros can only be used if the function actually has the
  * corresponding argument. If, for example, KEDR_LS_ARG4() is used in a 
  * handler of some function and that function has 3 arguments, the behaviour
@@ -124,8 +129,10 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
 # define KEDR_LS_ARG4(_ls) ((_ls)->r.cx)
 # define KEDR_LS_ARG5(_ls) ((_ls)->r.r8)
 # define KEDR_LS_ARG6(_ls) ((_ls)->r.r9)
-# define KEDR_LS_ARG7(_ls) (*((_ls)->r.sp + sizeof(unsigned long)))
-# define KEDR_LS_ARG8(_ls) (*((_ls)->r.sp + 2 * sizeof(unsigned long)))
+# define KEDR_LS_ARG7(_ls) \
+	(*(unsigned long *)((_ls)->r.sp))
+# define KEDR_LS_ARG8(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + sizeof(unsigned long)))
 
 # define KEDR_LS_RET_VAL(_ls) ((_ls)->ret_val)
 
@@ -141,11 +148,16 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
  * return address to be at the top of the stack, the item immediately below 
  * it is the argument #4 and so forth. 
  * The saved value of %esp is used to get to the arguments. */
-# define KEDR_LS_ARG4(_ls) (*((_ls)->r.sp + sizeof(unsigned long)))
-# define KEDR_LS_ARG5(_ls) (*((_ls)->r.sp + 2 * sizeof(unsigned long)))
-# define KEDR_LS_ARG6(_ls) (*((_ls)->r.sp + 3 * sizeof(unsigned long)))
-# define KEDR_LS_ARG7(_ls) (*((_ls)->r.sp + 4 * sizeof(unsigned long)))
-# define KEDR_LS_ARG8(_ls) (*((_ls)->r.sp + 5 * sizeof(unsigned long)))
+# define KEDR_LS_ARG4(_ls) \
+	(*(unsigned long *)((_ls)->r.sp))
+# define KEDR_LS_ARG5(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + sizeof(unsigned long)))
+# define KEDR_LS_ARG6(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 2 * sizeof(unsigned long)))
+# define KEDR_LS_ARG7(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 3 * sizeof(unsigned long)))
+# define KEDR_LS_ARG8(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 4 * sizeof(unsigned long)))
 
 # define KEDR_LS_RET_VAL(_ls) ((_ls)->ret_val)
 

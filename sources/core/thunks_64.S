@@ -157,13 +157,6 @@ kedr_thunk_jmp:
 	mov %rbp, KEDR_LSTORAGE_bp(%rbx)
 	mov KEDR_LSTORAGE_info(%rbx), %rbp
 	
-	save_sp_and_scratch_but_ax;
-	mov %rax, %rdi;
-	call *KEDR_CALL_INFO_pre_handler(%rbp);
-	
-	restore_scratch_but_ax;
-	mov KEDR_LSTORAGE_ax(%rbx), %rax;
-	
 	/* The thunk has been called using JMP instruction, so the return
 	 * address for the function the thunk has been called from 
 	 * ("caller") should now be on the top of the stack.
@@ -174,6 +167,15 @@ kedr_thunk_jmp:
 	 * need to remove the return address from the stack here and 
 	 * place it there back again after the callee exits. */
 	popq KEDR_LSTORAGE_ret_addr(%rbx);
+	
+	/* [NB] If the target receives some of its arguments on stack, the
+	 * saved value of %rsp will point to the first of such arguments. */
+	save_sp_and_scratch_but_ax;
+	mov %rax, %rdi;
+	call *KEDR_CALL_INFO_pre_handler(%rbp);
+	
+	restore_scratch_but_ax;
+	mov KEDR_LSTORAGE_ax(%rbx), %rax;
 	
 	call *KEDR_CALL_INFO_repl(%rbp);
 	
