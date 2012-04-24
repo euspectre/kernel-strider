@@ -1,0 +1,167 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that the custom pre- and post-handlers of the function 
+# calls can retrieve the arguments and the return values of the callees,
+# where appropriate.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${CHECKER_MODULE}"; then
+		printf "The \"checker\" module is missing: ${CHECKER_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${PROVIDER_MODULE}"; then
+		printf "The \"provider\" module is missing: ${PROVIDER_MODULE}\n"
+		exit 1
+	fi
+		
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${CHECKER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CHECKER_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${PROVIDER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${PROVIDER_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	/sbin/insmod "${PROVIDER_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the \"provider\" module: ${PROVIDER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/insmod "${CHECKER_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the \"checker\" module: ${CHECKER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	OUT_PARAM_FILE="/sys/module/${CHECKER_MODULE_NAME}/parameters/test_failed"
+	if test ! -e "${OUT_PARAM_FILE}"; then
+		printf "Parameter file does not exist: ${OUT_PARAM_FILE}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the target.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Save the result to be analyzed below
+	TEST_FAILED=$(cat "${OUT_PARAM_FILE}")
+
+	# Unload the remaining modules, they are no longer needed
+	/sbin/rmmod "${CHECKER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${CHECKER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/rmmod "${PROVIDER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${PROVIDER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	
+	if test "t${TEST_FAILED}" != "t0"; then
+		printf "Test failed ('test_failed' parameter is '${TEST_FAILED}').\n"
+		exit 1
+	fi 
+}
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+PROVIDER_MODULE_NAME="@TEST_PROVIDER_NAME@"
+PROVIDER_MODULE="@TEST_PROVIDER_DIR@/${PROVIDER_MODULE_NAME}.ko"
+
+CHECKER_MODULE_NAME="@TEST_CHECKER_NAME@"
+CHECKER_MODULE="@TEST_CHECKER_DIR@/${CHECKER_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="@TEST_TARGET_NAME@"
+TARGET_MODULE="@TEST_TARGET_DIR@/${TARGET_MODULE_NAME}.ko"
+
+checkPrereqs
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
