@@ -37,7 +37,7 @@
 <$if concat(header)$><$header: join(\n)$><$endif$>
 /* ====================================================================== */
 
-#define KEDR_MSG_PREFIX "[kedr_func_drd]"
+#define KEDR_MSG_PREFIX "[kedr_func_drd] "
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");

@@ -1,3 +1,5 @@
+set(GROUP_NAME "unlock")
+
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"mutex_unlock"
 	
@@ -13,5 +15,7 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 
 	# TODO: more
 )
-create_handlers_group("unlock" ${functions})
+create_handlers_group(${GROUP_NAME} ${functions})
+
+kedr_test_add_subdirectory(tests)
 ########################################################################

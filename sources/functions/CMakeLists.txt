@@ -68,9 +68,17 @@ add_dependencies(${KMODULE_NAME} ${KMODULE_NAME}_module.c)
 kedr_install_kmodule(${KMODULE_NAME})
 ########################################################################
 
-add_subdirectory(groups)
+# Test-related stuff
+# The directory where the tests should look for the user-mode helper 
+# scripts.
+set(KEDR_UMH_DIR "${CMAKE_BINARY_DIR}/core/tests")
+
+# The core module.
+set(CORE_MODULE_NAME "kedr_mem_core")
+set(CORE_MODULE_DIR "${CMAKE_BINARY_DIR}/core")
+
+kedr_test_add_subdirectory(tests)
 ########################################################################
 
-# Tests
-kedr_test_add_subdirectory(tests)
+add_subdirectory(groups)
 ########################################################################

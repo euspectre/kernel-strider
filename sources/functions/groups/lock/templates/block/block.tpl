@@ -24,10 +24,16 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 	unsigned long lock_id; 
 	enum kedr_lock_type lock_type;
 	
+	/* When handling a try-lock operation, set this flag to 
+	 * a non-zero value if the locking did not actually happen. */
+	int lock_failed = 0;
+	
 	eh = kedr_get_event_handlers();
 	if (eh->on_lock_post != NULL) {
 <$prepare_args.post$>
-		eh->on_lock_post(eh, ls->tid, info->pc, lock_id, lock_type);
+		if (!lock_failed)
+			eh->on_lock_post(eh, ls->tid, info->pc, lock_id,
+				lock_type);
 	}
 	
 	if (eh->on_call_post != NULL)

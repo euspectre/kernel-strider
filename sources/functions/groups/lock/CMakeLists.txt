@@ -1,3 +1,5 @@
+set(GROUP_NAME "lock")
+
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"mutex_lock"
 	"mutex_lock_killable"
@@ -15,5 +17,7 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 
 	# TODO: more
 )
-create_handlers_group("lock" ${functions})
+create_handlers_group(${GROUP_NAME} ${functions})
+
+kedr_test_add_subdirectory(tests)
 ########################################################################
