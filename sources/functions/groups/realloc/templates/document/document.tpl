@@ -146,7 +146,7 @@ func_drd_krealloc_post(struct kedr_local_storage *ls)
 				addr);
 	}
 	else {
-		/* Now to the tricky part. Report "free pre" and then 
+		/* Now to the tricky part. Report "free post" and then 
 		 * report an allocation. If the actual allocation has
 		 * failed, report a fake allocation with 'p' as a 
 		 * result. */
@@ -155,9 +155,13 @@ func_drd_krealloc_post(struct kedr_local_storage *ls)
 			eh->on_free_post(eh, ls->tid, info->pc, p); 
 		}
 		
+		if (eh->on_alloc_pre != NULL) {
+			eh->on_alloc_pre(eh, ls->tid, info->pc, size);
+		}
+		
 		if (eh->on_alloc_post != NULL) {
 			eh->on_alloc_post(eh, ls->tid, info->pc, size,
-				(addr !=0 ? addr : p));
+				(addr != 0 ? addr : p));
 		}
 	}
 
