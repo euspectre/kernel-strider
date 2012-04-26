@@ -2,6 +2,16 @@ kedr_load_test_prefixes()
 
 set(functions_to_test
 	"mutex_lock"
+	"mutex_lock_interruptible"
+	"mutex_lock_killable"
+	"mutex_trylock"
+	"_raw_spin_lock"
+	"_raw_spin_lock_irq"
+	"_raw_spin_lock_irqsave"
+	"_spin_lock"
+	"_spin_lock_irq"
+	"_spin_lock_irqsave"
+
 	# TODO: more
 )
 

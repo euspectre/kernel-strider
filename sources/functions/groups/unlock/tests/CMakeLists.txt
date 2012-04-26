@@ -2,6 +2,13 @@ kedr_load_test_prefixes()
 
 set(functions_to_test
 	"mutex_unlock"
+	"_raw_spin_unlock"
+	"_raw_spin_unlock_irq"
+	"_raw_spin_unlock_irqrestore"
+	"_spin_unlock"
+	"_spin_unlock_irq"
+	"_spin_unlock_irqrestore"
+	
 	# TODO: more
 )
 
