@@ -2,7 +2,8 @@
 function.name = kmem_cache_alloc_node_trace
 trigger.code =>>
 	void *p;
-	struct kmem_cache* mem_cache = kmem_cache_create("kedr_cache", 32, 32, 0, NULL);
+	struct kmem_cache* mem_cache = 
+		kmem_cache_create("kedr_mem_cache", 32, 32, 0, NULL);
 
 	if (mem_cache != NULL)
 	{

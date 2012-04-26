@@ -2,7 +2,8 @@
 function.name = kmem_cache_alloc_trace
 trigger.code =>>
 	void* p;
-	struct kmem_cache* mem_cache = kmem_cache_create("kedr_cache", 32, 32, 0, NULL);
+	struct kmem_cache* mem_cache = 
+		kmem_cache_create("kedr_mem_cache", 32, 32, 0, NULL);
 
 	if (mem_cache != NULL)
 	{
@@ -19,7 +20,8 @@ trigger.code =>>
 		}
 		else
 		{
-			printk(KERN_INFO "Cannot allocate object in own kmem_cache.");
+			printk(KERN_INFO 
+			"Cannot allocate object from our own kmem_cache.");
 		}
 		kmem_cache_destroy(mem_cache);
 	}

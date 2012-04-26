@@ -1,0 +1,17 @@
+[group]
+	# Name of the target function
+	function.name = get_zeroed_page
+	
+	# The following code snippets prepare the arguments needed
+	# to call the pre- and post-event handlers based on the data
+	# contained in the local storage (pointed to by 'ls'). 
+	# The variables for the arguments are declared in the template.
+	prepare_args.pre =>>
+		size = (size_t)PAGE_SIZE;
+	<<
+	
+	prepare_args.post =>>
+		size = (size_t)PAGE_SIZE;
+		addr = KEDR_LS_RET_VAL(ls);
+	<<
+#######################################################################
