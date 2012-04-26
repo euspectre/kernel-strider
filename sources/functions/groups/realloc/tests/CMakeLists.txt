@@ -9,7 +9,7 @@ set(functions_to_test
 # for the test to pass.
 # In case of __krealloc, an additional call to "kfree()" should be used
 # for the trace to match this expression.
-set(TEST_MATCH_EXPR "FREE PRE.*FREE POST.*ALLOC PRE.*ALLOC POST")
+set(TEST_MATCH_EXPR " FREE PRE.* FREE POST.* ALLOC PRE.* ALLOC POST")
 
 add_tests_for_group(${GROUP_NAME} ${functions_to_test})
 

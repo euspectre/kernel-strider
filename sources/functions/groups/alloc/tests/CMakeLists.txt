@@ -28,7 +28,7 @@ set(functions_to_test
 
 # The regular expression the trace obtained in the test should match
 # for the test to pass.
-set(TEST_MATCH_EXPR "ALLOC PRE.*ALLOC POST")
+set(TEST_MATCH_EXPR " ALLOC PRE.* ALLOC POST")
 
 add_tests_for_group(${GROUP_NAME} ${functions_to_test})
 ########################################################################

@@ -12,7 +12,7 @@ set(functions_to_test
 	# TODO: more
 )
 
-set(TEST_MATCH_EXPR "UNLOCK [A-Z0-9]+ PRE.*UNLOCK [A-Z0-9]+ POST")
+set(TEST_MATCH_EXPR " UNLOCK [A-Z0-9]+ PRE.* UNLOCK [A-Z0-9]+ POST")
 
 add_tests_for_group(${GROUP_NAME} ${functions_to_test})
 ########################################################################
