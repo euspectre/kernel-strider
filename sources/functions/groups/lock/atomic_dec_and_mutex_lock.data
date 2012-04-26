@@ -1,6 +1,6 @@
 [group]
 	# Name of the target function
-	function.name = mutex_lock_killable
+	function.name = atomic_dec_and_mutex_lock
 	
 	# The following code snippets prepare the arguments needed
 	# to call the pre- and post-event handlers based on the data
@@ -8,14 +8,14 @@
 	# The variables for the arguments are declared in the template.
 	prepare_args.pre =>>
 		lock_type = KEDR_LT_MUTEX;
-		lock_id = KEDR_LS_ARG1(ls);
+		lock_id = KEDR_LS_ARG2(ls);
 	<<
 	
 	prepare_args.post =>>
 		int ret = (int)KEDR_LS_RET_VAL(ls);
-		if (ret != 0)
+		if (ret == 0)
 			lock_failed = 1;
 		lock_type = KEDR_LT_MUTEX;
-		lock_id = KEDR_LS_ARG1(ls);
+		lock_id = KEDR_LS_ARG2(ls);
 	<<
 #######################################################################

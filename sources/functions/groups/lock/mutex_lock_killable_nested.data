@@ -1,6 +1,6 @@
 [group]
 	# Name of the target function
-	function.name = mutex_lock_killable
+	function.name = mutex_lock_killable_nested
 	
 	# The following code snippets prepare the arguments needed
 	# to call the pre- and post-event handlers based on the data

@@ -5,6 +5,14 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"mutex_lock_killable"
 	"mutex_lock_interruptible"
 	
+	"mutex_lock_nested"
+	"mutex_lock_interruptible_nested"
+	"mutex_lock_killable_nested"
+	"_mutex_lock_nest_lock"
+	
+	"mutex_trylock"
+	"atomic_dec_and_mutex_lock"
+	
 	"_raw_spin_lock"
 	"_raw_spin_lock_irqsave"
 	"_raw_spin_lock_irq"
