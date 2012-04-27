@@ -1,0 +1,39 @@
+[group]
+	# Name of the target function
+	function.name = _atomic_dec_and_lock
+	
+	aux_code.pre =>>
+		void *data = NULL;
+		unsigned long cnt_addr = KEDR_LS_ARG1(ls);
+		
+		/* The function always performs an atomic decrement of
+		 * the value pointed to by its first argument. So a 
+		 * locked update operation should be reported. To make
+		 * things simpler, we report it here rather than call
+		 * on_locked_op_post() in the post handler. */
+		if (eh->on_locked_op_pre != NULL)
+			eh->on_locked_op_pre(eh, ls->tid, info->pc, 
+				&data);
+		if (eh->on_locked_op_post != NULL)
+			eh->on_locked_op_post(eh, ls->tid, info->pc,
+				cnt_addr, sizeof(atomic_t), 
+				KEDR_ET_MUPDATE, data);
+	<<
+	
+	# The following code snippets prepare the arguments needed
+	# to call the pre- and post-event handlers based on the data
+	# contained in the local storage (pointed to by 'ls'). 
+	# The variables for the arguments are declared in the template.
+	prepare_args.pre =>>
+		lock_type = KEDR_LT_SPINLOCK;
+		lock_id = KEDR_LS_ARG2(ls);
+	<<
+	
+	prepare_args.post =>>
+		int ret = (int)KEDR_LS_RET_VAL(ls);
+		if (ret == 0)
+			lock_failed = 1;
+		lock_type = KEDR_LT_SPINLOCK;
+		lock_id = KEDR_LS_ARG2(ls);
+	<<
+#######################################################################

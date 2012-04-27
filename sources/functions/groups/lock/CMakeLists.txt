@@ -22,8 +22,45 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"_spin_lock_irqsave"
 	"_spin_lock_irq"
 	"_spin_lock_bh"
+	
+	"_atomic_dec_and_lock"
+	
+	"_raw_spin_trylock"
+	"_raw_spin_trylock_bh"
+	"_spin_trylock"
+	"_spin_trylock_bh"
 
-	# TODO: more
+	"_raw_read_trylock"
+	"_raw_read_lock"
+	"_raw_read_lock_irqsave"
+	"_raw_read_lock_irq"
+	"_raw_read_lock_bh"
+
+	"_raw_write_trylock"
+	"_raw_write_lock"
+	"_raw_write_lock_irqsave"
+	"_raw_write_lock_irq"
+	"_raw_write_lock_bh"
+
+	"_raw_spin_lock_nested"
+	"_raw_spin_lock_irqsave_nested"
+	"_raw_spin_lock_nest_lock"
+
+	"_read_trylock"
+	"_read_lock"
+	"_read_lock_irqsave"
+	"_read_lock_irq"
+	"_read_lock_bh"
+
+	"_write_trylock"
+	"_write_lock"
+	"_write_lock_irqsave"
+	"_write_lock_irq"
+	"_write_lock_bh"
+
+	"_spin_lock_nested"
+	"_spin_lock_irqsave_nested"
+	"_spin_lock_nest_lock"
 )
 create_handlers_group(${GROUP_NAME} ${functions})
 

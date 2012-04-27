@@ -10,6 +10,10 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 	if (eh->on_call_pre != NULL)
 		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
 	
+	/* Additional operations */ {
+<$aux_code.pre$>
+	}
+	
 	if (eh->on_lock_pre != NULL) {
 <$prepare_args.pre$>
 		eh->on_lock_pre(eh, ls->tid, info->pc, lock_id, lock_type);
