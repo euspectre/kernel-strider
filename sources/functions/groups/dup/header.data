@@ -1,0 +1,8 @@
+header =>>
+#include <linux/slab.h>
+#include <linux/gfp.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
+#include <linux/parser.h>    /* match_strdup */
+#include <linux/err.h>
+<<

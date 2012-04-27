@@ -12,7 +12,10 @@ set(FUNCTION_GROUPS
 	"realloc" 
 	"free" 
 	"lock" 
-	"unlock")
+	"unlock"
+	"uaccess"
+	"dup"
+)
 
 set(HANDLER_C_FILES)
 set(HANDLER_DATA_FILES)

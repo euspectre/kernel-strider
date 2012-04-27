@@ -89,4 +89,6 @@ add_subdirectory(realloc)
 add_subdirectory(free)
 add_subdirectory(lock)
 add_subdirectory(unlock)
+add_subdirectory(uaccess)
+add_subdirectory(dup)
 ########################################################################
