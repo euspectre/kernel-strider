@@ -13,7 +13,9 @@ enum kedr_memory_event_type {
 /* Types of locks. */
 enum kedr_lock_type {
 	KEDR_LT_MUTEX = 0, /* mutex */
-	KEDR_LT_SPINLOCK   /* spinlock */
+	KEDR_LT_SPINLOCK,  /* spinlock */
+	KEDR_LT_RLOCK,     /* reader spinlock */
+	KEDR_LT_WLOCK      /* writer spinlock */
 }; 
 
 /* Types of memory barriers. */

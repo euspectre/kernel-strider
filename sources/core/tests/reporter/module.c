@@ -55,7 +55,7 @@
  *	TID=<tid,0x%lx> LOCK <ltype> POST pc=<pc,%pS> id=<lock_id,0x%lx>
  *	TID=<tid,0x%lx> UNLOCK <ltype> PRE pc=<pc,%pS> id=<lock_id,0x%lx>
  *	TID=<tid,0x%lx> UNLOCK <ltype> POST pc=<pc,%pS> id=<lock_id,0x%lx>
- * <ltype> is the type of the sync primitive: MUTEX, SPINLOCK.
+ * <ltype> is the type of the sync primitive: MUTEX, SPINLOCK, RLOCK, WLOCK.
  *
  * - Format of the records for pre/post signal and wait events:
  *	TID=<tid,0x%lx> SIGNAL <otype> PRE pc=<pc,%pS> id=<obj_id,0x%lx>
@@ -641,6 +641,10 @@ lock_type_to_string(enum kedr_lock_type t)
 		return "MUTEX";
 	case KEDR_LT_SPINLOCK:
 		return "SPINLOCK";
+	case KEDR_LT_RLOCK:
+		return "RLOCK";
+	case KEDR_LT_WLOCK:
+		return "WLOCK";
 	default:
 		return "*UNKNOWN*";
 	}
