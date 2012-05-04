@@ -1,0 +1,59 @@
+[group]
+	# Name of the target function
+	function.name = strnstr
+
+	# Lookup the address of the function via kallsyms because the
+	# compiler may not allow using &<name>. The actual value of
+	# this parameter does not matter as long as it is not empty.
+	function.lookup = yes
+	
+	code.post =>>
+		void *data = NULL;
+		unsigned long s1 = KEDR_LS_ARG1(ls);
+		unsigned long s2 = KEDR_LS_ARG2(ls);
+		unsigned long count = KEDR_LS_ARG3(ls);
+		unsigned long len1;
+		unsigned long len2;
+		
+		/* We assume strnstr() always reads the whole 's2'.
+		 * For a non-empty 's2', the function reads the whole 's1'
+		 * if the length of 's1' is less than 'count' bytes, or
+		 * the first 'count' bytes of 's1' otherwise. */
+		len2 = (unsigned long)strlen((const char *)s2);
+		
+		if (len2 == 0) {
+			if (eh->begin_memory_events != NULL)
+				eh->begin_memory_events(eh, ls->tid, 1,
+					&data);
+			
+			if (eh->on_memory_event != NULL) {
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					s2, len2 + 1, KEDR_ET_MREAD, data);
+			}
+
+			if (eh->end_memory_events != NULL)
+				eh->end_memory_events(eh, ls->tid, data);
+		}
+		else {
+			len1 = (unsigned long)strnlen((const char *)s1,
+				(size_t)count);
+			if (eh->begin_memory_events != NULL)
+				eh->begin_memory_events(eh, ls->tid, 2,
+					&data);
+			
+			if (eh->on_memory_event != NULL) {
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					s2, len2 + 1, KEDR_ET_MREAD, data);
+				/* [NB] It is likely that the function 
+				 * did not read the byte following the found
+				 * substring, hence 'len1' rather than 
+				 * len1 + 1 here. */
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					s1, len1, KEDR_ET_MREAD, data);
+			}
+
+			if (eh->end_memory_events != NULL)
+				eh->end_memory_events(eh, ls->tid, data);
+		}
+	<<
+#######################################################################

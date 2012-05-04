@@ -15,6 +15,7 @@ set(FUNCTION_GROUPS
 	"unlock"
 	"uaccess"
 	"dup"
+	"strings"
 )
 
 set(HANDLER_C_FILES)

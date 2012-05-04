@@ -1,0 +1,34 @@
+[group]
+	# Name of the target function
+	function.name = memchr
+
+	# Lookup the address of the function via kallsyms because the
+	# compiler may not allow using &<name>. The actual value of
+	# this parameter does not matter as long as it is not empty.
+	function.lookup = yes
+	
+	code.post =>>
+		void *data = NULL;
+		unsigned long addr = KEDR_LS_ARG1(ls);
+		unsigned long max_size = KEDR_LS_ARG3(ls);
+		unsigned long ret  = KEDR_LS_RET_VAL(ls);
+		unsigned long len;
+		
+		if (ret == 0)
+			len = max_size;
+		else 
+			len = ret + 1 - addr;
+
+		if (eh->begin_memory_events != NULL)
+			eh->begin_memory_events(eh, ls->tid, 1,
+				&data);
+		
+		if (eh->on_memory_event != NULL) {
+			eh->on_memory_event(eh, ls->tid, info->pc, 
+				addr, len, KEDR_ET_MREAD, data);
+		}
+
+		if (eh->end_memory_events != NULL)
+			eh->end_memory_events(eh, ls->tid, data);
+	<<
+#######################################################################

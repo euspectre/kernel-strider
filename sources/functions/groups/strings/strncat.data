@@ -1,0 +1,45 @@
+[group]
+	# Name of the target function
+	function.name = strncat
+	
+	# Lookup the address of the function via kallsyms because the
+	# compiler may not allow using &<name>. The actual value of
+	# this parameter does not matter as long as it is not empty.
+	function.lookup = yes
+	
+	code.post =>>
+		void *data = NULL;
+		unsigned long dest = KEDR_LS_ARG1(ls);
+		unsigned long src = KEDR_LS_ARG2(ls);
+		unsigned long count = KEDR_LS_ARG3(ls);
+		unsigned long src_len;
+		unsigned long dest_len;
+		
+		src_len = (unsigned long)strnlen((const char *)src, 
+			(size_t)count);
+		dest_len = (unsigned long)strlen((const char *)dest) - 
+			src_len;
+		
+		if (eh->begin_memory_events != NULL)
+			eh->begin_memory_events(eh, ls->tid, 3,
+				&data);
+		
+		if (eh->on_memory_event != NULL) {
+			/* read 'src' */
+			eh->on_memory_event(eh, ls->tid, info->pc, 
+				src, 
+				(src_len < count) ? src_len + 1 : count, 
+				KEDR_ET_MREAD, data);
+			/* find the length of 'dest' */
+			eh->on_memory_event(eh, ls->tid, info->pc, 
+				dest, dest_len + 1, KEDR_ET_MREAD, data);
+			/* append 'src' to 'dest' */
+			eh->on_memory_event(eh, ls->tid, info->pc, 
+				dest + dest_len, src_len + 1, 
+				KEDR_ET_MWRITE, data);
+		}
+
+		if (eh->end_memory_events != NULL)
+			eh->end_memory_events(eh, ls->tid, data);
+	<<
+#######################################################################

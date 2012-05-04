@@ -1,0 +1,50 @@
+[group]
+	# Name of the target function
+	function.name = strncmp
+	
+	# Lookup the address of the function via kallsyms because the
+	# compiler may not allow using &<name>. The actual value of
+	# this parameter does not matter as long as it is not empty.
+	function.lookup = yes
+	
+	code.post =>>
+		void *data = NULL;
+		unsigned long str_left = KEDR_LS_ARG1(ls);
+		unsigned long str_right = KEDR_LS_ARG2(ls);
+		unsigned long count = KEDR_LS_ARG3(ls);
+		unsigned long size = 0;
+		const char *cs;
+		const char *ct;
+				
+		/* This part is based on the implementation of strcmp
+		 * function in lib/string.c in the kernel sources. */
+		cs = (const char *)str_left;
+		ct = (const char *)str_right;
+		while (count) {
+			unsigned char c1, c2;
+			c1 = *cs++;
+			c2 = *ct++;
+			++size;
+			if (c1 != c2 || !c1)
+				break;
+			count--;
+		}
+		
+		if (size != 0) {
+			/* Currently, strncmp is modelled as two reads */
+			if (eh->begin_memory_events != NULL)
+				eh->begin_memory_events(eh, ls->tid, 2,
+					&data);
+			
+			if (eh->on_memory_event != NULL) {
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					str_left, size, KEDR_ET_MREAD, data);
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					str_right, size, KEDR_ET_MREAD, data);
+			}
+
+			if (eh->end_memory_events != NULL)
+				eh->end_memory_events(eh, ls->tid, data);
+		}
+	<<
+#######################################################################

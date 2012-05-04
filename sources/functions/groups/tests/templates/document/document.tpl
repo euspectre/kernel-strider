@@ -40,6 +40,12 @@ MODULE_LICENSE("GPL");
 /* The name of the function to trigger a call to. */
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
+
+/* This parameter can be used in the tests as a volatile value to prevent 
+ * the compiler from over-optimizing the code. The tests should not change
+ * the value of this parameter. */
+unsigned int value_one = 1;
+module_param(value_one, uint, S_IRUGO);
 /* ====================================================================== */
 
 /* The trigger functions. */

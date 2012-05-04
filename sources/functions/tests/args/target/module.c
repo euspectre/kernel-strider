@@ -31,6 +31,8 @@ test_cleanup_module(void)
 	ret = kedr_test_arg_func(KEDR_TEST_ARG1, KEDR_TEST_ARG2, 
 		KEDR_TEST_ARG3, KEDR_TEST_ARG4, KEDR_TEST_ARG5,
 		KEDR_TEST_ARG6, KEDR_TEST_ARG7, KEDR_TEST_ARG8);
+	
+	BUG_ON(ret == 0);
 }
 
 static int __init

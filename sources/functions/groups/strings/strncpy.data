@@ -1,0 +1,41 @@
+[group]
+	# Name of the target function
+	function.name = strncpy
+	
+	# Lookup the address of the function via kallsyms because the
+	# compiler may not allow using &<name>. The actual value of
+	# this parameter does not matter as long as it is not empty.
+	function.lookup = yes
+	
+	code.post =>>
+		void *data = NULL;
+		unsigned long to = KEDR_LS_ARG1(ls);
+		unsigned long from = KEDR_LS_ARG2(ls);
+		unsigned long count = KEDR_LS_ARG3(ls);
+		unsigned long size = 0;
+		
+		size = strnlen((const char *)from, count) + 1;
+		if (size > count)
+			size = count;
+		
+		if (size > 0) {
+			if (eh->begin_memory_events != NULL)
+				eh->begin_memory_events(eh, ls->tid, 2,
+					&data);
+			
+			if (eh->on_memory_event != NULL) {
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					from, size, KEDR_ET_MREAD, data);
+				/* [NB] strncpy always writes 'count' bytes
+				 * to the destination string. If the source
+				 * is shorter than 'count' bytes, the rest 
+				 * of the destination is filled with 0s. */
+				eh->on_memory_event(eh, ls->tid, info->pc, 
+					to, count, KEDR_ET_MWRITE, data);
+			}
+
+			if (eh->end_memory_events != NULL)
+				eh->end_memory_events(eh, ls->tid, data);
+		}
+	<<
+#######################################################################

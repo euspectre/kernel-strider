@@ -91,4 +91,5 @@ add_subdirectory(lock)
 add_subdirectory(unlock)
 add_subdirectory(uaccess)
 add_subdirectory(dup)
+add_subdirectory(strings)
 ########################################################################
