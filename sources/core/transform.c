@@ -1514,8 +1514,11 @@ kedr_handle_direct_offset_mov(struct kedr_ir_node *ref_node, u8 base,
 	
 #ifdef CONFIG_X86_64
 	{
+		/* [NB] insn->moffset*.value is signed by default, so we
+		 * cast it to u32 here first to avoid sign extension which
+		 * would lead to incorrectly calculated value of 'imm64'. */
 		u64 addr64 = ((u64)insn->moffset2.value << 32) | 
-			(u64)insn->moffset1.value; 
+			(u64)(u32)insn->moffset1.value; 
 		item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
 		item = kedr_mk_mov_imm64_to_rax(addr64, item, 0, &err);
 		item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base,

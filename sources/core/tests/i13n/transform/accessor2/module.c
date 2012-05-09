@@ -139,7 +139,11 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 		/* MOV imm64, %reg, check if imm64 is the address of 
 		 * a call_info or a block_info instance */
 		u64 imm64 = ((u64)insn->immediate2.value << 32) | 
-			(u64)insn->immediate1.value;
+			(u64)(u32)insn->immediate1.value;
+		/* [NB] insn->immediate*.value is signed by default, so we
+		 * cast it to u32 here first to avoid sign extension which
+		 * would lead to incorrectly calculated value of 'imm64'. */
+		
 		if (imm64 == (u64)(unsigned long)start->block_info) {
 			debug_util_print_ulong(offset_for_node(func, start),
 			"Ref. to block_info for the block at 0x%lx\n");
