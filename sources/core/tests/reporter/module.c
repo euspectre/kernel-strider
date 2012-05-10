@@ -90,6 +90,14 @@
  * kernel parameter is 'n' (the default kernel on Debian 6 is a common 
  * example).
  *
+ * If reporting of memory events is enabled and 'report_block_enter'
+ * parameter has a non-zero value, "BLOCK_ENTER" event will be reported 
+ * at the entry of each block with memory events. To be exact, the event 
+ * will be reported at the first memory access in that block actually 
+ * executed. The format is as follows:
+ * 
+ *	TID=<tid,0x%lx> BLOCK_ENTER pc=<pc,%p>
+ * 
  * [NB] The reporter does not report the events that occur during the 
  * initialization of the target module if 'resolve_symbols' parameter has a
  * non-zero value. For these events, symbol resolution is unsafe and may 
@@ -165,6 +173,14 @@ module_param(report_calls, int, S_IRUGO);
  * will be reported. */
 int report_mem = 0;
 module_param(report_mem, int, S_IRUGO);
+
+/* If reporting of memory events is enabled and 'report_block_enter'
+ * parameter has a non-zero value, "BLOCK_ENTER" event will be reported 
+ * at the entry of each block with memory events. To be exact, the event 
+ * will be reported at the first memory access in that block actually 
+ * executed. */
+int report_block_enter = 0;
+module_param(report_block_enter, int, S_IRUGO);
 
 /* If non-zero, the reporter will try to resolve the memory addresses in
  * the report, i.e. determine the names of the corresponding symbols, 
@@ -970,6 +986,7 @@ work_func_mem_events(struct work_struct *work)
 		"TID=0x%lx %s pc=%s addr=%s size=%lu\n";
 	static const char *fmt_no_sym = 
 		"TID=0x%lx %s pc=%p addr=%p size=%lu\n";
+	static const char *fmt_block = "TID=0x%lx BLOCK_ENTER pc=%p\n";
 	
 	char *str_pc;
 	char *str_addr;
@@ -977,6 +994,16 @@ work_func_mem_events(struct work_struct *work)
 	int ret = 0;
 	struct kr_work_mem_events *wme = container_of(work, 
 		struct kr_work_mem_events, work);
+	
+	if (!wme->events_happened)
+		goto out;
+	
+	if (report_block_enter) {
+		ret = debug_util_print(fmt_block, wme->events[0].tid, 
+			wme->events[0].pc);
+		if (ret < 0)
+			goto out;
+	}
 	
 	for (i = 0; i < wme->events_happened; ++i) {
 		if (resolve_symbols) {
@@ -1010,7 +1037,8 @@ work_func_mem_events(struct work_struct *work)
 		if (ret < 0)
 			break;
 	}
-	
+
+out:	
 	if (ret < 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 	"work_mem_events(): output failed, error code: %d.\n", 
