@@ -7,8 +7,6 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"_copy_from_user"
 	"__strncpy_from_user"
 	"strncpy_from_user"
-	"strlen_user"
-	"strnlen_user"
 )
 create_handlers_group(${GROUP_NAME} ${functions})
 

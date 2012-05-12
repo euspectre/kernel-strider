@@ -6,7 +6,6 @@
 		long ret = (long)KEDR_LS_RET_VAL(ls);
 		long n = (long)KEDR_LS_ARG3(ls);
 		void *data = NULL;
-		unsigned long to = KEDR_LS_ARG1(ls);
 		unsigned long from = KEDR_LS_ARG2(ls);
 
 		n -= ret;
@@ -19,9 +18,6 @@
 				eh->on_memory_event(eh, ls->tid, info->pc, 
 					from, (unsigned long)n, 
 					KEDR_ET_MREAD, data);
-				eh->on_memory_event(eh, ls->tid, info->pc, 
-					to, (unsigned long)n, 
-					KEDR_ET_MWRITE, data);
 			}
 
 			if (eh->end_memory_events != NULL)
