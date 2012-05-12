@@ -50,6 +50,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"insn_gen.c"
 	"transform.c"
 	"handlers.c"
+	"annotations.c"
 	"${THUNKS_SOURCE_FILE}"
 
 # Headers
@@ -86,6 +87,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/block_info.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
+	"${TOP_INCLUDE_DIR}/annotations.h"
 )
 
 # Generate the table with the information about the machine instructions

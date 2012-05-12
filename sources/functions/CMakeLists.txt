@@ -66,6 +66,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
 	"${TOP_INCLUDE_DIR}/object_types.h"
+	"${TOP_INCLUDE_DIR}/annotations.h"
 	"${CMAKE_BINARY_DIR}/config.h"
 )
 add_dependencies(${KMODULE_NAME} ${KMODULE_NAME}_module.c)

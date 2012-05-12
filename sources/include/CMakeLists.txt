@@ -4,6 +4,7 @@
 # tree, do not forget to add it to the list below.
 set(KEDR_INCLUDE_FILES_SRC
 	object_types.h
+	annotations.h
 	kedr_mem/core_api.h
 	kedr_mem/local_storage.h
 	kedr_mem/block_info.h
