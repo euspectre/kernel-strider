@@ -18,6 +18,9 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/hardirq.h>
+#include <linux/sched.h>
+#include <linux/smp.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -210,6 +213,77 @@ kedr_fill_call_info(unsigned long ci)
 KEDR_DEFINE_WRAPPER(kedr_fill_call_info);
 /* ====================================================================== */
 
+/* Non-zero for the addresses that may belong to the user space, 
+ * 0 otherwise. If the address is valid and this function returns non-zero,
+ * it is an address in the user space. */
+static int
+is_user_space_address(unsigned long addr)
+{
+	return (addr < TASK_SIZE);
+}
+
+/* [NB] On x86-32, both thread stack and IRQ stacks are organized in a 
+ * similar way. Each stack is contained in a memory area of size 
+ * THREAD_SIZE bytes, the start of the area being aligned at THREAD_SIZE 
+ * byte boundary. The beginning of the area is occupied by 'thread_info' 
+ * structure, the end - by the stack (growing towards the beginning). For 
+ * simplicity, we treat the addresses pointing to 'thread_info' and to the 
+ * stack the same way here. 'thread_info' structures are managed by the 
+ * kernel proper rather than by the modules, so we may consider these 
+ * structures read-only from the modules' point of view.
+ * 
+ * For details, see kernel/irq_32.c and include/asm/processor.h in arch/x86.
+ *
+ * Thread stack is organized on x86-64 in a similar way like on x86-32. 
+ * IRQ stack has different organization, it is IRQ_STACK_SIZE bytes in size.
+ * It seems to be placed at the beginning of some section with per-cpu data.
+ * It looks like that the kernel data and code are located immediately 
+ * before it. It is very unlikely that a target kernel module will access
+ * the kernel data no more than IRQ_STACK_SIZE bytes before the IRQ stack
+ * concurrently with the access to the IRQ stack itself. So we may check
+ * the address as if the IRQ stack was aligned at IRQ_STACK_SIZE byte
+ * boundary.
+ * 
+ * Other stacks (exception stacks, debug stacks, etc.) are not considered
+ * here. */
+ 
+/* Align the pointer by the specified value ('align'). 'align' must be a 
+ * power of 2). */
+#define KEDR_PTR_ALIGN(p, align) \
+	((unsigned long)(p) & ~((align) - 1))
+
+/* Non-zero if the address refers to the current thread's stack or an 
+ * IRQ stack, 0 otherwise. */
+static int
+is_stack_address(unsigned long addr)
+{
+	unsigned long sp;
+#ifdef CONFIG_X86_64
+	asm volatile(
+		"mov %%rsp, %0\n\t"
+		: "=g"(sp)
+		: /* no inputs */
+		: "memory"
+	);
+
+	if (in_interrupt()) {
+		return (KEDR_PTR_ALIGN(addr, IRQ_STACK_SIZE) == 
+			KEDR_PTR_ALIGN(sp, IRQ_STACK_SIZE));
+	}
+
+#else /* x86-32 */
+	asm volatile(
+		"mov %%esp, %0\n\t"
+		: "=g"(sp)
+		: /* no inputs */
+		: "memory"
+	); 
+#endif
+	return (KEDR_PTR_ALIGN(addr, THREAD_SIZE) == 
+		KEDR_PTR_ALIGN(sp, THREAD_SIZE));
+}
+/* ====================================================================== */
+
 /* For each memory access event that could happen in the block, executes 
  * on_memory_event() handler if set. 
  * 'data' is the pointer, the address of which has been passed to 
@@ -230,6 +304,7 @@ report_events(struct kedr_local_storage *ls, void *data)
 		unsigned long n = nval;
 		unsigned long size;
 		enum kedr_memory_event_type type = KEDR_ET_MREAD;
+		unsigned long addr;
 		
 		if (info->string_mask & mask_bit) {
 			size = ls->values[n + 1];
@@ -246,9 +321,17 @@ report_events(struct kedr_local_storage *ls, void *data)
 				KEDR_ET_MWRITE;
 		}
 		
+		addr = ls->values[n];
+		
+		/* Filter out the accesses to the stack and to the user 
+		 * space memory if required. That is, call on_memory_event()
+		 * with 0 as 'addr' as if the event did not happen. */
+		if ((!process_stack_accesses && is_stack_address(addr)) || 
+		    (!process_um_accesses && is_user_space_address(addr)))
+			addr = 0;
+		
 		eh_current->on_memory_event(eh_current, ls->tid, 
-			info->events[i].pc, ls->values[n], size, type,
-			data);
+			info->events[i].pc, addr, size, type, data);
 	}
 }
 

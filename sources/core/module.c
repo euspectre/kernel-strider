@@ -58,7 +58,7 @@ module_param(umh_dir, charp, S_IRUGO);
  * are not tracked;
  * - the memory events may also be filtered out in runtime if the 
  * corresponding instructions access the stack only (even if not using %rsp-
- * based addressing). [TODO]
+ * based addressing).
  * 
  * Note that PUSH/POP %reg instructions are currently not processed as 
  * memory events even if this parameter is non-zero and so are the stack 
@@ -66,6 +66,11 @@ module_param(umh_dir, charp, S_IRUGO);
  * via <expr> in case of these instructions). */
 int process_stack_accesses = 0;
 module_param(process_stack_accesses, int, S_IRUGO);
+
+/* This parameter controls whether to report accesses to the user space
+ * memory. If it is 0, such accesses will not be reported. */
+int process_um_accesses = 0;
+module_param(process_um_accesses, int, S_IRUGO);
 /* ====================================================================== */
 
 static struct kedr_event_handlers *eh_default = NULL;
