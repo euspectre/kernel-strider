@@ -32,4 +32,19 @@ kedr_annotate_happens_after(unsigned long obj)
 	(void)obj;
 }
 EXPORT_SYMBOL(kedr_annotate_happens_after);
+
+void 
+kedr_annotate_memory_acquired(const void *addr, unsigned long size)
+{
+	(void)addr;
+	(void)size;
+}
+EXPORT_SYMBOL(kedr_annotate_memory_acquired);
+
+void 
+kedr_annotate_memory_released(const void *addr)
+{
+	(void)addr;
+}
+EXPORT_SYMBOL(kedr_annotate_memory_released);
 /* ================================================================ */

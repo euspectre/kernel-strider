@@ -61,9 +61,11 @@ struct kedr_func_drd_handlers
 };
 /* ====================================================================== */
 
-/* Handlers for dynamic annotations: happens-before/happens-after.
+/* Handlers for dynamic annotations.
  * Note that "call pre" and "call post" events are not reported for these 
  * calls, they are redundant. */
+
+/* "happens-before" / "happens-after" */
 void 
 happens_before_pre(struct kedr_local_storage *ls)
 {
@@ -117,17 +119,90 @@ happens_after_post(struct kedr_local_storage *ls)
 	/* nothing to do here */
 }
 	
-static struct kedr_func_drd_handlers handlers_kedr_annotate_happens_before = {
+static struct kedr_func_drd_handlers 
+handlers_kedr_annotate_happens_before = {
 	.func = (unsigned long)&kedr_annotate_happens_before,
 	.pre_handler = &happens_before_pre,
 	.post_handler = &happens_before_post
 }; 
 
-static struct kedr_func_drd_handlers handlers_kedr_annotate_happens_after = {
+static struct kedr_func_drd_handlers 
+handlers_kedr_annotate_happens_after = {
 	.func = (unsigned long)&kedr_annotate_happens_after,
 	.pre_handler = &happens_after_pre,
 	.post_handler = &happens_after_post
-};	
+};
+
+/* "memory acquired" / "memory released" */
+void 
+memory_acquired_pre(struct kedr_local_storage *ls)
+{
+	struct kedr_event_handlers *eh;
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long size;
+	
+	size = KEDR_LS_ARG2(ls);
+	eh = kedr_get_event_handlers();
+	
+	if (eh->on_alloc_pre != NULL && size != 0)
+		eh->on_alloc_pre(eh, ls->tid, info->pc, size);
+}
+void 
+memory_acquired_post(struct kedr_local_storage *ls)
+{
+	struct kedr_event_handlers *eh;
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long addr;
+	unsigned long size;
+	
+	addr = KEDR_LS_ARG1(ls);
+	size = KEDR_LS_ARG2(ls);
+	eh = kedr_get_event_handlers();
+	
+	if (eh->on_alloc_post != NULL && size != 0 && addr != 0)
+		eh->on_alloc_post(eh, ls->tid, info->pc, size, addr);
+}
+
+void 
+memory_released_pre(struct kedr_local_storage *ls)
+{
+	struct kedr_event_handlers *eh;
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long addr;
+	
+	addr = KEDR_LS_ARG1(ls);
+	eh = kedr_get_event_handlers();
+	
+	if (eh->on_free_pre != NULL && addr != 0)
+		eh->on_free_pre(eh, ls->tid, info->pc, addr);
+}
+void 
+memory_released_post(struct kedr_local_storage *ls)
+{
+	struct kedr_event_handlers *eh;
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long addr;
+	
+	addr = KEDR_LS_ARG1(ls);
+	eh = kedr_get_event_handlers();
+	
+	if (eh->on_free_post != NULL && addr != 0)
+		eh->on_free_post(eh, ls->tid, info->pc, addr);
+}
+
+static struct kedr_func_drd_handlers 
+handlers_kedr_annotate_memory_acquired = {
+	.func = (unsigned long)&kedr_annotate_memory_acquired,
+	.pre_handler = &memory_acquired_pre,
+	.post_handler = &memory_acquired_post
+};
+
+static struct kedr_func_drd_handlers 
+handlers_kedr_annotate_memory_released = {
+	.func = (unsigned long)&kedr_annotate_memory_released,
+	.pre_handler = &memory_released_pre,
+	.post_handler = &memory_released_post
+};
 /* ====================================================================== */
 
 <$block: join(\n)$>
@@ -140,7 +215,9 @@ static struct kedr_func_drd_handlers *handlers[] = {
 	/* handlers for annotations */
 	&handlers_kedr_annotate_happens_before,
 	&handlers_kedr_annotate_happens_after,
-
+	&handlers_kedr_annotate_memory_acquired,
+	&handlers_kedr_annotate_memory_released,
+		
 	/* handlers for other functions */
 	<$handlerItem: join(,\n\t)$>
 };
