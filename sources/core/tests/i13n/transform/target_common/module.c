@@ -20,6 +20,7 @@ void kedr_test_mem_special_xlat_bx(void);
 void kedr_test_strings(void);
 void kedr_test_locked_updates2(void);
 void kedr_test_barriers_mem(void);
+void kedr_test_stack_access(void);
 
 #ifndef CONFIG_X86_64
 /* Additional functions to be called on x86-32. */
@@ -89,6 +90,9 @@ test_cleanup_module(void)
 	
 	/* Group "barriers_mem" */
 	kedr_test_barriers_mem(); 
+	
+	/* Group "stack_access" */
+	kedr_test_stack_access();
 	
 	/* [NB] When adding more tests with the functions that are actually
 	 * executable rather than testing-only, consider calling these 

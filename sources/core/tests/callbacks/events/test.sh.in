@@ -11,7 +11,10 @@
 # function are considered.
 # 
 # Usage: 
-#   sh test.sh <target_function_short_name>
+#   sh test.sh <target_function_short_name> [--with-stack]
+#
+# If '--with-stack' is specified, the accesses to stack made by the target
+# module will also be processed.
 ########################################################################
 
 ########################################################################
@@ -108,7 +111,7 @@ doTest()
 	getInfoFromKoFile
 	
 	/sbin/insmod "${CORE_MODULE}" \
-		target_name="${TARGET_MODULE_NAME}" \
+		target_name="${TARGET_MODULE_NAME}" ${PROCESS_STACK} \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
 	/sbin/insmod "${REPORTER_MODULE}" \
@@ -221,10 +224,22 @@ doTest()
 # main
 ########################################################################
 WORK_DIR=${PWD}
+USAGE_STRING="Usage: sh $0 <target_function_short_name> [--with-stack]"
+PROCESS_STACK="process_stack_accesses=0"
+WITH_STACK=""
 
-if test $# -ne 1; then
-	printf "Usage: sh $0 <target_function_short_name>\n"
+if test $# -gt 2; then
+	printf "${USAGE_STRING}\n"
 	exit 1
+fi
+
+if test $# -eq 2; then
+	if test "t$2" != "t--with-stack"; then
+		printf "${USAGE_STRING}\n"
+		exit 1
+	fi
+	PROCESS_STACK="process_stack_accesses=1"
+	WITH_STACK="_with_stack"
 fi
 
 CORE_MODULE_NAME="@CORE_MODULE_NAME@"
@@ -240,7 +255,7 @@ TARGET_MODULE_NAME="test_ir_transform"
 TARGET_MODULE="@CMAKE_BINARY_DIR@/core/tests/i13n/transform/target_common/${TARGET_MODULE_NAME}.ko"
 TARGET_SYSFS_DATA_FILE="/sys/module/${TARGET_MODULE_NAME}/sections/.data"
 
-TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${TARGET_FUNCTION_SHORT}"
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/${TARGET_FUNCTION_SHORT}${WITH_STACK}"
 TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
 TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
 
@@ -250,8 +265,8 @@ TEST_FILE_HEADER="@KEDR_TEST_TEMP_DIR@/header.txt"
 TEST_FILE_DATA="@KEDR_TEST_TEMP_DIR@/data.txt"
 SYMBOL_LIST="@CMAKE_CURRENT_SOURCE_DIR@/data_symbols.txt"
 
-TEST_TRACE_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}.txt"
-EXPECTED_TRACE_FILE="@KEDR_TEST_EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}.txt"
+TEST_TRACE_FILE="${TEST_TMP_DIR}/${TARGET_FUNCTION_SHORT}${WITH_STACK}.txt"
+EXPECTED_TRACE_FILE="@KEDR_TEST_EXPECTED_DIR@/${TARGET_FUNCTION_SHORT}${WITH_STACK}.txt"
 
 SYMTAB_SCRIPT="@CMAKE_CURRENT_BINARY_DIR@/prepare_symbol_table.awk"
 COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"

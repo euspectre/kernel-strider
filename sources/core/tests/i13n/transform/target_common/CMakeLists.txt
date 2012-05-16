@@ -16,6 +16,9 @@ kbuild_add_module(${KMODULE_TARGET_NAME}
 	"${KEDR_TEST_ASM_DIR}/strings.S"
 	"${KEDR_TEST_ASM_DIR}/locked_updates2.S"
 	"${KEDR_TEST_ASM_DIR}/barriers_mem.S"
+	
+# Sources needed by other tests:
+	"${KEDR_TEST_ASM_DIR}/stack_access.S"
 
 # The following assembly sources contain functions that are not intended
 # to be executed but must be present in the module anyway.

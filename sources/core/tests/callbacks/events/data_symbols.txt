@@ -5,3 +5,4 @@ kedr_test_strings02
 kedr_test_strings03
 kedr_test_array_lu01
 kedr_test_array_bm01
+kedr_test_array_sa01

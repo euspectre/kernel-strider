@@ -49,3 +49,13 @@ kedr_test_add_script (mem_core.callbacks.events.06
 	test.sh "barriers_mem"
 )
 
+# Check that the accesses to the stack are filtered out by default
+kedr_test_add_script (mem_core.callbacks.stack_access.01
+	test.sh "stack_access"
+)
+
+# Check that the accesses to the stack are reported if 
+# 'process_stack_accesses' parameter is set to a non-zero value.
+kedr_test_add_script (mem_core.callbacks.stack_access.02
+	test.sh "stack_access" --with-stack
+)

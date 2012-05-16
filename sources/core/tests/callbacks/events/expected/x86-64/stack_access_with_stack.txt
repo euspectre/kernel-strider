@@ -1,0 +1,5 @@
+FENTRY name="kedr_test_stack_access"
+READ pc=kedr_test_stack_access+0x5 addr=0x0 size=8
+READ pc=kedr_test_stack_access+0x10 addr=kedr_test_array_sa01+0x0 size=8
+READ pc=kedr_test_stack_access+0x13 addr=kedr_test_array_sa01+0x8 size=8
+FEXIT name="kedr_test_stack_access"
