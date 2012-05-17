@@ -53,6 +53,12 @@ function load_symbols(   str, addr)
 			exit 1
 		}
 		
+		# Special treatment for the addresses on x86-64: the shell 
+		# seems not to be able to operate on them properly. 
+		# As the higher part is always 0xffffffff, we can safely cut
+		# it off.
+		sub("^ffffffff", "", addr)
+		
 		saddr[parts[2]] = addr;
 	} 
 	while (ret == 1)
@@ -95,6 +101,12 @@ function print_address(addr,   gt, sym, a, n, s)
 {
 	a = tolower(addr)
 	sub("^0x", "", a)
+
+	# Special treatment for the addresses on x86-64: the shell 
+	# seems not to be able to operate on them properly. 
+	# As the higher part is always 0xffffffff, we can safely cut
+	# it off.
+	sub("^ffffffff", "", a)
 		
 	gt = ""
 	for (sym in saddr) {
