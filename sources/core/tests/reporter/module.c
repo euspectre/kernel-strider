@@ -160,8 +160,8 @@ module_param(target_function, charp, S_IRUGO);
  * following events in this session will be skipped. 
  * The greater this parameter is, the more memory the module needs to 
  * contain the report. */
-unsigned int max_events = 65536;
-module_param(max_events, uint, S_IRUGO);
+unsigned long max_events = 65536;
+module_param(max_events, ulong, S_IRUGO);
 
 /* If non-zero, call pre/post, function entry/exit events as well as 
  * alloc/free, lock/unlock and signal/wait events will be reported. */
@@ -233,7 +233,11 @@ static int within_target_func = 0;
 static int restrict_to_func = 0;
 
 /* The number of events reported in the current session so far. */
-static unsigned int ecount = 0;
+static unsigned long ecount = 0;
+
+/* Becomes non-zero when 'ecount' becomes equal to or greater than 
+ * 'max_events'. */
+static int max_events_reached = 0;
 
 /* The start address of the target function. */
 static unsigned long target_start = 0;
@@ -995,8 +999,11 @@ work_func_mem_events(struct work_struct *work)
 	struct kr_work_mem_events *wme = container_of(work, 
 		struct kr_work_mem_events, work);
 	
-	if (!wme->events_happened)
+	if (!wme->events_happened) {
+		/* The work should have not been scheduled at all. */
+		WARN_ON_ONCE(1); 
 		goto out;
+	}
 	
 	if (report_block_enter) {
 		ret = debug_util_print(fmt_block, wme->events[0].tid, 
@@ -1299,6 +1306,7 @@ reset_counters(void)
 	target_start = 0;
 	target_tid = KEDR_ALL_THREADS;
 	ecount = 0;
+	max_events_reached = 0;
 }
 
 /* If the function is called not from on_load/on_unload handlers, 'wq_lock' 
@@ -1310,7 +1318,8 @@ reset_counters(void)
 static int
 report_event_allowed(unsigned long tid)
 {
-	if (ecount >= max_events)
+	max_events_reached |= (ecount > max_events);
+	if (max_events_reached)
 		return 0;
 	
 	if (target_module == NULL || 
@@ -1355,6 +1364,11 @@ on_load(struct kedr_event_handlers *eh, struct module *mod)
 static void 
 on_unload(struct kedr_event_handlers *eh, struct module *mod)
 {
+	pr_info(KEDR_MSG_PREFIX 
+		"Observed %lu event(s) in the module \"%s\". "
+		"At most %lu event(s) can be reported.\n",
+		ecount, module_name(mod), max_events);
+	
 	flush_workqueue(wq);
 	/* Reporting must have been finished for all the previous events
 	 * by now, so it is safe to reset 'target_module'. */
@@ -1379,6 +1393,7 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		within_target_func = 1;
 		target_tid = tid;
 		ecount = 0;
+		max_events_reached = 0;
 		
 		/* Add a command to the wq to clear the output */
 		work = kzalloc(sizeof(*work), GFP_ATOMIC);
@@ -1390,7 +1405,12 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		INIT_WORK(work, work_func_clear);
 		queue_work(wq, work);
 	}
-	if (!report_calls || !report_event_allowed(tid))
+
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	wof = kzalloc(sizeof(*wof), GFP_ATOMIC);
@@ -1400,7 +1420,6 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wof->tid = tid;
 	wof->func = (void *)func;
 	INIT_WORK(&wof->work, work_func_entry);
@@ -1418,7 +1437,12 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_func *wof = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	wof = kzalloc(sizeof(*wof), GFP_ATOMIC);
@@ -1428,7 +1452,6 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wof->tid = tid;
 	wof->func = (void *)func;
 	INIT_WORK(&wof->work, work_func_exit);
@@ -1453,7 +1476,12 @@ on_call_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_call *woc = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	woc = kzalloc(sizeof(*woc), GFP_ATOMIC);
@@ -1462,8 +1490,7 @@ on_call_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			"on_call_pre(): out of memory.\n");
 			goto out;
 	}
-	
-	++ecount;
+
 	woc->tid = tid;
 	woc->pc = (void *)pc;
 	woc->func = (void *)func;
@@ -1481,7 +1508,12 @@ on_call_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_call *woc = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	
+	if (!report_calls)
+		goto out;
+
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	woc = kzalloc(sizeof(*woc), GFP_ATOMIC);
@@ -1490,8 +1522,7 @@ on_call_post(struct kedr_event_handlers *eh, unsigned long tid,
 			"on_call_post(): out of memory.\n");
 			goto out;
 	}
-	
-	++ecount;
+
 	woc->tid = tid;
 	woc->pc = (void *)pc;
 	woc->func = (void *)func;
@@ -1540,11 +1571,12 @@ on_memory_event(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_mem_event_internal *e;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (wme == NULL || !report_mem || !report_event_allowed(tid) || 
-	    addr == 0)
+	if (wme == NULL || addr == 0 || !report_mem) 
 		goto out;
 		
 	++ecount;
+	if (!report_event_allowed(tid))
+		goto out;
 	
 	e = &wme->events[wme->events_happened];
 	++wme->events_happened;
@@ -1566,8 +1598,16 @@ end_memory_events(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_mem_events *wme = (struct kr_work_mem_events *)data;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (wme == NULL || !report_mem || !report_event_allowed(tid)) {
+	if (!report_mem || wme == NULL || wme->events_happened == 0) {
 		kfree(wme); /* just in case */
+		goto out;
+	}
+
+	if (report_block_enter) 
+		++ecount; /* "BLOCK_ENTER" */
+		
+	if (!report_event_allowed(tid)) {
+		kfree(wme);
 		goto out;
 	}
 	
@@ -1615,8 +1655,14 @@ on_locked_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_mem_events *wme = (struct kr_work_mem_events *)data;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (wme == NULL || !report_mem || !report_event_allowed(tid)) {
+	if (wme == NULL || !report_mem) {
 		kfree(wme); /* just in case */
+		goto out;
+	}
+	
+	++ecount;	
+	if (!report_event_allowed(tid)) {
+		kfree(wme);
 		goto out;
 	}
 	
@@ -1626,8 +1672,6 @@ on_locked_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 		kfree(wme);
 		goto out;
 	}
-	
-	++ecount;
 	
 	wme->events[0].addr = (void *)addr;
 	wme->events[0].size = size;
@@ -1677,8 +1721,14 @@ on_io_mem_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_mem_events *wme = (struct kr_work_mem_events *)data;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (wme == NULL || !report_mem || !report_event_allowed(tid)) {
+	if (wme == NULL || !report_mem) {
 		kfree(wme); /* just in case */
+		goto out;
+	}
+	
+	++ecount;
+	if (!report_event_allowed(tid)) {
+		kfree(wme);
 		goto out;
 	}
 	
@@ -1688,8 +1738,6 @@ on_io_mem_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 		kfree(wme);
 		goto out;
 	}
-	
-	++ecount;
 	
 	wme->events[0].addr = (void *)addr;
 	wme->events[0].size = size;
@@ -1709,7 +1757,11 @@ on_memory_barrier_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_barrier *wob = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_mem || !report_event_allowed(tid))
+	if (!report_mem)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	wob = kzalloc(sizeof(*wob), GFP_ATOMIC);
@@ -1719,7 +1771,6 @@ on_memory_barrier_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wob->tid = tid;
 	wob->pc = (void *)pc;
 	wob->btype = type;
@@ -1737,7 +1788,11 @@ on_memory_barrier_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_barrier *wob = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_mem || !report_event_allowed(tid))
+	if (!report_mem)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	wob = kzalloc(sizeof(*wob), GFP_ATOMIC);
@@ -1747,7 +1802,6 @@ on_memory_barrier_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wob->tid = tid;
 	wob->pc = (void *)pc;
 	wob->btype = type;
@@ -1766,7 +1820,11 @@ on_alloc_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_alloc_free *woaf = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 		
 	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
@@ -1776,7 +1834,6 @@ on_alloc_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	woaf->tid = tid;
 	woaf->pc = (void *)pc;
 	woaf->size = size;
@@ -1796,7 +1853,11 @@ on_alloc_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_alloc_free *woaf = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
@@ -1806,7 +1867,6 @@ on_alloc_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	woaf->tid = tid;
 	woaf->pc = (void *)pc;
 	woaf->size = size;
@@ -1828,7 +1888,11 @@ on_free_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_alloc_free *woaf = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
@@ -1838,7 +1902,6 @@ on_free_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	woaf->tid = tid;
 	woaf->pc = (void *)pc;
 	woaf->addr = addr;
@@ -1857,7 +1920,11 @@ on_free_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_alloc_free *woaf = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	woaf = kzalloc(sizeof(*woaf), GFP_ATOMIC);
@@ -1867,7 +1934,6 @@ on_free_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	woaf->tid = tid;
 	woaf->pc = (void *)pc;
 	woaf->addr = addr;
@@ -1887,7 +1953,11 @@ on_lock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_lock_unlock *wolu = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
@@ -1897,7 +1967,6 @@ on_lock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wolu->tid = tid;
 	wolu->pc = (void *)pc;
 	wolu->is_lock = 1;
@@ -1918,7 +1987,11 @@ on_lock_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_lock_unlock *wolu = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
@@ -1928,7 +2001,6 @@ on_lock_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wolu->tid = tid;
 	wolu->pc = (void *)pc;
 	wolu->is_lock = 1;
@@ -1950,7 +2022,11 @@ on_unlock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_lock_unlock *wolu = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
@@ -1960,7 +2036,6 @@ on_unlock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wolu->tid = tid;
 	wolu->pc = (void *)pc;
 	wolu->lock_id = lock_id;
@@ -1980,7 +2055,11 @@ on_unlock_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_lock_unlock *wolu = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wolu = kzalloc(sizeof(*wolu), GFP_ATOMIC);
@@ -1990,7 +2069,6 @@ on_unlock_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wolu->tid = tid;
 	wolu->pc = (void *)pc;
 	wolu->is_post = 1;
@@ -2012,7 +2090,11 @@ on_signal_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_signal_wait *wosw = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
@@ -2022,7 +2104,6 @@ on_signal_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wosw->tid = tid;
 	wosw->pc = (void *)pc;
 	wosw->obj_id = obj_id;
@@ -2044,7 +2125,11 @@ on_signal_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_signal_wait *wosw = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
@@ -2054,7 +2139,6 @@ on_signal_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wosw->tid = tid;
 	wosw->pc = (void *)pc;
 	wosw->obj_id = obj_id;
@@ -2077,7 +2161,11 @@ on_wait_pre(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_signal_wait *wosw = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
@@ -2087,7 +2175,6 @@ on_wait_pre(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wosw->tid = tid;
 	wosw->pc = (void *)pc;
 	wosw->obj_id = obj_id;
@@ -2108,7 +2195,11 @@ on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
 	struct kr_work_on_signal_wait *wosw = NULL;
 	
 	spin_lock_irqsave(&wq_lock, irq_flags);
-	if (!report_calls || !report_event_allowed(tid))
+	if (!report_calls)
+		goto out;
+	
+	++ecount;
+	if (!report_event_allowed(tid))
 		goto out;
 	
 	wosw = kzalloc(sizeof(*wosw), GFP_ATOMIC);
@@ -2118,7 +2209,6 @@ on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
 			goto out;
 	}
 	
-	++ecount;
 	wosw->tid = tid;
 	wosw->pc = (void *)pc;
 	wosw->obj_id = obj_id;
