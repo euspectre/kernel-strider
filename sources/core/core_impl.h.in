@@ -50,4 +50,11 @@ extern int process_stack_accesses;
  * to the user-space memory. */
 extern int process_um_accesses;
 
+/* This parameter controls event sampling. */
+extern unsigned int sampling_rate;
+
+//<>
+/*extern unsigned long blocks_total;
+extern unsigned long blocks_skipped;*/
+//<>
 #endif // CORE_IMPL_H_1628_INCLUDED

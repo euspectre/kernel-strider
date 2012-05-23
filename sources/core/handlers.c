@@ -134,18 +134,31 @@ static __used void __func ## _holder(void) 	\
 /* The operations that can be used in the instrumented code.
  * These functions are static because they should only be called only via 
  * the wrappers. The description of these functions is given in
- * internal_api.h in the comments for the respective wrappers. */
+ * handlers.h in the comments for the respective wrappers. */
 static __used unsigned long
 kedr_on_function_entry(unsigned long orig_func)
 {
 	struct kedr_local_storage *ls;
-	
+		
 	ls = ls_allocator->alloc_ls(ls_allocator);
 	if (ls == NULL)
 		return 0;
 	
 	ls->orig_func = orig_func;
 	ls->tid = kedr_get_thread_id();
+	
+	if (sampling_rate != 0) {
+		long tindex;
+		tindex = kedr_get_tindex();
+		if (tindex < 0) {
+			pr_warning(KEDR_MSG_PREFIX 
+"Failed to obtain index of the thread with ID 0x%lx, error code: %d\n",
+				ls->tid, (int)tindex);
+			ls_allocator->free_ls(ls_allocator, ls);
+			return 0;
+		}
+		ls->tindex = (unsigned long)tindex;
+	}
 	
 	if (eh_current->on_function_entry != NULL)
 		eh_current->on_function_entry(eh_current, ls->tid, 
@@ -335,6 +348,47 @@ report_events(struct kedr_local_storage *ls, void *data)
 	}
 }
 
+/* Returns 0 if the events from the current block should be discarded, 
+ * non-zero if they should be reported. 
+ * Sampling is taken into account here, sampling counters are updated as 
+ * needed. */
+static int
+should_report_events(struct kedr_local_storage *ls, 
+	struct kedr_block_info *info)
+{
+	s32 num_to_skip;
+	u32 counter;
+	struct kedr_sampling_counters *sc;
+	
+	//<>
+	/*++blocks_total;*/
+	//<>
+	
+	if (sampling_rate == 0)
+		return 1; /* Sampling is disabled, report all events. */
+	
+	sc = &info->scounters[ls->tindex];
+	
+	/* Find out how many times the events collected for the block should
+	 * still be discarded. Racy but OK as some inaccuracy of the 
+	 * counters makes no harm here. */
+	num_to_skip = --sc->num_to_skip; 
+	if (num_to_skip > 0) {
+		//<>
+		/*++blocks_skipped;*/
+		//<>
+		return 0;
+	}
+	
+	/* Update the execution counter, adjust 'num_to_skip' for the next
+	 * round. Also racy, but OK. */
+	counter = sc->counter;
+	num_to_skip = (counter >> (32 - sampling_rate)) + 1;
+	sc->num_to_skip = num_to_skip;
+	sc->counter = counter + num_to_skip;
+	return 1;
+}
+
 static __used void
 kedr_on_common_block_end(unsigned long storage)
 {
@@ -344,15 +398,18 @@ kedr_on_common_block_end(unsigned long storage)
 	
 	void *data = NULL;
 	
-	if (eh_current->begin_memory_events != NULL) {
-		eh_current->begin_memory_events(eh_current, ls->tid, 
-			info->max_events, &data);
+	if (should_report_events(ls, info)) {
+		if (eh_current->begin_memory_events != NULL) {
+			eh_current->begin_memory_events(eh_current, ls->tid, 
+				info->max_events, &data);
+		}
+		
+		report_events(ls, data);
+		
+		if (eh_current->end_memory_events != NULL)
+			eh_current->end_memory_events(eh_current, ls->tid, 
+				data);
 	}
-	
-	report_events(ls, data);
-	
-	if (eh_current->end_memory_events != NULL)
-		eh_current->end_memory_events(eh_current, ls->tid, data);
 	
 	/* Prepare the storage for later use. */
 	memset(&ls->values[0], 0, 

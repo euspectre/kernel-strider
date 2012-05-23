@@ -149,6 +149,13 @@ struct kedr_local_storage
 	 * these in 'data' (or allocate a structure and save its address
 	 * in data). */
 	unsigned long data;
+
+	/* Index of the thread, an integer number assigned to each thread in
+	 * the order the thread enters the target module.
+	 * This field is used for sampling only. If sampling is disabled
+	 * (see the description of 'sampling_rate' parameter of the core),
+	 * this field will be 0. */
+	unsigned long tindex;
 };
 
 /* The allocator of kedr_local_storage instances. 

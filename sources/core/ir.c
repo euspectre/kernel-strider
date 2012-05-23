@@ -1333,6 +1333,8 @@ kedr_block_info_create(unsigned long max_events)
 	bi = kzalloc(s, GFP_KERNEL);
 	if (bi == NULL)
 		return NULL;
+	/* [NB] Because kzalloc() is used, the sampling counters are also 
+	 * zero by default. */
 
 	bi->max_events = max_events;
 	return bi;

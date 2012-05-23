@@ -1,0 +1,131 @@
+#!/bin/sh
+
+########################################################################
+# This test accesses the fake devices (provided by the sample target 
+# module) many times to make sure many threads will enter the target one
+# after another. This may help reveal problems in assigning indexes to
+# the threads when sampling is active. No explicit checks are performed
+# in the test though, therefore the test is "shallow".
+# 
+# Usage: 
+#   sh test_shallow.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		sh "${TARGET_CONTROL_SCRIPT}" unload
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	# 'sampling_rate' is 1 simply to make the relevant parts of the core
+	# execute, including the assignment of thread indexes, etc. Note that
+	# sampling itself is not checked in this test.
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" sampling_rate=1 || exit 1
+
+	sh "${TARGET_CONTROL_SCRIPT}" load
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	ii=0
+	while test ${ii} -lt ${NUM_REPEAT}; do
+		echo "Something ${ii}${ii}${ii}${ii}\n" > "${DEV_FILE}" 2> /dev/null
+		if test $? -ne 0; then
+			printf "Failed to write to ${DEV_FILE}.\n"
+			cleanupAll
+			exit 1
+		fi
+		
+		dd if="${DEV_FILE}" of=/dev/null bs=10 count=20 2> /dev/null
+		if test $? -ne 0; then
+			printf "Failed to read from ${DEV_FILE}.\n"
+			cleanupAll
+			exit 1
+		fi
+		
+		ii=$((${ii}+1))
+	done
+	
+	sh "${TARGET_CONTROL_SCRIPT}" unload
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage:\n\tsh $0\n"
+	exit 1
+fi
+
+# How many times to repeat operations with the target. Should be greater
+# than the maximum size of the thread index table in the core (1024 * 8 = 
+# 8192 bytes).
+NUM_REPEAT=9999
+DEV_FILE="/dev/cfake0"
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="kedr_sample_target"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
+TARGET_CONTROL_SCRIPT="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}"
+
+checkPrereqs
+
+printf "Core module: ${CORE_MODULE}\n"
+printf "Target module: ${TARGET_MODULE}\n"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

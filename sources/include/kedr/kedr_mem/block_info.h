@@ -5,6 +5,27 @@
 #define BLOCK_INFO_H_1607_INCLUDED
 
 #include <linux/list.h>
+/* ====================================================================== */
+
+/* Storing sampling information for each thread can be expensive w.r.t. 
+ * kernel memory. Instead, we store data for a fixed number of normal 
+ * threads ("normal" means the threads are not IRQ handling threads or 
+ * pseudo threads) as well as for a fixed number of IRQ "threads". A thread 
+ * index modulo KEDR_SAMPLING_NUM_TIDS determines where the data for
+ * a partucular normal thread should go, similar for IRQ "threads" and 
+ * KEDR_SAMPLING_NUM_TIDS_IRQ. */
+
+/* How many counters to maintain for sampling data in the "normal" 
+ * threads. */
+#define KEDR_SAMPLING_NUM_TIDS 8
+
+/* How many counters to maintain for sampling data in the IRQ "threads". */
+#define KEDR_SAMPLING_NUM_TIDS_IRQ 4
+
+/* Total number of counters for the sampling data. */
+#define KEDR_SAMPLING_NUM_COUNTERS \
+	(KEDR_SAMPLING_NUM_TIDS + KEDR_SAMPLING_NUM_TIDS_IRQ)
+/* ====================================================================== */
 
 /* The data record containing information (known at the instrumentation 
  * phase) about a memory access event. Note that the type of the event 
@@ -28,6 +49,20 @@ struct kedr_mem_event
 	 * time is stored here, for convenience. The full size of the 
 	 * memory area will be determined in runtime in this case. */
 	unsigned long size; 
+};
+
+/* Sampling counters.
+ * [NB] Signedness matters. The counters can be accessed without 
+ * synchronization. Racy, but acceptable. */
+struct kedr_sampling_counters
+{
+	/* Execution counter for the block. It is OK if it overflows. */
+	u32 counter; 
+	
+	/* How may times to skip reporting this block. If this counter 
+	 * becomes 0 or less, the events from the block should be reported.
+	 */
+	s32 num_to_skip; 
 };
 
 /* Information known at the instrumentation phase about a block of code. 
@@ -70,6 +105,10 @@ struct kedr_block_info
 	/* [NB] An instruction of type XY (MOVS, CMPS) produces two memory
 	 * events rather than just one. Therefore, 2 bits in each mask 
 	 * correspond to such instruction. */
+	
+	/* Sampling counters for the threads with different indexes. The 
+	 * index of a thread can be used as an index into this array. */
+	struct kedr_sampling_counters scounters[KEDR_SAMPLING_NUM_COUNTERS];
 	
 	/* (must be the last one in the structure) 
 	 * When kedr_block_info structure is created, the allocated memory 

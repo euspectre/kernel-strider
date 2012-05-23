@@ -37,6 +37,7 @@
 #include "module_ms_alloc.h"
 #include "i13n.h"
 #include "hooks.h"
+#include "tid.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -71,6 +72,44 @@ module_param(process_stack_accesses, int, S_IRUGO);
  * memory. If it is 0, such accesses will not be reported. */
 int process_um_accesses = 0;
 module_param(process_um_accesses, int, S_IRUGO);
+
+/* This parameter controls sampling technique used when reporting memory
+ * accesses made in the common blocks.
+ * 
+ * "Sampling" means that only part of the memory accesses made in a region 
+ * of code is going to be reported. This allows to reduce the intensity of 
+ * the event stream as well as the size of an event trace without missing 
+ * too many races (hopefully).
+ * 
+ * This is similar to the sampling technique used by ThreadSanitizer and
+ * LiteRace:
+ *	http://code.google.com/p/data-race-test/wiki/LiteRaceSampling
+ *	http://www.cs.ucla.edu/~dlmarino/pubs/pldi09.pdf
+ * Similar to ThreadSanitizer, common blocks are considered during sampling
+ * rather than the whole functions as it is implemented in LiteRace.
+ *
+ * The more number of times a block of code is executed in a given thread,
+ * the more events will be skipped when reporting memory accesses performed
+ * in this block in that thread.
+ *
+ * sampling_rate == 0 means that the sampling is disabled. To enable it, set
+ * 'sampling_rate' to 1, 2, ... or 31. The higher the value, the more 
+ * "aggressive" the sampling will be (the more events are to be skipped).
+ *
+ * [NB] This parameter does not affect reporting of memory accesses in
+ * locked operations, I/O operations that access memory, function calls, 
+ * etc. Only the memory accesses from the common blocks are considered. 
+ *
+ * Currently, it is not recommended to use sampling if more than several 
+ * hundreds of threads are going to execute in the target module 
+ * long enough simultaneously. One of the limiting factors is the mechanism 
+ * to obtain thread indexes (see tid.c). Note that everything should work
+ * even if there are more threads but I cannot say how fast the execution 
+ * will be in this case. At least, the slow path in the mechanism that 
+ * obtains thread index for a thread ID will trigger more often. Not sure if
+ * the performance degradation can be significant here. */
+unsigned int sampling_rate = 0;
+module_param(sampling_rate, uint, S_IRUGO);
 /* ====================================================================== */
 
 static struct kedr_event_handlers *eh_default = NULL;
@@ -364,6 +403,11 @@ kedr_get_event_handlers(void)
 EXPORT_SYMBOL(kedr_get_event_handlers);
 /* ====================================================================== */
 
+//<>
+/*unsigned long blocks_total = 0;
+unsigned long blocks_skipped = 0;*/
+//<>
+
 /* Module filter.
  * Should return nonzero if the core should watch for the module with the
  * specified name. We are interested in analyzing only the module with that 
@@ -409,6 +453,11 @@ on_module_load(struct module *mod)
 		return;
 	}
 	
+	//<>
+	/*blocks_total = 0;
+	blocks_skipped = 0;*/
+	//<>
+	
 	/* Call the event handler, if set. */
 	if (eh_current->on_target_loaded != NULL)
 		eh_current->on_target_loaded(eh_current, mod);
@@ -429,6 +478,11 @@ on_module_unload(struct module *mod)
 	pr_info(KEDR_MSG_PREFIX
 		"Target module \"%s\" is going to unload.\n",
 		module_name(mod));
+	
+	//<>
+	/*pr_info("[DBG] Blocks total: %lu, skipped: %lu\n", blocks_total,
+		blocks_skipped);*/
+	//<>
 	
 	/* If we failed to lock the providers in memory when the target had
 	 * just loaded or failed to perform the instrumentation then, the 
@@ -699,6 +753,14 @@ core_init_module(void)
 		return -EINVAL;
 	}
 	
+	if (sampling_rate > 31) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Parameter \"sampling_rate\" has an invalid value (%u). "
+		"Must be 0 .. 31.\n", 
+			sampling_rate);
+		return -EINVAL;
+	}
+	
 	ret = init_defaults();
 	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -729,6 +791,10 @@ core_init_module(void)
 	if (ret != 0)
 		goto out_cleanup_sections;
 	
+	ret = kedr_init_tid_sampling();
+	if (ret != 0)
+		goto out_cleanup_alloc;
+	
 	/* [NB] If something else needs to be initialized, do it before 
 	 * registering our callbacks with the notification system.
 	 * Do not forget to re-check labels in the error path after that. */
@@ -739,7 +805,7 @@ core_init_module(void)
 	{
 		pr_warning(KEDR_MSG_PREFIX 
 			"Failed to lock module_mutex\n");
-		goto out_cleanup_alloc;
+		goto out_cleanup_tid;
 	}
     
 	ret = register_module_notifier(&detector_nb);
@@ -785,6 +851,9 @@ out_unreg_notifier:
 out_unlock:
 	mutex_unlock(&module_mutex);
 
+out_cleanup_tid:
+	kedr_cleanup_tid_sampling();
+
 out_cleanup_alloc:
 	kedr_cleanup_module_ms_alloc();
 	
@@ -807,10 +876,9 @@ core_exit_module(void)
 	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
 	
+	kedr_cleanup_tid_sampling();
 	kedr_cleanup_module_ms_alloc();
 	kedr_cleanup_section_subsystem();
-	
-	// TODO: more cleanup here
 	
 	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
@@ -819,4 +887,4 @@ core_exit_module(void)
 
 module_init(core_init_module);
 module_exit(core_exit_module);
-/* ================================================================ */
+/* ====================================================================== */

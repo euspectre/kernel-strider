@@ -35,6 +35,8 @@
  * When the local storage is initialized, all its fields will be zeroed
  * except the following ones:
  *   'tid' - it will contain the id of the current thread;
+ *   'tindex' - it will contain the index of the current thread if sampling
+ *   is enabled, 0 otherwise;
  *   'orig_func' - it will contain the address of the original instance of 
  *   the function (passed to the function as a parameter).
  *  
