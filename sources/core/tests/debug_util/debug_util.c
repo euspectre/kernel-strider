@@ -8,6 +8,7 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
+#include <linux/bug.h>	/* BUG_ON */
 #include <asm/uaccess.h>
 
 #include "debug_util.h"

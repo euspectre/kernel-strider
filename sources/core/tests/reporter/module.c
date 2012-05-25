@@ -135,6 +135,7 @@
 #include <linux/kallsyms.h>
 #include <linux/vmalloc.h>
 #include <linux/list.h>
+#include <linux/bug.h> /* BUG_ON */
 #include <asm/uaccess.h>
 
 #include <kedr/kedr_mem/core_api.h>

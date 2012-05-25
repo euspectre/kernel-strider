@@ -13,6 +13,7 @@
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/bug.h> /* BUG_ON */
 
 #include "util.h"
 

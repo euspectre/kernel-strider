@@ -3,6 +3,8 @@
 #ifndef CORE_IMPL_H_1628_INCLUDED
 #define CORE_IMPL_H_1628_INCLUDED
 
+#include <linux/bug.h> /* BUG_ON */
+
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/asm/insn.h> /* instruction analysis facilities */
