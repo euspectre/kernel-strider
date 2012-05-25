@@ -112,6 +112,19 @@ unsigned int sampling_rate = 0;
 module_param(sampling_rate, uint, S_IRUGO);
 /* ====================================================================== */
 
+/* Total number of blocks containing potential memory accesses and the 
+ * number of blocks skipped because of sampling, respectively. 
+ * These counters may be incremented and output without synchronization. 
+ * As they are only intended for gathering statistics and for debugging, 
+ * some inaccuracies due to races are acceptable. */
+size_t blocks_total = 0;
+size_t blocks_skipped = 0;
+
+/* Files for these counters in debugfs. */
+static struct dentry *blocks_total_file = NULL;
+static struct dentry *blocks_skipped_file = NULL;
+/* ====================================================================== */
+
 static struct kedr_event_handlers *eh_default = NULL;
 
 /* The current set of event handlers. If no set is registered, 'eh_current' 
@@ -403,11 +416,6 @@ kedr_get_event_handlers(void)
 EXPORT_SYMBOL(kedr_get_event_handlers);
 /* ====================================================================== */
 
-//<>
-/*unsigned long blocks_total = 0;
-unsigned long blocks_skipped = 0;*/
-//<>
-
 /* Module filter.
  * Should return nonzero if the core should watch for the module with the
  * specified name. We are interested in analyzing only the module with that 
@@ -453,10 +461,8 @@ on_module_load(struct module *mod)
 		return;
 	}
 	
-	//<>
-	/*blocks_total = 0;
-	blocks_skipped = 0;*/
-	//<>
+	blocks_total = 0;
+	blocks_skipped = 0;
 	
 	/* Call the event handler, if set. */
 	if (eh_current->on_target_loaded != NULL)
@@ -478,11 +484,6 @@ on_module_unload(struct module *mod)
 	pr_info(KEDR_MSG_PREFIX
 		"Target module \"%s\" is going to unload.\n",
 		module_name(mod));
-	
-	//<>
-	/*pr_info("[DBG] Blocks total: %lu, skipped: %lu\n", blocks_total,
-		blocks_skipped);*/
-	//<>
 	
 	/* If we failed to lock the providers in memory when the target had
 	 * just loaded or failed to perform the instrumentation then, the 
@@ -738,6 +739,47 @@ init_defaults(void)
 	return 0;
 }
 
+static void
+remove_debugfs_files(void)
+{
+	if (blocks_total_file != NULL)
+		debugfs_remove(blocks_total_file);
+	if (blocks_skipped_file != NULL)
+		debugfs_remove(blocks_skipped_file);
+}
+
+static int __init
+create_debugfs_files(void)
+{
+	int ret = 0;
+	const char *name = "ERROR";
+	
+	BUG_ON(debugfs_dir_dentry == NULL);
+	
+	blocks_total_file = debugfs_create_size_t("blocks_total", S_IRUGO, 
+		debugfs_dir_dentry, &blocks_total);
+	if (blocks_total_file == NULL) {
+		name = "blocks_total";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	blocks_skipped_file = debugfs_create_size_t("blocks_skipped", 
+		S_IRUGO, debugfs_dir_dentry, &blocks_skipped);
+	if (blocks_skipped_file == NULL) {
+		name = "blocks_skipped";
+		ret = -ENOMEM;
+		goto out;
+	}
+	return 0;
+out:
+	pr_warning(KEDR_MSG_PREFIX 
+		"Failed to create a file in debugfs (\"%s\").\n",
+		name);
+	remove_debugfs_files();
+	return ret;
+}
+
 static int __init
 core_init_module(void)
 {
@@ -783,9 +825,13 @@ core_init_module(void)
 		goto out_free_eh;
 	}
 	
-	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
+	ret = create_debugfs_files();
 	if (ret != 0)
 		goto out_rmdir;
+	
+	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
+	if (ret != 0)
+		goto out_remove_files;
 	
 	ret = kedr_init_module_ms_alloc();
 	if (ret != 0)
@@ -860,6 +906,9 @@ out_cleanup_alloc:
 out_cleanup_sections:
 	kedr_cleanup_section_subsystem();
 
+out_remove_files:
+	remove_debugfs_files();
+
 out_rmdir:
 	debugfs_remove(debugfs_dir_dentry);
 
@@ -880,6 +929,7 @@ core_exit_module(void)
 	kedr_cleanup_module_ms_alloc();
 	kedr_cleanup_section_subsystem();
 	
+	remove_debugfs_files();
 	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
 	return;

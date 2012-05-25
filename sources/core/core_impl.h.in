@@ -53,8 +53,9 @@ extern int process_um_accesses;
 /* This parameter controls event sampling. */
 extern unsigned int sampling_rate;
 
-//<>
-/*extern unsigned long blocks_total;
-extern unsigned long blocks_skipped;*/
-//<>
+/* Total number of blocks containing potential memory accesses and the 
+ * number of blocks skipped because of sampling, respectively. */
+extern size_t blocks_total;
+extern size_t blocks_skipped;
+
 #endif // CORE_IMPL_H_1628_INCLUDED

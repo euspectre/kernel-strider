@@ -360,10 +360,7 @@ should_report_events(struct kedr_local_storage *ls,
 	u32 counter;
 	struct kedr_sampling_counters *sc;
 	
-	//<>
-	/*++blocks_total;*/
-	//<>
-	
+	++blocks_total;
 	if (sampling_rate == 0)
 		return 1; /* Sampling is disabled, report all events. */
 	
@@ -374,9 +371,7 @@ should_report_events(struct kedr_local_storage *ls,
 	 * counters makes no harm here. */
 	num_to_skip = --sc->num_to_skip; 
 	if (num_to_skip > 0) {
-		//<>
-		/*++blocks_skipped;*/
-		//<>
+		++blocks_skipped;
 		return 0;
 	}
 	
