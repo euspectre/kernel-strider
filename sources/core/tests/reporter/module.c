@@ -165,13 +165,13 @@ module_param(max_events, ulong, S_IRUGO);
 
 /* If non-zero, call pre/post, function entry/exit events as well as 
  * alloc/free, lock/unlock and signal/wait events will be reported. */
-int report_calls = 0;
+int report_calls = 1;
 module_param(report_calls, int, S_IRUGO);
 
 /* If non-zero, memory access events as well as memory barrier events
  * (incl. xFENCE, locked updates as well as other serializing operations)
  * will be reported. */
-int report_mem = 0;
+int report_mem = 1;
 module_param(report_mem, int, S_IRUGO);
 
 /* If reporting of memory events is enabled and 'report_block_enter'
@@ -179,13 +179,13 @@ module_param(report_mem, int, S_IRUGO);
  * at the entry of each block with memory events. To be exact, the event 
  * will be reported at the first memory access in that block actually 
  * executed. */
-int report_block_enter = 0;
+int report_block_enter = 1;
 module_param(report_block_enter, int, S_IRUGO);
 
 /* If non-zero, the reporter will try to resolve the memory addresses in
  * the report, i.e. determine the names of the corresponding symbols, 
  * etc. */
-int resolve_symbols = 1;
+int resolve_symbols = 0;
 module_param(resolve_symbols, int, S_IRUGO);
 
 /* If symbol resolution is enabled and this parameter is non-zero, "(null)"
@@ -198,6 +198,13 @@ module_param(zero_unknown, int, S_IRUGO);
 /* A directory for the module in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
 const char *debugfs_dir_name = "kedr_test_reporter";
+
+/* Files for the counters */
+static struct dentry *ecount_file = NULL;
+static struct dentry *ecount_call_file = NULL;
+static struct dentry *ecount_mem_file = NULL;
+static struct dentry *ecount_block_file = NULL;
+static struct dentry *ecount_sync_file = NULL;
 /* ====================================================================== */
 
 /* A single-threaded (ordered) workqueue where the requests to handle the 
@@ -233,7 +240,17 @@ static int within_target_func = 0;
 static int restrict_to_func = 0;
 
 /* The number of events reported in the current session so far. */
-static unsigned long ecount = 0;
+static size_t ecount = 0;
+
+/* The number of call-related events, memory access and memory barrier 
+ * events, "block enter" events and synchronization events (signal/wait, 
+ * lock/unlock), respectively, observed so far which are allowed to be 
+ * reported.
+ * See also the corresponding 'report_*' parameters of the reporter. */
+static size_t ecount_call = 0;
+static size_t ecount_mem = 0;
+static size_t ecount_block = 0;
+static size_t ecount_sync = 0;
 
 /* Becomes non-zero when 'ecount' becomes equal to or greater than 
  * 'max_events'. */
@@ -1303,10 +1320,13 @@ out:
 static void
 reset_counters(void)
 {
-	target_start = 0;
-	target_tid = KEDR_ALL_THREADS;
 	ecount = 0;
 	max_events_reached = 0;
+	
+	ecount_call = 0;
+	ecount_mem = 0;
+	ecount_block = 0;
+	ecount_sync = 0;
 }
 
 /* If the function is called not from on_load/on_unload handlers, 'wq_lock' 
@@ -1318,7 +1338,7 @@ reset_counters(void)
 static int
 report_event_allowed(unsigned long tid)
 {
-	max_events_reached |= (ecount > max_events);
+	max_events_reached |= (ecount > (size_t)max_events);
 	if (max_events_reached)
 		return 0;
 	
@@ -1339,6 +1359,9 @@ on_load(struct kedr_event_handlers *eh, struct module *mod)
 	int ret;
 	
 	reset_counters();
+	target_start = 0;
+	target_tid = KEDR_ALL_THREADS;
+	
 	debug_util_clear();
 	target_module = mod;
 	
@@ -1364,11 +1387,6 @@ on_load(struct kedr_event_handlers *eh, struct module *mod)
 static void 
 on_unload(struct kedr_event_handlers *eh, struct module *mod)
 {
-	pr_info(KEDR_MSG_PREFIX 
-		"Observed %lu event(s) in the module \"%s\". "
-		"At most %lu event(s) can be reported.\n",
-		ecount, module_name(mod), max_events);
-	
 	flush_workqueue(wq);
 	/* Reporting must have been finished for all the previous events
 	 * by now, so it is safe to reset 'target_module'. */
@@ -1392,8 +1410,7 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		WARN_ON_ONCE(within_target_func != 0);
 		within_target_func = 1;
 		target_tid = tid;
-		ecount = 0;
-		max_events_reached = 0;
+		reset_counters();
 		
 		/* Add a command to the wq to clear the output */
 		work = kzalloc(sizeof(*work), GFP_ATOMIC);
@@ -1410,6 +1427,7 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1442,6 +1460,7 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1481,6 +1500,7 @@ on_call_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1513,6 +1533,7 @@ on_call_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1575,6 +1596,7 @@ on_memory_event(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 		
 	++ecount;
+	++ecount_mem;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1603,8 +1625,10 @@ end_memory_events(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	}
 
-	if (report_block_enter) 
+	if (report_block_enter) {
 		++ecount; /* "BLOCK_ENTER" */
+		++ecount_block;
+	}
 		
 	if (!report_event_allowed(tid)) {
 		kfree(wme);
@@ -1660,7 +1684,8 @@ on_locked_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	}
 	
-	++ecount;	
+	++ecount;
+	++ecount_mem;
 	if (!report_event_allowed(tid)) {
 		kfree(wme);
 		goto out;
@@ -1727,6 +1752,7 @@ on_io_mem_op_post(struct kedr_event_handlers *eh, unsigned long tid,
 	}
 	
 	++ecount;
+	++ecount_mem;
 	if (!report_event_allowed(tid)) {
 		kfree(wme);
 		goto out;
@@ -1761,6 +1787,7 @@ on_memory_barrier_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_mem;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1792,6 +1819,7 @@ on_memory_barrier_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_mem;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1824,6 +1852,7 @@ on_alloc_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 		
@@ -1857,6 +1886,7 @@ on_alloc_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1892,6 +1922,7 @@ on_free_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1924,6 +1955,7 @@ on_free_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_call;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1957,6 +1989,7 @@ on_lock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -1991,6 +2024,7 @@ on_lock_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2026,6 +2060,7 @@ on_unlock_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2059,6 +2094,7 @@ on_unlock_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2094,6 +2130,7 @@ on_signal_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2129,6 +2166,7 @@ on_signal_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2165,6 +2203,7 @@ on_wait_pre(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2199,6 +2238,7 @@ on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
 		goto out;
 	
 	++ecount;
+	++ecount_sync;
 	if (!report_event_allowed(tid))
 		goto out;
 	
@@ -2254,13 +2294,100 @@ static struct kedr_event_handlers eh = {
 };
 /* ====================================================================== */
 
+static void 
+test_remove_debugfs_files(void)
+{
+	if (symtab_file != NULL)
+		debugfs_remove(symtab_file);
+	
+	if (ecount_file != NULL)
+		debugfs_remove(ecount_file);
+	if (ecount_call_file != NULL)
+		debugfs_remove(ecount_call_file);
+	if (ecount_mem_file != NULL)
+		debugfs_remove(ecount_mem_file);
+	if (ecount_block_file != NULL)
+		debugfs_remove(ecount_block_file);
+	if (ecount_sync_file != NULL)
+		debugfs_remove(ecount_sync_file);
+	
+}
+
+static int __init
+test_create_debugfs_files(void)
+{
+	int ret = 0;
+	const char *name = "ERROR";
+	
+	BUG_ON(debugfs_dir_dentry == NULL);
+	
+	/* The directory for the reporter has already been created in 
+	 * debugfs (dentry is not NULL). So we do not need to check whether
+	 * debugfs is enabled in the kernel. */
+	symtab_file = debugfs_create_file(symtab_file_name, 
+		S_IWUSR | S_IWGRP, debugfs_dir_dentry, NULL, 
+		&symtab_file_ops);
+	if (symtab_file == NULL) {
+		name = symtab_file_name;
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ecount_file = debugfs_create_size_t("ecount", S_IRUGO, 
+		debugfs_dir_dentry, &ecount);
+	if (ecount_file == NULL) {
+		name = "ecount";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ecount_call_file = debugfs_create_size_t("ecount_call", S_IRUGO, 
+		debugfs_dir_dentry, &ecount_call);
+	if (ecount_call_file == NULL) {
+		name = "ecount_call";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ecount_mem_file = debugfs_create_size_t("ecount_mem", S_IRUGO, 
+		debugfs_dir_dentry, &ecount_mem);
+	if (ecount_mem_file == NULL) {
+		name = "ecount_mem";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ecount_block_file = debugfs_create_size_t("ecount_block", S_IRUGO, 
+		debugfs_dir_dentry, &ecount_block);
+	if (ecount_block_file == NULL) {
+		name = "ecount_block";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
+	ecount_sync_file = debugfs_create_size_t("ecount_sync", S_IRUGO, 
+		debugfs_dir_dentry, &ecount_sync);
+	if (ecount_sync_file == NULL) {
+		name = "ecount_sync";
+		ret = -ENOMEM;
+		goto out;
+	}
+	return 0;
+out:
+	pr_warning(KEDR_MSG_PREFIX 
+		"Failed to create a file in debugfs (\"%s\").\n",
+		name);
+	test_remove_debugfs_files();
+	return ret;
+}
+
 static void __exit
 test_cleanup_module(void)
 {
 	kedr_unregister_event_handlers(&eh);
 	
 	destroy_workqueue(wq);
-	debugfs_remove(symtab_file);
+	test_remove_debugfs_files();
 	debug_util_fini();
 	debugfs_remove(debugfs_dir_dentry);
 	symtab_cleanup();
@@ -2298,16 +2425,9 @@ test_init_module(void)
 	if (ret != 0)
 		goto out_rmdir;
 	
-	symtab_file = debugfs_create_file(symtab_file_name, 
-		S_IWUSR | S_IWGRP, debugfs_dir_dentry, NULL, 
-		&symtab_file_ops);
-	if (symtab_file == NULL) {
-		pr_warning(KEDR_MSG_PREFIX 
-			"Failed to create a file in debugfs (\"%s\").\n",
-			symtab_file_name);
-		ret = -ENOMEM;
+	ret = test_create_debugfs_files();
+	if (ret != 0)
 		goto out_clean_debug_util;
-	}
 	
 	wq = create_singlethread_workqueue(wq_name);
 	if (wq == NULL) {
@@ -2315,7 +2435,7 @@ test_init_module(void)
 			"Failed to create workqueue \"%s\"\n",
 			wq_name);
 		ret = -ENOMEM;
-		goto out_del_symtab_file;
+		goto out_del_files;
 	}
 	
 	/* [NB] Register event handlers only after everything else has 
@@ -2328,8 +2448,8 @@ test_init_module(void)
 
 out_clean_all:
 	destroy_workqueue(wq);
-out_del_symtab_file:
-	debugfs_remove(symtab_file);
+out_del_files:
+	test_remove_debugfs_files();
 out_clean_debug_util:	
 	debug_util_fini();
 out_rmdir:

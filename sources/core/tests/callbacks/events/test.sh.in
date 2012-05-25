@@ -116,7 +116,8 @@ doTest()
 
 	/sbin/insmod "${REPORTER_MODULE}" \
 		target_function="${TARGET_FUNCTION}" \
-		report_calls=1 report_mem=1 zero_unknown=1
+		report_calls=1 report_mem=1 zero_unknown=1 report_block_enter=0 \
+		resolve_symbols=1
 	if test $? -ne 0; then
 		printf "Failed to load the reporter module\n"
 		cleanupAll
