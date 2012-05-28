@@ -5,7 +5,11 @@
 	prepare_args.pre =>>
 		const substring_t *s = 
 			(const substring_t *)KEDR_LS_ARG1(ls);
-		size = (unsigned long)(s->to - s->from + 1);
+		if (s != NULL)
+			size = (unsigned long)(s->to - s->from + 1);
+		else 
+			size = 0;
+		
 		/* Store 'size' in the local storage for later use */
 		ls->data = size;
 	<<
@@ -21,12 +25,12 @@
 		const substring_t *s = 
 			(const substring_t *)KEDR_LS_ARG1(ls);
 		unsigned long src_addr;
-		src_addr = (unsigned long)s->from;
+		src_addr = (s != NULL ? (unsigned long)s->from : 0);
 		
 		size = ls->data;
 		addr = KEDR_LS_RET_VAL(ls);
 		
-		if (addr != 0) {
+		if (src_addr != 0 && addr != 0) {
 			if (eh->begin_memory_events != NULL)
 				eh->begin_memory_events(eh, ls->tid, 2, &data);
 			

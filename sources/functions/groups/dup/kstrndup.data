@@ -5,7 +5,12 @@
 	prepare_args.pre =>>
 		const char *src = (const char *)KEDR_LS_ARG1(ls);
 		size_t max_len = (size_t)KEDR_LS_ARG2(ls);
-		size = (unsigned long)strnlen(src, max_len) + 1;
+		
+		if (src != NULL)
+			size = (unsigned long)strnlen(src, max_len) + 1;
+		else 
+			size = 0;
+		
 		/* Store 'size' in the local storage for later use */
 		ls->data = size;
 	<<
@@ -23,7 +28,7 @@
 		size = ls->data;
 		addr = KEDR_LS_RET_VAL(ls);
 		
-		if (addr != 0 && size != 0) {
+		if (src_addr != 0 && addr != 0 && size != 0) {
 			if (eh->begin_memory_events != NULL)
 				eh->begin_memory_events(eh, ls->tid, 2, &data);
 			

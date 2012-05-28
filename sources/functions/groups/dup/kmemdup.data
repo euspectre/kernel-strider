@@ -15,11 +15,18 @@
 		/* Record the copying. */
 		void *data = NULL;
 		unsigned long src_addr = KEDR_LS_ARG1(ls);
+		/* [NB] I have encountered situations where NULL is 
+		 * passed to a function like this one as the address
+		 * of the source memory area. Noone guarantees that
+		 * will work but the current implementations of 
+		 * k*dup(), etc., seem to handle that.
+		 * Example (kernel 3.4, vanilla): the call to kstrdup()
+		 * in ext4_fill_super(). */
 		
 		size = KEDR_LS_ARG2(ls);
 		addr = KEDR_LS_RET_VAL(ls);
 		
-		if (addr != 0 && size != 0) {
+		if (src_addr != 0 && addr != 0 && size != 0) {
 			if (eh->begin_memory_events != NULL)
 				eh->begin_memory_events(eh, ls->tid, 2, &data);
 			

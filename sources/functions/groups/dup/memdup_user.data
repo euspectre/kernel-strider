@@ -23,7 +23,7 @@
 		if (IS_ERR((void *)addr))
 			addr = 0;
 		
-		if (addr != 0 && size != 0) {
+		if (src_addr != 0 && addr != 0 && size != 0) {
 			if (eh->begin_memory_events != NULL)
 				eh->begin_memory_events(eh, ls->tid, 2, &data);
 			
