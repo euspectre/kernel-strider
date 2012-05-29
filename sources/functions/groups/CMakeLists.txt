@@ -84,12 +84,7 @@ function(add_tests_for_group group_name functions_to_test)
 endfunction(add_tests_for_group group_name functions_to_test)
 ########################################################################
 
-add_subdirectory(alloc)
-add_subdirectory(realloc)
-add_subdirectory(free)
-add_subdirectory(lock)
-add_subdirectory(unlock)
-add_subdirectory(uaccess)
-add_subdirectory(dup)
-add_subdirectory(strings)
+foreach(group ${FUNCTION_GROUPS})
+	add_subdirectory(${group})
+endforeach(group ${FUNCTION_GROUPS})
 ########################################################################
