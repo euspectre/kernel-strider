@@ -25,6 +25,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/debugfs.h>
+#include <linux/list.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -143,6 +144,8 @@ struct kedr_event_handlers *eh_current = NULL;
 /* The module being analyzed. NULL if the module is not currently loaded. 
  * The accesses to this variable must be protected with 'target_mutex'. */
 static struct module *target_module = NULL;
+unsigned long target_init_func = 0; /* module's init function, if set */
+unsigned long target_exit_func = 0; /* module's exit function, if set */
 
 /* If nonzero, module load and unload notifications will be handled,
  * if 0, they will not. */
@@ -160,6 +163,60 @@ const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
 /* The instrumentation object. NULL if the instrumentation failed or was not
  * performed. */
 static struct kedr_i13n *i13n = NULL;
+/* ====================================================================== */
+
+/* The pool of the IDs that are unique during the session with the target
+ * module. */
+static LIST_HEAD(id_pool);
+
+/* Operations with the pool of IDs should be performed with this mutex 
+ * locked. */
+static DEFINE_MUTEX(id_pool_mutex);
+
+/* Creates a new ID and adds it to the pool. */
+unsigned long
+kedr_get_unique_id(void)
+{
+	struct list_head *item = NULL;
+	
+	if (mutex_lock_killable(&id_pool_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"kedr_get_unique_id(): failed to lock mutex\n");
+		return 0;
+	}
+	
+	item = kzalloc(sizeof(*item), GFP_KERNEL);
+	if (item != NULL)
+		list_add(item, &id_pool);
+	
+	mutex_unlock(&id_pool_mutex);
+	return (unsigned long)item;
+}
+EXPORT_SYMBOL(kedr_get_unique_id);
+
+static void
+clear_id_pool(void)
+{
+	struct list_head *pos;
+	struct list_head *tmp;
+	
+	if (mutex_lock_killable(&id_pool_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"clear_id_pool(): failed to lock mutex\n");
+		return;
+	}
+	
+	list_for_each_safe(pos, tmp, &id_pool) {
+		list_del(pos);
+		kfree(pos);
+	}
+	mutex_unlock(&id_pool_mutex);
+}
+/* ====================================================================== */
+
+/* ID of the happens-before arc from the end of the init function to the 
+ * beginning of the exit function of the target. */
+unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 
 /* "Provider" support */
@@ -307,7 +364,6 @@ struct kedr_core_hooks *core_hooks = &default_hooks;
 
 static struct kedr_function_handlers default_function_handlers = {
 	.owner = THIS_MODULE,
-	.fill_call_info = NULL,
 };
 
 struct kedr_function_handlers *function_handlers = 
@@ -461,8 +517,25 @@ on_module_load(struct module *mod)
 		return;
 	}
 	
+	target_init_func = (unsigned long)mod->init;
+	target_exit_func = (unsigned long)mod->exit;
+	
 	blocks_total = 0;
 	blocks_skipped = 0;
+	
+	id_init_hb_exit = kedr_get_unique_id();
+	if (id_init_hb_exit == 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"on_module_load(): failed to obtain the ID.\n");
+		/* Go on after issuing this warning. The IDs of signal-wait
+		 * pairs can be unreliable as a result but it is not fatal.
+		 */
+	}
+	
+	/* Invoke the callback registered by the function handling
+	 * subsystem (if set). */
+	if (function_handlers->on_target_loaded != NULL)
+		function_handlers->on_target_loaded(function_handlers, mod);
 	
 	/* Call the event handler, if set. */
 	if (eh_current->on_target_loaded != NULL)
@@ -497,6 +570,13 @@ on_module_unload(struct module *mod)
 		eh_current->on_target_about_to_unload(eh_current, 
 			mod);
 	
+	/* Invoke the callback registered by the function handling
+	 * subsystem (if set). */
+	if (function_handlers->on_target_about_to_unload != NULL)
+		function_handlers->on_target_about_to_unload(
+			function_handlers, mod);
+	
+	clear_id_pool();
 	kedr_i13n_cleanup(i13n);
 	i13n = NULL; /* prepare for the next instrumentation session */
 	providers_put();
@@ -932,6 +1012,8 @@ core_exit_module(void)
 	remove_debugfs_files();
 	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
+	
+	WARN_ON(!list_empty(&id_pool));
 	return;
 }
 

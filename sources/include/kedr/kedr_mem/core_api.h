@@ -225,4 +225,21 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
 struct kedr_event_handlers *
 kedr_get_event_handlers(void);
 
+/* Creates an identifier which is guaranteed to be unique during a session
+ * with the target module, i.e. from the moment the target module is about 
+ * to begin its initialization to the moment when its cleanup is completed.
+ * 
+ * The function returns a non-zero value on success, 0 if the ID cannot be
+ * obtained.
+ * 
+ * Normally, one would call this function when handling "module loaded" 
+ * notification. 
+ * 
+ * Note that if the target is unloaded and then loaded again, the IDs 
+ * should be requested again too. The ones obtained before (during the
+ * previous session with the target) can no longer be used. 
+ *
+ * The function cannot be called from atomic context. */
+unsigned long
+kedr_get_unique_id(void);
 #endif /* CORE_API_H_1049_INCLUDED */

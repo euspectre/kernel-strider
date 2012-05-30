@@ -361,9 +361,25 @@ fill_call_info(struct kedr_function_handlers *fh,
 	return 1;
 }
 
+static void
+on_load(struct kedr_function_handlers *fh, struct module *target_module)
+{
+	/* The target module has just been loaded into memory.
+	 * [NB] Perform session-specific initialization here if needed. */
+}
+
+static void
+on_unload(struct kedr_function_handlers *fh, struct module *target_module)
+{
+	/* The target module is about to be unloaded.
+	 * [NB] Perform session-specific cleanup here if needed. */
+}
+
 static struct kedr_function_handlers fh = {
 	.owner = THIS_MODULE,
 	.fill_call_info = fill_call_info,
+	.on_target_loaded = on_load,
+	.on_target_about_to_unload = on_unload,
 };
 /* ====================================================================== */
 

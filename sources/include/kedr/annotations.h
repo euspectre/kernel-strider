@@ -7,7 +7,7 @@
  * To use these annotations, you need to #include this header in the code 
  * of the target module and #define KEDR_ANNOTATIONS_ENABLED to a non-zero 
  * value. It is also needed to use .symvers files from kedr_mem_core.ko 
- * module (it exports kedr_annotate*() functions when building the target
+ * module (it exports kedr_annotate*() functions) when building the target
  * module. */
 
 #ifndef ANNOTATIONS_H_1536_INCLUDED

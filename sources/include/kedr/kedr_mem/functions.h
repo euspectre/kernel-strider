@@ -66,6 +66,18 @@ struct kedr_function_handlers
 	 * If not found, returns 0 and leaves '*call_info' unchanged. */
 	int (*fill_call_info)(struct kedr_function_handlers *fh, 
 		struct kedr_call_info *call_info);
+	
+	/* These functions are called after the target module has been 
+	 * loaded (but before it begins its initialization) and, 
+	 * respectively. after the target module has finished its clean-up 
+	 * and is about to unload.
+	 *
+	 * "Function Handlers" subsystem may use these callbacks for 
+	 * initialization and cleanup of its per-session data. */
+	void (*on_target_loaded)(struct kedr_function_handlers *fh, 
+		struct module *target_module);
+	void (*on_target_about_to_unload)(struct kedr_function_handlers *fh, 
+		struct module *target_module);
 };
 
 /* Replace the current implementation of "Function Handlers" subsystem with
