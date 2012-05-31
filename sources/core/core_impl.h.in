@@ -22,10 +22,6 @@
  * module. */
 #define KEDR_SECTIONS_FILE "@KEDR_MEM_CORE_SECTIONS_FILE@"
 
-/* Init and exit functions of the target module. */
-extern unsigned long target_init_func;
-extern unsigned long target_exit_func;
-
 /* The current set of event handlers. Should never be NULL. */
 struct kedr_event_handlers;
 extern struct kedr_event_handlers *eh_current;
@@ -63,8 +59,5 @@ extern unsigned int sampling_rate;
  * number of blocks skipped because of sampling, respectively. */
 extern size_t blocks_total;
 extern size_t blocks_skipped;
-
-/* The ID of the "module init => module exit" happens-before arc. */
-extern unsigned long id_init_hb_exit;
 
 #endif // CORE_IMPL_H_1628_INCLUDED

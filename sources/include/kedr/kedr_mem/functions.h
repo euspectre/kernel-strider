@@ -75,9 +75,9 @@ struct kedr_function_handlers
 	 * "Function Handlers" subsystem may use these callbacks for 
 	 * initialization and cleanup of its per-session data. */
 	void (*on_target_loaded)(struct kedr_function_handlers *fh, 
-		struct module *target_module);
+		struct module *mod);
 	void (*on_target_about_to_unload)(struct kedr_function_handlers *fh, 
-		struct module *target_module);
+		struct module *mod);
 };
 
 /* Replace the current implementation of "Function Handlers" subsystem with

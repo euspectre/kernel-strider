@@ -224,6 +224,7 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
  * handlers remain valid and do not change. */
 struct kedr_event_handlers *
 kedr_get_event_handlers(void);
+/* ====================================================================== */
 
 /* Creates an identifier which is guaranteed to be unique during a session
  * with the target module, i.e. from the moment the target module is about 
@@ -242,4 +243,16 @@ kedr_get_event_handlers(void);
  * The function cannot be called from atomic context. */
 unsigned long
 kedr_get_unique_id(void);
+/* ====================================================================== */
+
+/* Returns the ID of the current thread. The caller should not rely on it
+ * being some address or whatever, this is an implementation detail and is
+ * subject to change. 
+ * In addition to the "regular" threads, the function can be called in the 
+ * interrupt service routines (ISRs). The IDs it returns for ISRs can never 
+ * collide with the IDs it returns for the regular threads. */
+unsigned long
+kedr_get_thread_id(void);
+/* ====================================================================== */
+
 #endif /* CORE_API_H_1049_INCLUDED */

@@ -161,19 +161,6 @@ kedr_on_function_entry(unsigned long orig_func)
 		ls->tindex = (unsigned long)tindex;
 	}
 	
-	/* Relation: "init happens-before cleanup" */
-	if (ls->orig_func == target_exit_func) {
-		if (eh_current->on_wait_pre != NULL)
-			eh_current->on_wait_pre(eh_current, ls->tid, 
-				ls->orig_func, id_init_hb_exit,
-				KEDR_SWT_COMMON);
-		
-		if (eh_current->on_wait_post != NULL)
-			eh_current->on_wait_post(eh_current, ls->tid, 
-				ls->orig_func, id_init_hb_exit,
-				KEDR_SWT_COMMON);
-	}
-	
 	if (eh_current->on_function_entry != NULL)
 		eh_current->on_function_entry(eh_current, ls->tid, 
 			ls->orig_func);
@@ -193,19 +180,6 @@ kedr_on_function_exit(unsigned long storage)
 		eh_current->on_function_exit(eh_current, ls->tid, 
 			ls->orig_func);
 	
-	/* Relation: "init happens-before cleanup" */
-	if (ls->orig_func == target_init_func) {
-		if (eh_current->on_signal_pre != NULL)
-			eh_current->on_signal_pre(eh_current, ls->tid, 
-				ls->orig_func, id_init_hb_exit,
-				KEDR_SWT_COMMON);
-		
-		if (eh_current->on_signal_post != NULL)
-			eh_current->on_signal_post(eh_current, ls->tid, 
-				ls->orig_func, id_init_hb_exit,
-				KEDR_SWT_COMMON);
-	}
-
 	ls_allocator->free_ls(ls_allocator, ls);
 }
 KEDR_DEFINE_WRAPPER(kedr_on_function_exit);

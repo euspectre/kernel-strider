@@ -46,7 +46,17 @@
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
+	
+struct module *target_module = NULL;
+int  (*target_init_func)(void) = NULL; /* module's init function, if set */
+void (*target_exit_func)(void) = NULL; /* module's exit function, if set */
+/* ====================================================================== */
 
+/* ID of the happens-before arc from the end of the init function to the 
+ * beginning of the exit function of the target. */
+unsigned long id_init_hb_exit = 0;
+/* ====================================================================== */
+	
 <$handlerDecl: join(\n\n)$>
 /* ====================================================================== */
 
@@ -361,18 +371,99 @@ fill_call_info(struct kedr_function_handlers *fh,
 	return 1;
 }
 
-static void
-on_load(struct kedr_function_handlers *fh, struct module *target_module)
+/* The replacement functions for the init- and exit-functions of the target
+ * module. */
+static int
+repl_init(void)
 {
-	/* The target module has just been loaded into memory.
-	 * [NB] Perform session-specific initialization here if needed. */
+	int ret = 0;
+	struct kedr_event_handlers *eh;
+	unsigned long tid;
+	
+	BUG_ON(target_init_func == NULL);
+	
+	/* Call the original function */
+	ret = target_init_func();
+	
+	/* Restore the callback - just in case */
+	target_module->init = target_init_func;
+	
+	if (ret < 0)
+		return ret;
+	
+	/* Specify the relation "init happens-before cleanup" */
+	eh = kedr_get_event_handlers();
+	tid = kedr_get_thread_id();
+	
+	if (eh->on_signal_pre != NULL)
+		eh->on_signal_pre(eh, tid, (unsigned long)target_init_func,
+			id_init_hb_exit, KEDR_SWT_COMMON);
+	
+	if (eh->on_signal_post != NULL)
+		eh->on_signal_post(eh, tid, (unsigned long)target_init_func,
+			id_init_hb_exit, KEDR_SWT_COMMON);
+	return ret;
 }
 
 static void
-on_unload(struct kedr_function_handlers *fh, struct module *target_module)
+repl_exit(void)
+{
+	struct kedr_event_handlers *eh;
+	unsigned long tid;
+	
+	BUG_ON(target_exit_func == NULL);
+	
+	/* Specify the relation "init happens-before cleanup" */
+	eh = kedr_get_event_handlers();
+	tid = kedr_get_thread_id();
+	
+	if (eh->on_wait_pre != NULL)
+		eh->on_wait_pre(eh, tid, (unsigned long)target_exit_func,
+			id_init_hb_exit, KEDR_SWT_COMMON);
+	
+	if (eh->on_wait_post != NULL)
+		eh->on_wait_post(eh, tid, (unsigned long)target_exit_func,
+			id_init_hb_exit, KEDR_SWT_COMMON);
+	
+	// TODO: call the callback from a plugin, if set
+	
+	/* Call the original function */
+	target_exit_func();
+	
+	/* Restore the callback - just in case */
+	target_module->exit = target_exit_func;
+}
+
+static void
+on_load(struct kedr_function_handlers *fh, struct module *mod)
+{
+	/* The target module has just been loaded into memory.
+	 * [NB] Perform session-specific initialization here if needed. */
+	id_init_hb_exit = kedr_get_unique_id();
+	if (id_init_hb_exit == 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"on_load(): failed to obtain the ID.\n");
+		/* Go on after issuing this warning. The IDs of signal-wait
+		 * pairs can be unreliable as a result but it is not fatal.
+		 */
+	}
+	
+	target_module = mod;
+	target_init_func = target_module->init;
+	if (target_init_func != NULL)
+		target_module->init = repl_init;
+	
+	target_exit_func = target_module->exit;
+	if (target_exit_func != NULL)
+		target_module->exit = repl_exit;
+}
+
+static void
+on_unload(struct kedr_function_handlers *fh, struct module *mod)
 {
 	/* The target module is about to be unloaded.
 	 * [NB] Perform session-specific cleanup here if needed. */
+	target_module = NULL;
 }
 
 static struct kedr_function_handlers fh = {

@@ -144,8 +144,6 @@ struct kedr_event_handlers *eh_current = NULL;
 /* The module being analyzed. NULL if the module is not currently loaded. 
  * The accesses to this variable must be protected with 'target_mutex'. */
 static struct module *target_module = NULL;
-unsigned long target_init_func = 0; /* module's init function, if set */
-unsigned long target_exit_func = 0; /* module's exit function, if set */
 
 /* If nonzero, module load and unload notifications will be handled,
  * if 0, they will not. */
@@ -212,11 +210,6 @@ clear_id_pool(void)
 	}
 	mutex_unlock(&id_pool_mutex);
 }
-/* ====================================================================== */
-
-/* ID of the happens-before arc from the end of the init function to the 
- * beginning of the exit function of the target. */
-unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 
 /* "Provider" support */
@@ -517,20 +510,8 @@ on_module_load(struct module *mod)
 		return;
 	}
 	
-	target_init_func = (unsigned long)mod->init;
-	target_exit_func = (unsigned long)mod->exit;
-	
 	blocks_total = 0;
 	blocks_skipped = 0;
-	
-	id_init_hb_exit = kedr_get_unique_id();
-	if (id_init_hb_exit == 0) {
-		pr_warning(KEDR_MSG_PREFIX 
-		"on_module_load(): failed to obtain the ID.\n");
-		/* Go on after issuing this warning. The IDs of signal-wait
-		 * pairs can be unreliable as a result but it is not fatal.
-		 */
-	}
 	
 	/* Invoke the callback registered by the function handling
 	 * subsystem (if set). */

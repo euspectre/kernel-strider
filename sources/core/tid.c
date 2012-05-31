@@ -13,6 +13,7 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/hardirq.h>	/* in_interrupt() */
 #include <linux/smp.h>		/* smp_processor_id() */
 #include <linux/sched.h>	/* current */
@@ -22,6 +23,8 @@
 #include <linux/rcupdate.h>
 #include <linux/hash.h>
 #include <linux/slab.h>
+
+#include <kedr/kedr_mem/core_api.h>
 
 #include "config.h"
 #include "core_impl.h"
@@ -35,6 +38,7 @@ kedr_get_thread_id(void)
 	return (in_interrupt() 	? (unsigned long)smp_processor_id() 
 				: (unsigned long)current);
 }
+EXPORT_SYMBOL(kedr_get_thread_id);
 /* ====================================================================== */
 
 /* The lock to protect the updates of the thread index table and other 
