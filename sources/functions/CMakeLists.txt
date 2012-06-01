@@ -71,6 +71,7 @@ kbuild_add_module(${KMODULE_NAME}
 )
 add_dependencies(${KMODULE_NAME} ${KMODULE_NAME}_module.c)
 kedr_install_kmodule(${KMODULE_NAME})
+kedr_install_symvers(${KMODULE_NAME})
 ########################################################################
 
 # Test-related stuff

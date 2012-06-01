@@ -28,6 +28,7 @@
 #include <linux/errno.h>
 #include <linux/sort.h>
 #include <linux/kallsyms.h>
+#include <linux/mutex.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -47,14 +48,21 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 	
-struct module *target_module = NULL;
-int  (*target_init_func)(void) = NULL; /* module's init function, if set */
-void (*target_exit_func)(void) = NULL; /* module's exit function, if set */
+static struct module *target_module = NULL;
+
+/* Module's init function, if set. */
+static int  (*target_init_func)(void) = NULL; 
+/* Module's exit function, if set. */
+static void (*target_exit_func)(void) = NULL; 
+
+/* A mutex to serialize loading/unloading of the target and registration/
+ * deregistration of a plugin. */
+static DEFINE_MUTEX(target_mutex);
 /* ====================================================================== */
 
 /* ID of the happens-before arc from the end of the init function to the 
  * beginning of the exit function of the target. */
-unsigned long id_init_hb_exit = 0;
+static unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 	
 <$handlerDecl: join(\n\n)$>
@@ -71,17 +79,203 @@ struct kedr_func_drd_handlers
 };
 /* ====================================================================== */
 
+/* The active plugin. Currently no more than one plugin may be used at a 
+ * time. */
+static struct kedr_fh_plugin *fh_plugin = NULL;
+
+/* The array of pointers to the elements of the replacement table. To be
+ * sorted for faster lookup in runtime. */
+static struct kedr_repl_pair **rtable = NULL;
+static size_t rtable_size = 0;
+
+/* Implementation of the plugin API.  */
+
+/* The comparator and swapper functions needed to sort 'rtable' by the
+ * address of the original function. */
+static int
+compare_rtable_items(const void *lhs, const void *rhs)
+{
+	const struct kedr_repl_pair *left = 
+		*(const struct kedr_repl_pair **)lhs;
+	const struct kedr_repl_pair *right = 
+		*(const struct kedr_repl_pair **)rhs;
+	
+	if (left->orig < right->orig)
+		return -1;
+	else if (left->orig > right->orig)
+		return 1;
+	else 
+		return 0;
+}
+
+static void
+swap_rtable_items(void *lhs, void *rhs, int size)
+{
+	struct kedr_repl_pair **pleft = (struct kedr_repl_pair **)lhs;
+	struct kedr_repl_pair **pright = (struct kedr_repl_pair **)rhs;
+	struct kedr_repl_pair *t;
+	
+	BUG_ON(size != (int)sizeof(struct kedr_repl_pair *));
+	
+	t = *pleft;
+	*pleft = *pright;
+	*pright = t;
+}
+
+/* If needed, allocate, fill and sort replacement table using the table
+ * provided by the plugin. Should be called with 'target_mutex' locked. */
+static int
+create_rtable(void)
+{
+	size_t s = 0;
+	size_t i;
+	struct kedr_repl_pair *pos = NULL;
+	
+	BUG_ON(rtable != NULL);
+	BUG_ON(fh_plugin == NULL);
+	
+	pos = fh_plugin->repl_pairs;
+	if (pos == NULL || pos[0].orig == NULL)
+	        return 0; /* An empty table, nothing to do */
+	
+	while (pos->orig != NULL) {
+		++s;
+		++pos;
+	}
+	rtable = kzalloc(s * sizeof(*rtable), GFP_KERNEL);
+	if (rtable == NULL)
+		return -ENOMEM;
+	
+	rtable_size = s;
+	
+	for (i = 0; i < s; ++i) {
+		BUG_ON(fh_plugin->repl_pairs[i].orig == NULL);
+		BUG_ON(fh_plugin->repl_pairs[i].repl == NULL);
+		rtable[i] = &fh_plugin->repl_pairs[i];
+	}
+	
+	sort(&rtable[0], s, sizeof(struct kedr_repl_pair *), 
+		compare_rtable_items, swap_rtable_items);
+	return 0;
+}
+
+/* Looks up the replacement table ('rtable') to find a repalcement for the 
+ * function with start address 'orig'. 
+ * Returns the address of the replacement fucntion if found, 0 otherwise. */
+static unsigned long
+lookup_replacement(unsigned long orig)
+{
+	size_t beg = 0;
+	size_t end;
+	
+	end = rtable_size;
+	
+	/* rtable[] must have been sorted by this time, so we can use 
+	 * binary search. 
+	 * At each iteration, [beg, end) range of indexes is considered. */
+	while (beg < end) {
+		size_t mid = beg + (end - beg) / 2;
+		if (orig < (unsigned long)rtable[mid]->orig)
+			end = mid;
+		else if (orig > (unsigned long)rtable[mid]->orig)
+			beg = mid + 1;
+		else 
+			return (unsigned long)rtable[mid]->repl;
+	}
+	return 0;	
+}
+
+int
+kedr_fh_plugin_register(struct kedr_fh_plugin *plugin)
+{
+	int ret = 0;
+	BUG_ON(plugin == NULL || plugin->owner == NULL);
+	
+	if (mutex_lock_killable(&target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+	"kedr_fh_plugin_register(): failed to lock the mutex.\n");
+		return -EINTR;
+	}
+	
+	if (fh_plugin != NULL) {
+		pr_warning(KEDR_MSG_PREFIX "kedr_fh_plugin_register(): "
+"attempt to register a plugin while some plugin is already registered.\n");
+		ret = -EINVAL;
+		goto out;
+	}
+	
+	if (target_module != NULL) {
+		pr_warning(KEDR_MSG_PREFIX "kedr_fh_plugin_register(): "
+"attempt to register a plugin while the target is still loaded.\n");
+		ret = -EBUSY;
+		goto out;
+	}
+	
+	fh_plugin = plugin;
+	ret = create_rtable();
+	if (ret != 0)
+		goto out;
+	
+	mutex_unlock(&target_mutex);
+	return 0;
+
+out:	
+	mutex_unlock(&target_mutex);
+	return ret;
+}
+EXPORT_SYMBOL(kedr_fh_plugin_register);
+
+/* Should be called with 'target_mutex' locked. */
+static void
+do_fh_plugin_unregister(void)
+{
+	kfree(rtable);
+	rtable = NULL;
+	rtable_size = 0;
+	fh_plugin = NULL;
+}
+
+void 
+kedr_fh_plugin_unregister(struct kedr_fh_plugin *plugin)
+{
+	BUG_ON(plugin == NULL || plugin->owner == NULL);
+	
+	if (mutex_lock_killable(&target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+	"kedr_fh_plugin_unregister(): failed to lock the mutex.\n");
+		return;
+	}
+	
+	if (plugin != fh_plugin) {
+		pr_warning(KEDR_MSG_PREFIX "kedr_fh_plugin_unregister(): "
+"attempt to unregister a plugin that is not currently registered.\n");
+		goto out;
+	}
+	
+	if (target_module != NULL) {
+		pr_warning(KEDR_MSG_PREFIX "kedr_fh_plugin_unregister(): "
+"attempt to unregister a plugin while the target is still loaded.\n");
+		goto out;
+	}
+	
+	do_fh_plugin_unregister();
+out:
+	mutex_unlock(&target_mutex);
+}
+EXPORT_SYMBOL(kedr_fh_plugin_unregister);
+/* ====================================================================== */
+
 /* Handlers for dynamic annotations.
  * Note that "call pre" and "call post" events are not reported for these 
  * calls, they are redundant. */
 
 /* "happens-before" / "happens-after" */
-void 
+static void 
 happens_before_pre(struct kedr_local_storage *ls)
 {
 	/* nothing to do here */
 }
-void 
+static void 
 happens_before_post(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -102,7 +296,7 @@ happens_before_post(struct kedr_local_storage *ls)
 			KEDR_SWT_COMMON);
 }
 
-void 
+static void 
 happens_after_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -123,7 +317,7 @@ happens_after_pre(struct kedr_local_storage *ls)
 			KEDR_SWT_COMMON);
 }
 
-void 
+static void 
 happens_after_post(struct kedr_local_storage *ls)
 {
 	/* nothing to do here */
@@ -144,7 +338,7 @@ handlers_kedr_annotate_happens_after = {
 };
 
 /* "memory acquired" / "memory released" */
-void 
+static void 
 memory_acquired_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -157,7 +351,7 @@ memory_acquired_pre(struct kedr_local_storage *ls)
 	if (eh->on_alloc_pre != NULL && size != 0)
 		eh->on_alloc_pre(eh, ls->tid, info->pc, size);
 }
-void 
+static void 
 memory_acquired_post(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -173,7 +367,7 @@ memory_acquired_post(struct kedr_local_storage *ls)
 		eh->on_alloc_post(eh, ls->tid, info->pc, size, addr);
 }
 
-void 
+static void 
 memory_released_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -186,7 +380,7 @@ memory_released_pre(struct kedr_local_storage *ls)
 	if (eh->on_free_pre != NULL && addr != 0)
 		eh->on_free_pre(eh, ls->tid, info->pc, addr);
 }
-void 
+static void 
 memory_released_post(struct kedr_local_storage *ls)
 {
 	struct kedr_event_handlers *eh;
@@ -353,22 +547,25 @@ lookup_handlers(unsigned long func)
 }
 /* ====================================================================== */
 
-static int 
+static void
 fill_call_info(struct kedr_function_handlers *fh, 
 	struct kedr_call_info *call_info)
 {
 	struct kedr_func_drd_handlers *h;
+	unsigned long repl;
+	
 	h = lookup_handlers(call_info->target);
-	if (h == NULL)
-		return 0;
+	if (h != NULL) {
+		call_info->pre_handler = h->pre_handler;
+		call_info->post_handler = h->post_handler;
+	}
 	
-	/* We do not need a replacement. */
-	call_info->repl = call_info->target;
+	if (rtable == NULL)
+		return;
 	
-	/* Found appropriate handlers */
-	call_info->pre_handler = h->pre_handler;
-	call_info->post_handler = h->post_handler;
-	return 1;
+	repl = lookup_replacement(call_info->target);
+	if (repl != 0)
+		call_info->repl = repl;
 }
 
 /* The replacement functions for the init- and exit-functions of the target
@@ -425,7 +622,9 @@ repl_exit(void)
 		eh->on_wait_post(eh, tid, (unsigned long)target_exit_func,
 			id_init_hb_exit, KEDR_SWT_COMMON);
 	
-	// TODO: call the callback from a plugin, if set
+	/* Call the callback from a plugin, if set. */
+	if (fh_plugin != NULL && fh_plugin->on_before_exit_call != NULL)
+		fh_plugin->on_before_exit_call(target_module);
 	
 	/* Call the original function */
 	target_exit_func();
@@ -437,6 +636,12 @@ repl_exit(void)
 static void
 on_load(struct kedr_function_handlers *fh, struct module *mod)
 {
+	if (mutex_lock_killable(&target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_load(): failed to lock the mutex.\n");
+		return;
+	}
+	
 	/* The target module has just been loaded into memory.
 	 * [NB] Perform session-specific initialization here if needed. */
 	id_init_hb_exit = kedr_get_unique_id();
@@ -456,14 +661,36 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 	target_exit_func = target_module->exit;
 	if (target_exit_func != NULL)
 		target_module->exit = repl_exit;
+	
+	if (fh_plugin != NULL) {
+		if (try_module_get(fh_plugin->owner) == 0) {
+			pr_warning(KEDR_MSG_PREFIX 
+		"on_load(): try_module_get() failed for \"%s\".\n", 
+				module_name(fh_plugin->owner));
+			
+			/* Force unregistering of the plugin. */
+			do_fh_plugin_unregister();		
+		}
+	}
+	mutex_unlock(&target_mutex);
 }
 
 static void
 on_unload(struct kedr_function_handlers *fh, struct module *mod)
 {
+	if (mutex_lock_killable(&target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"on_unload(): failed to lock the mutex.\n");
+		return;
+	}
+	
+	if (fh_plugin != NULL)
+		module_put(fh_plugin->owner);
+	
 	/* The target module is about to be unloaded.
 	 * [NB] Perform session-specific cleanup here if needed. */
 	target_module = NULL;
+	mutex_unlock(&target_mutex);
 }
 
 static struct kedr_function_handlers fh = {
@@ -577,6 +804,13 @@ static void __exit
 func_drd_exit_module(void)
 {
 	kedr_set_function_handlers(NULL);
+	
+	if(fh_plugin != NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+"The subsystem is about to stop but a plugin is still registered. "
+"Unregistering it...\n");
+		kedr_fh_plugin_unregister(fh_plugin);
+	}
 	
 	/* [NB] If additional cleanup is needed, do it after the handlers
 	 * have been reset to the defaults. */

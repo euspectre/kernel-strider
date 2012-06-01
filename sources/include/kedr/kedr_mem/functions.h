@@ -61,10 +61,11 @@ struct kedr_function_handlers
 	struct module *owner;
 	
 	/* Looks for the handlers for the target function with the 
-	 * given start address ('call_info->target'). If found, fills the
-	 * handler addresses in '*call_info' and returns non-zero. 
-	 * If not found, returns 0 and leaves '*call_info' unchanged. */
-	int (*fill_call_info)(struct kedr_function_handlers *fh, 
+	 * given start address ('call_info->target'). If found, sets the
+	 * appropriate handler addresses in '*call_info' leaving the 
+	 * remaining ones unchanged.
+	 * If not found, leaves the whole '*call_info' unchanged. */
+	void (*fill_call_info)(struct kedr_function_handlers *fh, 
 		struct kedr_call_info *call_info);
 	
 	/* These functions are called after the target module has been 
@@ -174,5 +175,61 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
 # define KEDR_LS_RET_VAL(_ls) ((_ls)->ret_val)
 
 #endif /* ifdef CONFIG_X86_64 */
+/* ====================================================================== */
+
+/* API for the plugins that extend the function handling subsystem. 
+ * Currently, no more than one plugin can be used with the latter at a 
+ * time.
+ * The plugins provide replacements for some of the functions called by the 
+ * target module. */
+
+struct kedr_repl_pair
+{
+	/* The start address of the original function. */
+	void *orig; 
+	
+	/* The start address of the function to replace the original one 
+	 * with. The replacement function must have the same signature as 
+	 * the original function. */
+	void *repl; 
+};
+ 
+struct kedr_fh_plugin
+{
+	/* The module that provides the plugin. It will be locked in the
+	 * memory for the time the target module is in memory. */
+	struct module *owner;
+	
+	/* If this callback is set (i.e. is not NULL), it will be called 
+	 * right before the target module 'mod' calls its exit function.
+	 * If the target does not have an exit function, the callback
+	 * will never be called. 
+	 * 
+	 * This callback can be used, for example, to establish a happens-
+	 * before relationship between some callback operations and the 
+	 * beginning of the module's cleanup (e.g. file operations that
+	 * must always complete before the cleanup can start). */
+	void (*on_before_exit_call)(struct module *mod);
+	
+	/* The "replacement table". Each element in this array specifies
+	 * which function should be replaced by which function. The last 
+	 * element of the array should have its 'orig' field set to NULL. 
+	 * If 'repl_pairs' itself is NULL, this is treated as if the array
+	 * was empty (i.e. contained only the "end marker" element). 
+	 *
+	 * The replacement table is owned by the plugin and must remain in
+	 * place until the plugin unregisters itself. */
+	struct kedr_repl_pair *repl_pairs;
+};
+
+/* Registration and deregistration of a plugin. 
+ * The registration function returns 0 if successful, a negative error code
+ * otherwise.
+ * The functions cannot be called from atomic context. */
+int
+kedr_fh_plugin_register(struct kedr_fh_plugin *fh_plugin);
+
+void 
+kedr_fh_plugin_unregister(struct kedr_fh_plugin *fh_plugin);
 
 #endif /* FUNCTIONS_H_1133_INCLUDED */

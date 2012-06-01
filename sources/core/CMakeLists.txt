@@ -149,6 +149,7 @@ add_custom_command(OUTPUT "${ASM_OFFSETS_FILE}"
 ########################################################################
 
 kedr_install_kmodule(${KMODULE_NAME})
+kedr_install_symvers(${KMODULE_NAME})
 ########################################################################
 
 # User-mode helpers

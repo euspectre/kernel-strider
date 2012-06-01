@@ -198,13 +198,13 @@ out:
 		eh->on_call_post(eh, ls->tid, info->pc, info->target); 
 }
 
-static int 
+static void
 fill_call_info(struct kedr_function_handlers *fh, 
 	struct kedr_call_info *call_info)
 {
 	if (call_info->target != (unsigned long)&kedr_test_arg_func)
 		/* process kedr_test_arg_func() only */
-		return 0;
+		return;
 	
 	/* We do not need a replacement. */
 	call_info->repl = call_info->target;
@@ -212,7 +212,6 @@ fill_call_info(struct kedr_function_handlers *fh,
 	/* Found appropriate handlers */
 	call_info->pre_handler = test_pre;
 	call_info->post_handler = test_post;
-	return 1;
 }
 
 static struct kedr_function_handlers fh = {

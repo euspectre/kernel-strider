@@ -214,15 +214,14 @@ kedr_fill_call_info(unsigned long ci)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)ci;
 
-	if (function_handlers->fill_call_info != NULL &&
-	    function_handlers->fill_call_info(function_handlers, info) != 0)
-		return;
-	
-	/* Either no function handlers are set or no handlers have been
-	 * found for info->target, using the defaults. */
+	/* Set the defaults first; the function handling subsystem may
+	 * change some or all of these below. */
 	info->repl = info->target;
 	info->pre_handler = default_pre_handler;
 	info->post_handler = default_post_handler;
+
+	if (function_handlers->fill_call_info != NULL)
+		function_handlers->fill_call_info(function_handlers, info);
 }
 KEDR_DEFINE_WRAPPER(kedr_fill_call_info);
 /* ====================================================================== */

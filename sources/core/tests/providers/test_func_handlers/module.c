@@ -23,10 +23,10 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
-static int
+static void
 fake_fill(struct kedr_function_handlers *fh, struct kedr_call_info *ci)
 {
-	return 0;
+	return;
 }
 
 static struct kedr_function_handlers test_fh = {
