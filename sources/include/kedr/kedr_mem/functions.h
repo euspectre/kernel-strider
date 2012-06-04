@@ -70,7 +70,7 @@ struct kedr_function_handlers
 	
 	/* These functions are called after the target module has been 
 	 * loaded (but before it begins its initialization) and, 
-	 * respectively. after the target module has finished its clean-up 
+	 * respectively, after the target module has finished its cleanup 
 	 * and is about to unload.
 	 *
 	 * "Function Handlers" subsystem may use these callbacks for 
@@ -199,6 +199,13 @@ struct kedr_fh_plugin
 	/* The module that provides the plugin. It will be locked in the
 	 * memory for the time the target module is in memory. */
 	struct module *owner;
+	
+	/* These functions are called after the target module has been 
+	 * loaded (but before it begins its initialization) and, 
+	 * respectively, after the target module has finished its cleanup 
+	 * and is about to unload. */
+	void (*on_target_loaded)(struct module *mod);
+	void (*on_target_about_to_unload)(struct module *mod);
 	
 	/* If this callback is set (i.e. is not NULL), it will be called 
 	 * right before the target module 'mod' calls its exit function.

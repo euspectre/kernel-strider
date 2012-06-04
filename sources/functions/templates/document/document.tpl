@@ -671,6 +671,9 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 			/* Force unregistering of the plugin. */
 			do_fh_plugin_unregister();		
 		}
+		else if (fh_plugin->on_target_loaded != NULL) {
+			fh_plugin->on_target_loaded(mod);
+		}
 	}
 	mutex_unlock(&target_mutex);
 }
@@ -683,6 +686,9 @@ on_unload(struct kedr_function_handlers *fh, struct module *mod)
 			"on_unload(): failed to lock the mutex.\n");
 		return;
 	}
+	
+	if (fh_plugin->on_target_about_to_unload != NULL)
+		fh_plugin->on_target_about_to_unload(mod);
 	
 	if (fh_plugin != NULL)
 		module_put(fh_plugin->owner);
