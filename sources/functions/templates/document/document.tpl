@@ -610,6 +610,9 @@ repl_exit(void)
 	
 	BUG_ON(target_exit_func == NULL);
 	
+	/* Restore the callback - just in case */
+	target_module->exit = target_exit_func;
+	
 	/* Specify the relation "init happens-before cleanup" */
 	eh = kedr_get_event_handlers();
 	tid = kedr_get_thread_id();
@@ -628,9 +631,6 @@ repl_exit(void)
 	
 	/* Call the original function */
 	target_exit_func();
-	
-	/* Restore the callback - just in case */
-	target_module->exit = target_exit_func;
 }
 
 static void
@@ -687,11 +687,12 @@ on_unload(struct kedr_function_handlers *fh, struct module *mod)
 		return;
 	}
 	
-	if (fh_plugin->on_target_about_to_unload != NULL)
-		fh_plugin->on_target_about_to_unload(mod);
+	if (fh_plugin != NULL) {
+		if (fh_plugin->on_target_about_to_unload != NULL)
+			fh_plugin->on_target_about_to_unload(mod);
 	
-	if (fh_plugin != NULL)
 		module_put(fh_plugin->owner);
+	}
 	
 	/* The target module is about to be unloaded.
 	 * [NB] Perform session-specific cleanup here if needed. */
