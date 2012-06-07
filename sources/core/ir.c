@@ -1382,7 +1382,7 @@ ir_create_block_info(struct kedr_ifunc *func, struct kedr_ir_node *start,
 		"Unexpected: block of type %u at offset 0x%lx in %s() "
 		"seems to contain tracked memory events.\n",
 			(unsigned int)start->cb_type,
-			start->orig_addr - (unsigned long)func->addr,
+			start->orig_addr - func->info.addr,
 			func->name);
 		BUG(); /* should not get here */
 	}
@@ -1837,7 +1837,7 @@ ir_node_jcc_short_to_near(struct kedr_ir_node *node,
 		return 0;
 	
 	if (node->orig_addr + node->insn.length >= 
-		(unsigned long)func->addr + func->size) {
+		func->info.addr + func->size) {
 		/* Weird. The conditional jump is at the end of the 
 		 * function. It can be possible if the compiler expected the
 		 * jump to always be performed, but still insisted on using 
@@ -1907,7 +1907,7 @@ ir_node_jcxz_loop_to_jmp_near(struct kedr_ir_node *node,
 	/* loop/loope/loopne: 0xe0, 0xe1, 0xe2; jcxz: 0xe3. */
 	
 	if (node->orig_addr + node->insn.length >= 
-		(unsigned long)func->addr + func->size) {
+		func->info.addr + func->size) {
 		/* Weird. The conditional jump is at the end of the 
 		 * function. It can be possible if the compiler expected the
 		 * jump to always be performed, but still insisted on using 
@@ -2199,7 +2199,7 @@ register_usage_mask(struct insn *insn, struct kedr_ifunc *func)
 {
 	unsigned int reg_mask;
 	unsigned long dest;
-	unsigned long start_addr = (unsigned long)func->addr;
+	unsigned long start_addr = func->info.addr;
 	u8 opcode;
 	
 	BUG_ON(insn == NULL);

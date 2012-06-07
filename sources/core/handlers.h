@@ -37,13 +37,12 @@
  *   'tid' - it will contain the id of the current thread;
  *   'tindex' - it will contain the index of the current thread if sampling
  *   is enabled, 0 otherwise;
- *   'orig_func' - it will contain the address of the original instance of 
- *   the function (passed to the function as a parameter).
+ *   'fi' - it will contain the address of the func_info instance for the
+ *   function (passed to the function as a parameter).
  *  
  * Parameter: 
- *   unsigned long orig_func - address of the original instance 
- *   of the function. It will be saved in the local storage for future
- *   reference.
+ *   struct kedr_func_info *fi - address of the func_info instance for 
+ *   the function. It will be saved in the local storage.
  * Return value: 
  *   the address (unsigned long) of the allocated and properly intialized 
  *   local storage if successful, 0 on failure. */

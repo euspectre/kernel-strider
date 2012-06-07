@@ -1,7 +1,7 @@
 IR:
 0xadded: 50
 
-0xadded: 48 c7 c0 00 00 00 00
+0xadded: 48 b8 00 00 00 00 00 00 00 00
 
 0xadded: e8 00 00 00 00
 

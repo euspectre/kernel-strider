@@ -98,8 +98,8 @@ struct kedr_local_storage
 	 * different from the IDs of the "ordinary" threads. */
 	unsigned long tid;
 	
-	/* Start address of the original function. */
-	unsigned long orig_func;
+	/* Information about the function. */
+	struct kedr_func_info *fi;
 	
 	/* Needed for CMPXCHG* because it is not clear for these 
 	 * instructions until runtime whether a write to memory will happen.

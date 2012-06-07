@@ -5,6 +5,7 @@
 #define FUNCTIONS_H_1133_INCLUDED
 
 #include <linux/list.h>
+#include <linux/spinlock.h>
 
 struct kedr_local_storage;
 
@@ -48,6 +49,46 @@ struct kedr_call_info
 	/* For the pre- and post- handlers, 'tid' as well as the address 
 	 * of this call_info structure itself will be available in the 
 	 * local storage. */
+};
+
+/* Information about a function that can be needed in runtime. */
+struct kedr_func_info
+{
+	/* Address of the original (i.e. not instrumented) function. */
+	unsigned long addr;
+	
+	/* If set, these handlers will be called on entry to the function 
+	 * and right before its exit, respectively. Unlike the handlers from
+	 * call_info structures, these handlers are called no matter how the
+	 * function itself is called (i.e. from within the target module or
+	 * from some other part of the kernel). This can be handy when 
+	 * dealing with callback functions. The handlers from call_info 
+	 * structures, on the other hand, are called only when the function
+	 * is called from the target module itself (i.e. from the 
+	 * instrumented code).
+	 *
+	 * The handlers must not assume they are executed in a process 
+	 * context. They must neither sleep nor cause reschedule in any 
+	 * other way.
+	 *
+	 * [NB] These handlers can be set by the components other than the
+	 * core of our system. It is the respinsibility of these components
+	 * to agree on some policy on setting these handlers (whether to 
+	 * set new handlers if some handlers have already been set, etc.) 
+	 *
+	 * Execution of these handlers will be performed in the RCU 
+	 * read-side sections (consider the addresses of the handlers as the
+	 * pointers to the RCU-protected resources, use rcu_dereference(), 
+	 * etc.).
+	 * 
+	 * The code setting these handlers must follow the rules for the RCU
+	 * write-side sections: take 'handler_lock' to serialize the updates
+	 * and use rcu_assign_pointer(). */
+	void (*pre_handler)(struct kedr_local_storage *);
+	void (*post_handler)(struct kedr_local_storage *);
+	
+	/* A lock to protect the update of the handlers. */
+	spinlock_t handler_lock;
 };
 
 struct module;

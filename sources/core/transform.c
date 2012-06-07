@@ -132,7 +132,7 @@ mk_eval_addr_to_reg(struct kedr_ir_node *ref_node, u8 base, u8 wreg,
  * 
  * Code:
  *	push  %rax
- *	mov   <orig_func_addr32>, %rax	# sign-extended on x86-64
+ *	mov   <address_of_func_info>, %rax
  *	call  <kedr_on_function_entry_wrapper>
  *	test  %rax, %rax
  *	jnz   <go_on>
@@ -157,8 +157,20 @@ kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func,
 		return -ENOMEM;
 	
 	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
-	item = kedr_mk_mov_value32_to_ax((u32)(unsigned long)func->addr, 
+
+/* mov <address_of_func_info>, %rax
+ * We cannot rely on sign extension here because <address_of_func_info> is
+ * an address of a location on the heap rather than of something in the 
+ * kernel/module mapping space. */
+#ifdef CONFIG_X86_64
+	item = kedr_mk_mov_imm64_to_rax((unsigned long)&func->info, 
 		item, 0, &err);
+	
+#else /* x86-32 */
+	item = kedr_mk_mov_value32_to_ax((unsigned long)&func->info, 
+		item, 0, &err);
+#endif
+	
 	item = kedr_mk_call_rel32(
 		(unsigned long)&kedr_on_function_entry_wrapper, 
 		item, 0, &err);

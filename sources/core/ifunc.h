@@ -5,6 +5,7 @@
 #define IFUNC_H_1626_INCLUDED
 
 #include <linux/list.h>
+#include <kedr/kedr_mem/functions.h>
 
 struct kedr_i13n;
 
@@ -44,8 +45,9 @@ struct kedr_ifunc
 {
 	struct list_head list; 
 	
-	/* Start address */
-	void *addr; 
+	/* The information about the function (it can be needed in runtime
+	 * too). */
+	struct kedr_func_info info;
 	
 	/* Size of the code. Actually, it is the "upper bound" on that size.
 	 * The last bytes of the code may be a padding of some kind rather 

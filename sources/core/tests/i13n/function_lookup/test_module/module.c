@@ -79,7 +79,7 @@ static struct kedr_section *
 get_section(struct kedr_ifunc *func)
 {
 	size_t i;
-	unsigned long addr = (unsigned long)func->addr;
+	unsigned long addr = func->info.addr;
 	
 	BUG_ON(num_sections == 0);
 	
@@ -104,8 +104,8 @@ print_func_info(struct kedr_ifunc *func)
 	
 	if (sec != NULL) {
 		debug_util_print_string(sec->name);
-		debug_util_print_u64((u64)((unsigned long)func->addr - 
-			sec->addr), " %llx\n");
+		debug_util_print_u64((u64)(func->info.addr - sec->addr),
+			" %llx\n");
 	}
 	else {
 		/* Unknown section. Output 0 as the offset, the value does 

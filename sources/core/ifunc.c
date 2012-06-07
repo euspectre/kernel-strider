@@ -22,7 +22,6 @@
 
 #include <kedr/asm/insn.h>
 #include <kedr/kedr_mem/block_info.h>
-#include <kedr/kedr_mem/functions.h>
 
 #include "core_impl.h"
 #include "config.h"
@@ -178,9 +177,12 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	if (tf == NULL)
 		return -ENOMEM;
 	
-	tf->addr = (void *)addr; /* [NB] tf->size is 0 now */
+	tf->info.addr = addr; /* [NB] tf->size is 0 now */
 	tf->name = name;
-
+	
+	/* [NB] The pointers to the handlers are both NULL now. */
+	spin_lock_init(&tf->info.handler_lock);
+	
 	INIT_LIST_HEAD(&tf->jump_tables);
 	INIT_LIST_HEAD(&tf->relocs);
 	INIT_LIST_HEAD(&tf->block_infos);
@@ -263,7 +265,7 @@ construct_special_item(unsigned long addr)
 	if (item == NULL)
 		return NULL;
 	
-	item->addr = (void *)addr;
+	item->info.addr = addr;
 	return item;
 }
 
@@ -354,8 +356,10 @@ compare_items(const void *lhs, const void *rhs)
 		(const struct func_boundary_item *)lhs;
 	const struct func_boundary_item *right = 
 		(const struct func_boundary_item *)rhs;
+	unsigned long laddr = left->obj->info.addr;
+	unsigned long raddr = right->obj->info.addr;
 	
-	if (left->obj->addr == right->obj->addr) {
+	if (laddr == raddr) {
 		if (left->index == right->index)
 		/* may happen only if an element is compared to itself */
 			return 0; 
@@ -364,7 +368,7 @@ compare_items(const void *lhs, const void *rhs)
 		else 
 			return 1;
 	}
-	else if (left->obj->addr < right->obj->addr)
+	else if (laddr < raddr)
 		return -1;
 	else 
 		return 1;
@@ -435,7 +439,7 @@ skip_trailing_zeros(struct kedr_ifunc *func)
 		return; /* nothing to do */
 
 	while (func->size != 0 && 
-		*(u8 *)((unsigned long)func->addr + func->size - 1) == '\0')
+		*(u8 *)(func->info.addr + func->size - 1) == '\0')
 		--func->size;
 }
 
@@ -452,7 +456,7 @@ do_adjust_size(struct kedr_ifunc *func, struct insn *insn, void *data)
 	unsigned long offset_after_insn;
 	unsigned long *nop_pos = (unsigned long *)data;
 		
-	start_addr = (unsigned long)func->addr;
+	start_addr = func->info.addr;
 	offset_after_insn = (unsigned long)insn->kaddr + 
 		(unsigned long)insn->length - start_addr;
 		
@@ -498,7 +502,7 @@ adjust_size(struct kedr_ifunc *func)
 	
 	/* Cut off the trailing nops, if any. */
 	if (nop_pos != KEDR_NOT_A_NOP)
-		func->size = nop_pos - (unsigned long)func->addr;
+		func->size = nop_pos - func->info.addr;
 
 	return 0;
 }
@@ -577,8 +581,8 @@ find_functions(struct kedr_i13n *i13n)
 
 	while (i-- > 0) {
 		func_boundaries[i].obj->size = 
-			((unsigned long)(func_boundaries[i + 1].obj->addr) - 
-			(unsigned long)(func_boundaries[i].obj->addr));
+			func_boundaries[i + 1].obj->info.addr - 
+			func_boundaries[i].obj->info.addr;
 	}
 	kfree(func_boundaries);
 	destroy_special_items(&special_items);
@@ -598,11 +602,6 @@ find_functions(struct kedr_i13n *i13n)
 		"No functions found in \"%s\" that can be instrumented\n",
 			module_name(target));
 	}
-	/*else {
-		pr_info(KEDR_MSG_PREFIX 
-		"Number of functions to be instrumented in \"%s\": %u\n",
-			module_name(target), i13n->num_ifuncs);
-	}*/
 	return 0;
 out:
 	/* If an error occured above, some elements might still have been

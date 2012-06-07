@@ -7,7 +7,7 @@
  * for analysis in the user space. 
  *
  * The format is as follows: 
- * ("offset" for a node is (node->orig_addr - func->addr), printed as 
+ * ("offset" for a node is (node->orig_addr - func->info.addr), printed as 
  * %llx, '0xadded' for the nodes added during the instrumentation)
  * -----------------------------------------------------------------------
  * 
@@ -82,7 +82,7 @@ offset_for_node(struct kedr_ifunc *func, struct kedr_ir_node *node)
 	if (node->orig_addr == 0)
 		return 0xadded; /* just in case */
 		
-	return (node->orig_addr - (unsigned long)func->addr);
+	return (node->orig_addr - func->info.addr);
 }
 
 static void 
@@ -185,9 +185,9 @@ print_ir_node(struct kedr_ifunc *func, struct kedr_ir_node *node,
 	}
 #endif
 	else if (start == NULL && is_mov_imm_to_reg) {
-		/* MOV imm32, %rax in the entry handler. */
+		/* MOV imm32/imm64, %rax in the entry handler. */
 		pos = buf + insn_offset_immediate(insn);
-		*(u32 *)pos = 0;
+		*(unsigned long *)pos = 0;
 	}
 	else if (opcode >= 0xa0 && opcode <= 0xa3) {
 		/* direct offset MOV, zero the address */

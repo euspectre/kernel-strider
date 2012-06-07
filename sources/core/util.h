@@ -74,8 +74,8 @@ kedr_for_each_insn_in_function(struct kedr_ifunc *func,
 static inline int
 kedr_is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
 {
-	return (addr >= (unsigned long)func->addr && 
-		addr < (unsigned long)func->addr + func->size);
+	return (addr >= func->info.addr && 
+		addr < func->info.addr + func->size);
 }
 
 /* Returns the code of a register which is in 'mask_choose_from' (the 

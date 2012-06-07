@@ -137,7 +137,7 @@ static __used void __func ## _holder(void) 	\
  * the wrappers. The description of these functions is given in
  * handlers.h in the comments for the respective wrappers. */
 static __used unsigned long
-kedr_on_function_entry(unsigned long orig_func)
+kedr_on_function_entry(struct kedr_func_info *fi)
 {
 	struct kedr_local_storage *ls;
 		
@@ -145,7 +145,7 @@ kedr_on_function_entry(unsigned long orig_func)
 	if (ls == NULL)
 		return 0;
 	
-	ls->orig_func = orig_func;
+	ls->fi = fi;
 	ls->tid = kedr_get_thread_id();
 	
 	if (sampling_rate != 0) {
@@ -163,7 +163,7 @@ kedr_on_function_entry(unsigned long orig_func)
 	
 	if (eh_current->on_function_entry != NULL)
 		eh_current->on_function_entry(eh_current, ls->tid, 
-			ls->orig_func);
+			ls->fi->addr);
 
 	return (unsigned long)ls;
 }
@@ -178,7 +178,7 @@ kedr_on_function_exit(unsigned long storage)
 	
 	if (eh_current->on_function_exit != NULL)
 		eh_current->on_function_exit(eh_current, ls->tid, 
-			ls->orig_func);
+			ls->fi->addr);
 	
 	ls_allocator->free_ls(ls_allocator, ls);
 }

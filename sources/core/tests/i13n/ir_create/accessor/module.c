@@ -7,7 +7,7 @@
  * for analysis in the user space. 
  *
  * The format is as follows: 
- * ("offset" for a node is (node->orig_addr - func->addr), printed as 
+ * ("offset" for a node is (node->orig_addr - func->info.addr), printed as 
  * %llx; 0xadded for the nodes added during the instrumentation)
  * -----------------------------------------------------------------------
  * 
@@ -93,7 +93,7 @@ offset_for_node(struct kedr_ifunc *func, struct kedr_ir_node *node)
 	if (node->orig_addr == 0)
 		return 0xadded; /* just in case */
 		
-	return (node->orig_addr - (unsigned long)func->addr);
+	return (node->orig_addr - func->info.addr);
 }
 
 static void
@@ -153,7 +153,7 @@ print_ir_block(struct kedr_ifunc *func, struct kedr_ir_node *node)
 	debug_util_print_string("events:\n");
 	for (i = 0; i < bi->max_events; ++i) {
 		debug_util_print_ulong(
-			bi->events[i].pc - (unsigned long)func->addr, 
+			bi->events[i].pc - func->info.addr, 
 			"  (0x%lx, ");
 		debug_util_print_ulong(bi->events[i].size, "%lu)\n");
 	}

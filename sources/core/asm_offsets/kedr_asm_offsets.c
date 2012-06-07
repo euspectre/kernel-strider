@@ -48,7 +48,7 @@ kedr_offsets_holder(void)
 	
 	/* Other fields */
 	OFFSET(KEDR_LSTORAGE_tid, kedr_local_storage, tid);
-	OFFSET(KEDR_LSTORAGE_orig_func, kedr_local_storage, orig_func);
+	OFFSET(KEDR_LSTORAGE_fi, kedr_local_storage, fi);
 	OFFSET(KEDR_LSTORAGE_write_mask, kedr_local_storage, write_mask);
 	OFFSET(KEDR_LSTORAGE_info, kedr_local_storage, info);
 	OFFSET(KEDR_LSTORAGE_dest_addr, kedr_local_storage, dest_addr);

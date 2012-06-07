@@ -98,7 +98,7 @@ is_insn_call_or_jxx_rel32(struct insn *insn)
 /* ====================================================================== */
 
 /* Relocate the given instruction in the fallback function in place. The 
- * code was "moved" from base address func->addr to func->fallback. 
+ * code was "moved" from base address func->info.addr to func->fallback. 
  * [NB] No need to process short jumps outside of the function, they are 
  * already usable. This is because the positions of the functions relative 
  * to each other are the same as for the original functions. */
@@ -118,7 +118,7 @@ relocate_insn_in_fallback(struct insn *insn, void *data)
 		 * it uses 'displacement' field for that purpose. */
 		 
 		/* Find the new offset corresponding to the same address */
-		new_offset = (u32)((unsigned long)func->addr + 
+		new_offset = (u32)(func->info.addr + 
 			X86_SIGN_EXTEND_V32(insn->immediate.value) -
 			(unsigned long)func->fallback);
 		
@@ -150,7 +150,7 @@ relocate_insn_in_fallback(struct insn *insn, void *data)
 	/* Find the new offset first. We assume that the instruction refers
 	 * to something outside of the function. The instrumentation system
 	 * must have checked this, see ir_node_set_iprel_addr() in ir.c. */
-	new_offset = (u32)((unsigned long)func->addr + 
+	new_offset = (u32)(func->info.addr + 
 		X86_SIGN_EXTEND_V32(insn->displacement.value) -
 		(unsigned long)func->fallback);
 		
@@ -182,7 +182,7 @@ do_process_function(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 	struct list_head kedr_ir;
 	INIT_LIST_HEAD(&kedr_ir);
 	
-	BUG_ON(func == NULL || func->addr == NULL);
+	BUG_ON(func == NULL || func->info.addr == 0);
 	
 	/* Small functions should have been removed from the list */
 	BUG_ON(func->size < KEDR_SIZE_JMP_REL32);
@@ -387,7 +387,7 @@ static void
 fixup_fallback_jump_tables(struct kedr_ifunc *func, struct kedr_i13n *i13n)
 {
 	struct kedr_jtable *jtable;
-	unsigned long func_start = (unsigned long)func->addr;
+	unsigned long func_start = func->info.addr;
 	unsigned long fallback_start = (unsigned long)func->fallback;
 	
 	list_for_each_entry(jtable, &func->jump_tables, list) {
@@ -422,9 +422,9 @@ detour_original_functions(struct kedr_i13n *i13n)
 		 * special way, so that it is "not very far" from where the 
 		 * code of the target module resides. A near relative jump 
 		 * is enough in this case. */
-		*(u8 *)func->addr = KEDR_OP_JMP_REL32;
-		pos = (u32 *)((unsigned long)func->addr + 1);
-		*pos = X86_OFFSET_FROM_ADDR((unsigned long)func->addr, 
+		*(u8 *)func->info.addr = KEDR_OP_JMP_REL32;
+		pos = (u32 *)(func->info.addr + 1);
+		*pos = X86_OFFSET_FROM_ADDR(func->info.addr, 
 			KEDR_SIZE_JMP_REL32, (unsigned long)func->i_addr);
 
 		/* Fill the rest of the original function's code with 
@@ -434,7 +434,7 @@ detour_original_functions(struct kedr_i13n *i13n)
 		 * transfers somewhere within an original function rather 
 		 * than to its beginning, we better know this early. */
 		if (func->size > KEDR_SIZE_JMP_REL32) {
-			memset((void *)((unsigned long)func->addr + 
+			memset((void *)(func->info.addr + 
 					KEDR_SIZE_JMP_REL32), 
 				0xcc, 
 				func->size - KEDR_SIZE_JMP_REL32);

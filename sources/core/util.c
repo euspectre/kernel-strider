@@ -67,7 +67,7 @@ kedr_for_each_insn_in_function(struct kedr_ifunc *func,
 	int (*proc)(struct kedr_ifunc *, struct insn *, void *), 
 	void *data)
 {
-	unsigned long start_addr = (unsigned long)func->addr;
+	unsigned long start_addr = func->info.addr;
 	struct data_for_each_insn_in_function data_container;
 	
 	data_container.func = func;
