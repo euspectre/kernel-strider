@@ -60,4 +60,8 @@ extern unsigned int sampling_rate;
 extern size_t blocks_total;
 extern size_t blocks_skipped;
 
+/* This parameter allows to enable and disable lookup of func_info objects
+ * by the address of an original function. */
+extern int lookup_func_info;
+
 #endif // CORE_IMPL_H_1628_INCLUDED

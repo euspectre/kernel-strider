@@ -16,6 +16,10 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
+#include <linux/hash.h>
+
+#include <kedr/kedr_mem/functions.h>
 
 #include "config.h"
 #include "core_impl.h"
@@ -84,6 +88,117 @@ alloc_fallback_areas(struct kedr_i13n *i13n)
 no_mem:
 	free_fallback_areas(i13n);	
 	return -ENOMEM;
+}
+/* ====================================================================== */
+
+/* Parameters of the hash table used to lookup func_info objects by the 
+ * addresses of the original functions in the target module.
+ * 
+ * KEDR_FUNC_INFO_TABLE_SIZE - number of buckets in the table. */
+#define KEDR_FUNC_INFO_HASH_BITS   16
+#define KEDR_FUNC_INFO_TABLE_SIZE  (1 << KEDR_FUNC_INFO_HASH_BITS)
+
+struct kedr_fi_table_item
+{
+	struct hlist_node hlist;
+	struct kedr_func_info *fi;
+};
+
+/* Creates the hash table (only if lookup is enabled). */
+static int 
+create_fi_table(struct kedr_i13n *i13n)
+{
+	int i;
+	
+	/* i13n->fi_table is NULL because '*i13n' has been allocated with 
+	 * kzalloc(). */
+	if (!lookup_func_info)
+		return 0; /* do nothing, just report success. */
+	
+	i13n->fi_table = vmalloc(
+		sizeof(struct hlist_head) * KEDR_FUNC_INFO_TABLE_SIZE);
+	if (i13n->fi_table == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+		"create_fi_table(): Failed to allocate memory.\n");
+		return -ENOMEM;
+	}
+	
+	for (i = 0; i < KEDR_FUNC_INFO_TABLE_SIZE; ++i)
+		INIT_HLIST_HEAD(&i13n->fi_table[i]);
+	
+	return 0;
+}
+
+/* Destroys the hash table (only if lookup is enabled). */
+static void
+destroy_fi_table(struct kedr_i13n *i13n)
+{
+	struct hlist_head *head;
+	struct hlist_node *node;
+	struct hlist_node *tmp;
+	struct kedr_fi_table_item *item;
+	int i;
+	
+	if (!lookup_func_info || i13n->fi_table == NULL) 
+		return;
+	
+	for (i = 0; i < KEDR_FUNC_INFO_TABLE_SIZE; ++i) {
+		head = &i13n->fi_table[i];
+		hlist_for_each_entry_safe(item, node, tmp, head, hlist) {
+			hlist_del(&item->hlist);
+			kfree(item);
+		}
+	}
+	vfree(i13n->fi_table);
+	i13n->fi_table = NULL;
+}
+
+/* Adds the item to the hash table (only if lookup is enabled). 
+ * Note that because the table is to be populated in the "on_load" handler
+ * for the target module, we may assume that this operation happens in the
+ * process context. Therefore we may use GFP_KERNEL here. */
+static int
+add_item_to_fi_table(struct kedr_i13n *i13n, struct kedr_func_info *fi) 
+{
+	struct kedr_fi_table_item *item;
+	unsigned long bucket;
+	
+	if (!lookup_func_info) 
+		return 0;
+	
+	item = kzalloc(sizeof(*item), GFP_KERNEL);
+	if (item == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+		"add_item_to_fi_table(): Failed to allocate memory.\n");
+		return -ENOMEM;
+	}
+	
+	INIT_HLIST_NODE(&item->hlist);
+	item->fi = fi;
+	
+	bucket = hash_ptr((void *)fi->addr, KEDR_FUNC_INFO_HASH_BITS);
+	hlist_add_head(&item->hlist, &i13n->fi_table[bucket]);
+	return 0;
+}
+
+struct kedr_func_info *
+kedr_i13n_func_info_for_addr(struct kedr_i13n *i13n, unsigned long addr)
+{
+	struct hlist_head *head;
+	struct hlist_node *node;
+	struct kedr_fi_table_item *item;
+	unsigned long bucket;
+	
+	if (!lookup_func_info)
+		return NULL;
+	
+	bucket = hash_ptr((void *)addr, KEDR_FUNC_INFO_HASH_BITS);
+	head = &i13n->fi_table[bucket];
+	hlist_for_each_entry(item, node, head, hlist) {
+		if (item->fi->addr == addr)
+			return item->fi;
+	}
+	return NULL;
 }
 /* ====================================================================== */
 
@@ -460,11 +575,15 @@ kedr_i13n_process_module(struct module *target)
 	INIT_LIST_HEAD(&i13n->sections);
 	INIT_LIST_HEAD(&i13n->ifuncs);
 	
+	ret = create_fi_table(i13n);
+	if (ret != 0)
+		goto out;
+	
 	ret = alloc_fallback_areas(i13n);
 	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX
 	"Failed to allocate memory for fallback functions.\n");
-		goto out;
+		goto out_del_fi;
 	}
 	
 	ret = kedr_get_sections(target, &i13n->sections);
@@ -489,6 +608,14 @@ kedr_i13n_process_module(struct module *target)
 		if (ret != 0) {
 			pr_warning(KEDR_MSG_PREFIX 
 				"Failed to instrument function %s().\n",
+				func->name);
+			goto out_free_functions;
+		}
+		
+		ret = add_item_to_fi_table(i13n, &func->info);
+		if (ret != 0) {
+			pr_warning(KEDR_MSG_PREFIX 
+			"Failed to add data for %s() to the hash table.\n",
 				func->name);
 			goto out_free_functions;
 		}
@@ -518,11 +645,6 @@ kedr_i13n_process_module(struct module *target)
 		fixup_fallback_jump_tables(func, i13n);
 	
 	detour_original_functions(i13n);
-	/*list_for_each_entry(func, &i13n->ifuncs, list) {
-		pr_info("[DBG] "
-		"Function %s, instrumented instance is at 0x%lx\n",
-			func->name, (unsigned long)func->i_addr);
-	}*/
 	return i13n;
 
 out_free_functions:
@@ -531,6 +653,8 @@ out_free_sections:
 	kedr_release_sections(&i13n->sections);
 out_free_fb:
 	free_fallback_areas(i13n);
+out_del_fi:
+	destroy_fi_table(i13n);
 out:
 	kedr_module_free(i13n->detour_buffer); /* just in case */
 	kfree(i13n);
@@ -541,6 +665,8 @@ void
 kedr_i13n_cleanup(struct kedr_i13n *i13n)
 {
 	BUG_ON(i13n == NULL);
+	
+	destroy_fi_table(i13n);
 	
 	kedr_release_functions(i13n);
 	kedr_module_free(i13n->detour_buffer);

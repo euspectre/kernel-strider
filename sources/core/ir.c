@@ -209,36 +209,6 @@ get_mem_size_type_x_y(struct kedr_ir_node *node)
 }
 /* ====================================================================== */
 
-/* Nonzero if 'addr' is the address of some location in the "init" area of 
- * the module (may be code or data), 0 otherwise. */
-static int
-is_init_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-	if ((mod->module_init != NULL) &&
-	    (addr >= (unsigned long)(mod->module_init)) &&
-	    (addr < (unsigned long)(mod->module_init) + mod->init_size))
-		return 1;
-	
-	return 0;
-}
-
-/* Nonzero if 'addr' is the address of some location in the "core" area of 
- * the module (may be code or data), 0 otherwise. */
-static int
-is_core_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-
-	if ((mod->module_core != NULL) &&
-	    (addr >= (unsigned long)(mod->module_core)) &&
-	    (addr < (unsigned long)(mod->module_core) + mod->core_size))
-		return 1;
-	
-	return 0;
-}
-/* ====================================================================== */
-
 static int
 is_insn_type_x(struct insn *insn)
 {
@@ -716,13 +686,13 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 	/* [NB] Do not use is_*_text_address() here, because the jump tables
 	 * are usually stored in one of the data sections rather than code
 	 * sections. */
-	if (is_core_address(jtable_addr, mod)) {
+	if (kedr_is_core_address(jtable_addr, mod)) {
 		in_core = 1;
 		end_addr = (unsigned long)mod->module_core + 
 			(unsigned long)mod->core_size - 
 			sizeof(unsigned long);
 	}
-	else if (is_init_address(jtable_addr, mod)) {
+	else if (kedr_is_init_address(jtable_addr, mod)) {
 		in_init = 1;
 		end_addr = (unsigned long)mod->module_init + 
 			(unsigned long)mod->init_size - 

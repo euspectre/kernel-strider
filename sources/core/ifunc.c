@@ -111,44 +111,6 @@ ifunc_destroy(struct kedr_ifunc *func)
 }
 /* ====================================================================== */
 
-/* Nonzero if 'addr' is the address of some location in the code of the 
- * given module in the "init" area, 0 otherwise. */
-static int
-is_init_text_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-	if ((mod->module_init != NULL) &&
-	    (addr >= (unsigned long)(mod->module_init)) &&
-	    (addr < (unsigned long)(mod->module_init) + mod->init_text_size))
-		return 1;
-	
-	return 0;
-}
-
-/* Nonzero if 'addr' is the address of some location in the code of the 
- * given module in the "core" area, 0 otherwise. */
-static int
-is_core_text_address(unsigned long addr, struct module *mod)
-{
-	BUG_ON(mod == NULL);
-
-	if ((mod->module_core != NULL) &&
-	    (addr >= (unsigned long)(mod->module_core)) &&
-	    (addr < (unsigned long)(mod->module_core) + mod->core_text_size))
-		return 1;
-	
-	return 0;
-}
-
-/* Nonzero if 'addr' is the address of some location in the code of the 
- * given module (*.text* sections), 0 otherwise. */
-static int
-is_text_address(unsigned long addr, struct module *mod)
-{
-	return (is_core_text_address(addr, mod) || 
-		is_init_text_address(addr, mod));
-}
-
 /* Given the address of a memory location ('orig_addr') in an original 
  * memory area (the area starts at 'orig_area') and the start address of the
  * fallback memory area, determine the corresponding address in the latter.
@@ -192,11 +154,11 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	 * from the beginning of fallback_init_area or fallback_core_area as
 	 * the original function is from the beginning of init or core area
 	 * in the module, respectively. */
-	if (is_core_text_address(addr, mod)) {
+	if (kedr_is_core_text_address(addr, mod)) {
 		tf->fallback = fallback_address((void *)addr, 
 			mod->module_core, i13n->fallback_core_area);
 	} 
-	else if (is_init_text_address(addr, mod)) {
+	else if (kedr_is_init_text_address(addr, mod)) {
 		tf->fallback = fallback_address((void *)addr,
 			mod->module_init, i13n->fallback_init_area);
 	}
@@ -228,7 +190,7 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
 	 * the current symbol belongs to. */
 	if (mod == target && 
 	    name[0] != '\0' && /* skip symbols with empty name */
-	    is_text_address(addr, mod)) {
+	    kedr_is_text_address(addr, mod)) {
 	 	int ret = do_prepare_function(i13n, name, addr);
 	 	if (ret)
 			return ret;

@@ -21,6 +21,7 @@
 #include <linux/hardirq.h>
 #include <linux/sched.h>
 #include <linux/smp.h>
+#include <linux/rcupdate.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -140,6 +141,7 @@ static __used unsigned long
 kedr_on_function_entry(struct kedr_func_info *fi)
 {
 	struct kedr_local_storage *ls;
+	void (*pre_handler)(struct kedr_local_storage *);
 		
 	ls = ls_allocator->alloc_ls(ls_allocator);
 	if (ls == NULL)
@@ -164,7 +166,14 @@ kedr_on_function_entry(struct kedr_func_info *fi)
 	if (eh_current->on_function_entry != NULL)
 		eh_current->on_function_entry(eh_current, ls->tid, 
 			ls->fi->addr);
-
+	
+	/* Call the pre handler if it is set. */
+	rcu_read_lock();
+	pre_handler = rcu_dereference(ls->fi->pre_handler);
+	if (pre_handler != NULL)
+		pre_handler(ls);
+	rcu_read_unlock();
+	
 	return (unsigned long)ls;
 }
 KEDR_DEFINE_WRAPPER(kedr_on_function_entry);
@@ -175,6 +184,14 @@ kedr_on_function_exit(unsigned long storage)
 {
 	struct kedr_local_storage *ls = 
 		(struct kedr_local_storage *)storage;
+	void (*post_handler)(struct kedr_local_storage *);
+	
+	/* Call the post handler if it is set. */
+	rcu_read_lock();
+	post_handler = rcu_dereference(ls->fi->post_handler);
+	if (post_handler != NULL)
+		post_handler(ls);
+	rcu_read_unlock();
 	
 	if (eh_current->on_function_exit != NULL)
 		eh_current->on_function_exit(eh_current, ls->tid, 

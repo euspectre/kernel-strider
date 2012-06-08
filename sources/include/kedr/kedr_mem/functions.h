@@ -83,13 +83,32 @@ struct kedr_func_info
 	 * 
 	 * The code setting these handlers must follow the rules for the RCU
 	 * write-side sections: take 'handler_lock' to serialize the updates
-	 * and use rcu_assign_pointer(). */
+	 * and use rcu_assign_pointer(). 
+	 *
+	 * [NB] RCU seems to suit this well because the semantics is 
+	 * similar: there is a resource (a handler) that can be accessed via
+	 * a pointer to it. Most of the accesses to the resource are 
+	 * expected to read it (execute the code), updates must be rare. 
+	 * Reclaim phase is not needed though. */
 	void (*pre_handler)(struct kedr_local_storage *);
 	void (*post_handler)(struct kedr_local_storage *);
 	
 	/* A lock to protect the update of the handlers. */
 	spinlock_t handler_lock;
 };
+
+/* Searches for the func_info structure for a function with the given start 
+ * address. Returns NULL if not found. 
+ * [NB] If searching for func_info is disabled ('lookup_func_info' parameter
+ * of the core is 0), the function does not perform search and just returns
+ * NULL. 
+ *
+ * It is allowed to call this function only if the target module has already
+ * been instrumented and is now in the memory. It is expected to be called 
+ * from function call handlers or function entry/exit handlers. */
+struct kedr_func_info *
+kedr_find_func_info(unsigned long addr);
+/* ====================================================================== */
 
 struct module;
 

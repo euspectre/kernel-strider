@@ -39,6 +39,7 @@
 #include "i13n.h"
 #include "hooks.h"
 #include "tid.h"
+#include "util.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -111,6 +112,16 @@ module_param(process_um_accesses, int, S_IRUGO);
  * the performance degradation can be significant here. */
 unsigned int sampling_rate = 0;
 module_param(sampling_rate, uint, S_IRUGO);
+
+/* If non-zero, searching for func_info objects for the functions will be 
+ * enabled, given the start addresses of these functions (i.e. of the 
+ * original instances of these). See kedr_find_func_info(). 
+ * If such searching slows down the operation of the target module too much,
+ * you can disable this functionality by setting 'lookup_func_info' to 0
+ * when loading the core module. kedr_find_func_info() will always return
+ * NULL in this case, no searching will be performed. */
+int lookup_func_info = 1;
+module_param(lookup_func_info, int, S_IRUGO);
 /* ====================================================================== */
 
 /* Total number of blocks containing potential memory accesses and the 
@@ -770,6 +781,20 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(kedr_set_function_handlers);
+/* ====================================================================== */
+
+struct kedr_func_info *
+kedr_find_func_info(unsigned long addr)
+{
+	/* Do not perform lookup if it is not the address within the code of
+	 * the target. */
+	if (target_module == NULL || 
+	    !kedr_is_text_address(addr, target_module))
+		return NULL;
+	
+	return kedr_i13n_func_info_for_addr(i13n, addr);
+}
+EXPORT_SYMBOL(kedr_find_func_info);
 /* ====================================================================== */
 
 static void __init

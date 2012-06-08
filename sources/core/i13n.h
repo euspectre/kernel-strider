@@ -3,8 +3,10 @@
 #define I13N_H_1122_INCLUDED
 
 #include <linux/list.h>
+/* ====================================================================== */
 
 struct module;
+struct kedr_func_info;
 
 /* An instance of struct kedr_i13n contains everything related to the 
  * instrumentation of a particular kernel module ("instrumentation object"). 
@@ -42,6 +44,11 @@ struct kedr_i13n
 	
 	/* ...and of their instrumented instances. */
 	unsigned long total_i_size;
+	
+	/* A hash table that allows lookup of func_info objects by the 
+	 * addresses of the corresponding original functions. The table 
+	 * is created and maintained only if lookup is enabled. */
+	struct hlist_head *fi_table;
 };
 
 /* Create an instrumentation object for the given target module and 
@@ -60,5 +67,13 @@ kedr_i13n_process_module(struct module *target);
  * finished cleaning up and is about to be unloaded. */
 void
 kedr_i13n_cleanup(struct kedr_i13n *i13n);
+
+/* If this feature is enabled, the function looks for the func_info object
+ * for the function with the given address. Returns the address of the 
+ * object if found, NULL otherwise. 
+ * If lookup is disabled (lookup_func_info parameter of the core is 0), the 
+ * function always returns NULL. */
+struct kedr_func_info *
+kedr_i13n_func_info_for_addr(struct kedr_i13n *i13n, unsigned long addr);
 
 #endif /* I13N_H_1122_INCLUDED */

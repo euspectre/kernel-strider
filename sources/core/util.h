@@ -8,6 +8,9 @@
 #include "ifunc.h"
 /* ====================================================================== */
 
+struct module;
+/* ====================================================================== */
+
 /* Opcodes for 'jmp rel32' and 'call rel32'. */
 #define KEDR_OP_JMP_REL32	0xe9
 #define KEDR_OP_CALL_REL32	0xe8
@@ -97,4 +100,35 @@ kedr_choose_work_register(unsigned int mask_choose_from,
 	return kedr_choose_register(mask_choose_from, 
 		mask_used | X86_REG_MASK(base));
 }
+/* ====================================================================== */
+
+/* Nonzero if 'addr' is the address of some location in the code of the 
+ * given module in the "init" area, 0 otherwise. */
+int
+kedr_is_init_text_address(unsigned long addr, struct module *mod);
+
+/* Nonzero if 'addr' is the address of some location in the code of the 
+ * given module in the "core" area, 0 otherwise. */
+int
+kedr_is_core_text_address(unsigned long addr, struct module *mod);
+
+/* Nonzero if 'addr' is the address of some location in the code of the 
+ * given module (*.text* sections), 0 otherwise. */
+static inline int
+kedr_is_text_address(unsigned long addr, struct module *mod)
+{
+	return (kedr_is_core_text_address(addr, mod) || 
+		kedr_is_init_text_address(addr, mod));
+}
+
+/* Nonzero if 'addr' is the address of some location in the "init" area of 
+ * the module (may be code or data), 0 otherwise. */
+int
+kedr_is_init_address(unsigned long addr, struct module *mod);
+
+/* Nonzero if 'addr' is the address of some location in the "core" area of 
+ * the module (may be code or data), 0 otherwise. */
+int
+kedr_is_core_address(unsigned long addr, struct module *mod);
+/* ====================================================================== */
 #endif // UTIL_H_1633_INCLUDED

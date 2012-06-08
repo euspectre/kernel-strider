@@ -12,6 +12,7 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/bug.h> /* BUG_ON */
 
@@ -100,5 +101,56 @@ kedr_choose_register(unsigned int mask_choose_from, unsigned int mask_used)
 		++rcode;
 	}
 	return rcode;
+}
+/* ====================================================================== */
+
+int
+kedr_is_init_text_address(unsigned long addr, struct module *mod)
+{
+	BUG_ON(mod == NULL);
+	if ((mod->module_init != NULL) &&
+	    (addr >= (unsigned long)(mod->module_init)) &&
+	    (addr < (unsigned long)(mod->module_init) + mod->init_text_size))
+		return 1;
+	
+	return 0;
+}
+
+int
+kedr_is_core_text_address(unsigned long addr, struct module *mod)
+{
+	BUG_ON(mod == NULL);
+
+	if ((mod->module_core != NULL) &&
+	    (addr >= (unsigned long)(mod->module_core)) &&
+	    (addr < (unsigned long)(mod->module_core) + mod->core_text_size))
+		return 1;
+	
+	return 0;
+}
+
+int
+kedr_is_init_address(unsigned long addr, struct module *mod)
+{
+	BUG_ON(mod == NULL);
+	if ((mod->module_init != NULL) &&
+	    (addr >= (unsigned long)(mod->module_init)) &&
+	    (addr < (unsigned long)(mod->module_init) + mod->init_size))
+		return 1;
+	
+	return 0;
+}
+
+int
+kedr_is_core_address(unsigned long addr, struct module *mod)
+{
+	BUG_ON(mod == NULL);
+
+	if ((mod->module_core != NULL) &&
+	    (addr >= (unsigned long)(mod->module_core)) &&
+	    (addr < (unsigned long)(mod->module_core) + mod->core_size))
+		return 1;
+	
+	return 0;
 }
 /* ====================================================================== */
