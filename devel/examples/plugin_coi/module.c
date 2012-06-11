@@ -89,7 +89,7 @@ create_id_for_cdev(unsigned int mj, unsigned int mn)
 {
 	struct cdev_hb_id *item;
 	
-	item = kzalloc(sizeof(*item), GFP_ATOMIC);
+	item = kzalloc(sizeof(*item), GFP_KERNEL);
 	if (item == NULL)
 		return NULL;
 	
