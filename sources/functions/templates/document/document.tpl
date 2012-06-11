@@ -29,6 +29,7 @@
 #include <linux/sort.h>
 #include <linux/kallsyms.h>
 #include <linux/mutex.h>
+#include <linux/list.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -64,7 +65,10 @@ static DEFINE_MUTEX(target_mutex);
  * beginning of the exit function of the target. */
 static unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
-	
+<$if concat(header.main)$>
+<$header.main: join(\n)$>
+/* ====================================================================== */
+<$endif$>
 <$handlerDecl: join(\n\n)$>
 /* ====================================================================== */
 
@@ -607,6 +611,8 @@ repl_exit(void)
 {
 	struct kedr_event_handlers *eh;
 	unsigned long tid;
+	unsigned long pc;
+	struct kedr_cdev_hb_id *pos;
 	
 	BUG_ON(target_exit_func == NULL);
 	
@@ -616,18 +622,24 @@ repl_exit(void)
 	/* Specify the relation "init happens-before cleanup" */
 	eh = kedr_get_event_handlers();
 	tid = kedr_get_thread_id();
+	pc = (unsigned long)target_exit_func;
 	
 	if (eh->on_wait_pre != NULL)
-		eh->on_wait_pre(eh, tid, (unsigned long)target_exit_func,
-			id_init_hb_exit, KEDR_SWT_COMMON);
+		eh->on_wait_pre(eh, tid, pc, id_init_hb_exit, 
+			KEDR_SWT_COMMON);
 	
 	if (eh->on_wait_post != NULL)
-		eh->on_wait_post(eh, tid, (unsigned long)target_exit_func,
-			id_init_hb_exit, KEDR_SWT_COMMON);
+		eh->on_wait_post(eh, tid, pc, id_init_hb_exit, 
+			KEDR_SWT_COMMON);
 	
 	/* Call the callback from a plugin, if set. */
 	if (fh_plugin != NULL && fh_plugin->on_before_exit_call != NULL)
 		fh_plugin->on_before_exit_call(target_module);
+	
+	/* [NB] cdev-specific */
+	list_for_each_entry(pos, &cdev_hb_ids, list)
+		kedr_trigger_end_exit_wait_events(eh, tid, pc, pos);
+	/* [NB] end cdev-specific */
 	
 	/* Call the original function */
 	target_exit_func();
@@ -681,11 +693,28 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 static void
 on_unload(struct kedr_function_handlers *fh, struct module *mod)
 {
+	struct kedr_cdev_hb_id *pos;
+	struct kedr_cdev_hb_id *tmp;
+	
 	if (mutex_lock_killable(&target_mutex) != 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 			"on_unload(): failed to lock the mutex.\n");
 		return;
 	}
+	
+	/* Cleanup the ID structures for the happens-before arcs.
+	 * Because the code of the target module cannot execute 
+	 * at this point, we may perform cleanup without locking.
+	 * 
+	 * [NB] In the future, this code should be modularized
+	 * (different groups of ID structures, etc.). */
+	
+	/* cdev */
+	list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
+		list_del(&pos->list);
+		kfree(pos);
+	}
+	/* end cdev */
 	
 	if (fh_plugin != NULL) {
 		if (fh_plugin->on_target_about_to_unload != NULL)
