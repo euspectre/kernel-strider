@@ -3,7 +3,27 @@ IR:
 
 0xadded: 48 b8 00 00 00 00 00 00 00 00
 
+0xadded: 48 83 ec 38
+
+0xadded: 48 89 04 24
+
+0xadded: 48 89 7c 24 08
+
+0xadded: 48 89 74 24 10
+
+0xadded: 48 89 54 24 18
+
+0xadded: 48 89 4c 24 20
+
+0xadded: 4c 89 44 24 28
+
+0xadded: 4c 89 4c 24 30
+
+0xadded: 48 89 e0
+
 0xadded: e8 00 00 00 00
+
+0xadded: 48 83 c4 38
 
 0xadded: 48 85 c0
 
@@ -65,6 +85,10 @@ Ref. to call_info for the node at 0x11
 0x11: 0f 84 00 00 00 00
 
 Block (type: 12)
+0xadded: 48 89 83 b8 01 00 00
+
+0xadded: 48 89 93 c0 01 00 00
+
 0xadded: 50
 
 0xadded: 48 89 d8

@@ -133,7 +133,7 @@ mk_eval_addr_to_reg(struct kedr_ir_node *ref_node, u8 base, u8 wreg,
  * Code:
  *	push  %rax
  *	mov   <address_of_func_info>, %rax
- *	call  <kedr_on_function_entry_wrapper>
+ *	<save regs and call kedr_on_function_entry_wrapper> # see below
  *	test  %rax, %rax
  *	jnz   <go_on>
  *	pop   %rax
@@ -142,6 +142,51 @@ mk_eval_addr_to_reg(struct kedr_ir_node *ref_node, u8 base, u8 wreg,
  * 	mov   %base, <offset_base>(%rax)
  *	mov   %rax, %base
  *	pop   %rax
+ *
+ * <save regs and call kedr_on_function_entry_wrapper>
+ * 
+ * This part saves the address of 'func_info' from %rax as well as the 
+ * registers that can be used for transfer of function parameters on stack.
+ * Then it calls kedr_on_function_entry_wrapper() with the address of the
+ * top of the stack as an argument. After that it restores the stack 
+ * pointer to make it point to the pushed value of %rax.
+ * 
+ * This way, kedr_on_function_entry() will receive a pointer to the
+ * kedr_prologue_data structure located on stack as its argument. The 
+ * handler may then store the registers in their slots in the local storage,
+ * which may come in handy, especially when handling the callbacks provided
+ * by the target module but called from other parts of the kernel 
+ * (the handlers will have access to the arguments of these callbacks as a
+ * result). The original value of %sp before the call of a function can be
+ * calculated using the fact that the prologue_data structure is placed on 
+ * stack and the return address lies at the end of this structure.
+ *
+ * The code of this part is different for x86-32 and x86-64.
+ *
+ * Code for x86-32:
+ * 	sub $0xc, %esp
+ *	mov %eax, (%esp)  # <address_of_func_info>
+ *	mov %edx, 0x4(%esp)  # %eax, %edx, %ecx and the stack can be used
+ *	mov %ecx, 0x8(%esp)  #   for the arguments of the function, %eax is
+ *	                     #   already on the stack (pushed earlier).
+ * 	mov %esp, %eax
+ *	call <kedr_on_function_entry_wrapper>
+ *	add $0xc, %esp
+ *
+ * Code for x86-64:
+ *	sub $0x38, %rsp  # [NB] %rax is not used for parameter transfer on
+ *	                 # x86-64 but it is still in kedr_prologue_data for
+ *	                 # convenience.
+ *	mov %rax, (%rsp)   # <address_of_func_info>
+ *	mov %rdi, 0x8(%rsp)
+ *	mov %rsi, 0x10(%rsp)
+ *	mov %rdx, 0x18(%rsp)
+ *	mov %rcx, 0x20(%rsp)
+ *	mov %r8, 0x28(%rsp)
+ *	mov %r9, 0x30(%rsp)
+ *	mov %rsp, %rax
+ *	call <kedr_on_function_entry_wrapper>
+ *	add $0x38, %rsp
  */
 int
 kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func, 
@@ -151,6 +196,11 @@ kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func,
 	struct list_head *item = ir;	
 	struct kedr_ir_node *jnz_node;
 	struct list_head *go_on_item;
+#ifdef CONFIG_X86_64
+	u8 stack_space = 0x38;
+#else /* x86-32 */
+	u8 stack_space = 0xc;
+#endif
 	
 	jnz_node = kedr_ir_node_create();
 	if (jnz_node == NULL)
@@ -162,18 +212,43 @@ kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func,
  * We cannot rely on sign extension here because <address_of_func_info> is
  * an address of a location on the heap rather than of something in the 
  * kernel/module mapping space. */
+	item = kedr_mk_mov_ulong_to_ax((unsigned long)&func->info, 
+		item, 0, &err);
+
+	item = kedr_mk_sub_value8_from_reg(stack_space, INAT_REG_CODE_SP,
+		item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, INAT_REG_CODE_SP,
+		0, item, 0, &err);
+
 #ifdef CONFIG_X86_64
-	item = kedr_mk_mov_imm64_to_rax((unsigned long)&func->info, 
-		item, 0, &err);
-	
-#else /* x86-32 */
-	item = kedr_mk_mov_value32_to_ax((unsigned long)&func->info, 
-		item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DI, INAT_REG_CODE_SP,
+		0x8, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_SI, INAT_REG_CODE_SP,
+		0x10, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, INAT_REG_CODE_SP,
+		0x18, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_CX, INAT_REG_CODE_SP,
+		0x20, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_8, INAT_REG_CODE_SP,
+		0x28, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_9, INAT_REG_CODE_SP,
+		0x30, item, 0, &err);
+
+# else /* x86-32 */
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, INAT_REG_CODE_SP,
+		0x4, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_CX, INAT_REG_CODE_SP,
+		0x8, item, 0, &err);
 #endif
-	
+
+	item = kedr_mk_mov_reg_to_reg(INAT_REG_CODE_SP, INAT_REG_CODE_AX,
+		item, 0, &err);
 	item = kedr_mk_call_rel32(
 		(unsigned long)&kedr_on_function_entry_wrapper, 
 		item, 0, &err);
+	item = kedr_mk_add_value8_to_reg(stack_space, INAT_REG_CODE_SP, 
+		item, 0, &err);
+	
 	item = kedr_mk_test_reg_reg(INAT_REG_CODE_AX, item, 0, &err);
 	/* For now, add an empty node for 'jnz', we'll fill it later. */
 	list_add(&jnz_node->list, item); 
@@ -209,6 +284,10 @@ kedr_handle_function_entry(struct list_head *ir, struct kedr_ifunc *func,
  * is_simple_function_exit().
  * 
  * Code to insert before the instruction sequence:
+ *	mov %rax, <offset_ret_val>(%base)      # Save the possible return
+ *	mov %rdx, <offset_ret_val_high>(%base) # value, the post handlers
+ *	                                       # for the callbacks might 
+ *	                                       # need it.
  * 	push  %rax
  * 	mov   %base, %rax
  * 	mov   <offset_base>(%rax), %base
@@ -222,8 +301,14 @@ kedr_handle_function_exit(struct kedr_ir_node *ref_node, u8 base)
 	struct list_head *item = ref_node->list.prev;
 	struct list_head *first_item;
 	
-	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
+		offsetof(struct kedr_local_storage, ret_val), item, 0, &err);
 	first_item = item;
+	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, base, 
+		offsetof(struct kedr_local_storage, ret_val_high), item, 0, 
+		&err);
+	
+	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
 	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, &err);
 	item = kedr_mk_load_reg_from_spill_slot(base, INAT_REG_CODE_AX, 
 		item, 0, &err);
@@ -309,14 +394,9 @@ mk_common_jmp_call_indirect(struct kedr_ir_node *ref_node, u8 base,
 	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_AX, base, item,
 		0, err);
 	
-#ifdef CONFIG_X86_64
-	item = kedr_mk_mov_imm64_to_rax((unsigned long)ref_node->call_info,
+	item = kedr_mk_mov_ulong_to_ax((unsigned long)ref_node->call_info,
 		item, 0, err);
-	
-#else /* x86-32 */
-	item = kedr_mk_mov_value32_to_ax((unsigned long)ref_node->call_info,
-		item, 0, err);
-#endif
+
 	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
 		offsetof(struct kedr_local_storage, info), item, 0, err);
 	item = kedr_mk_store_reg_to_mem(wreg, INAT_REG_CODE_AX, 

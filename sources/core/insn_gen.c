@@ -387,40 +387,6 @@ kedr_mk_jcc(u8 cc, struct kedr_ir_node *dest, struct list_head *item,
 	return &node->list;
 }
 
-/* x86-32: see b8 (Move imm32 to r32.)
- * x86-64: see c7 (Move imm32 sign extended to 64-bits to r/m64.) */
-struct list_head *
-kedr_mk_mov_value32_to_ax(u32 value32, struct list_head *item, int in_place, 
-	int *err)
-{
-	struct kedr_ir_node *node;
-	u8 *pos;
-	
-	if (*err != 0)
-		return item;
-	
-	node = prepare_node(item, in_place, err);
-	if (node == NULL)
-		return item;
-	
-	pos = node->insn_buffer;
-
-#ifdef CONFIG_X86_64
-	*pos++ = 0x48; /* REX.W */
-	*pos++ = 0xc7; /* C7/0: mov SignExt(imm32), %r/m64 */
-	*pos++ = 0xc0; /* Mod R/M: mod==11(b) - reg, R/M == 0 - rax */
-#else /* X86_32 */
-	*pos++ = 0xb8; /* B8+r: mov imm32, %r */
-#endif
-	*(u32 *)pos = value32;
-	pos += 4;
-	
-	decode_insn_in_node(node);
-	BUG_ON(node->insn.length != 
-		(unsigned char)(pos - node->insn_buffer));
-	return &node->list;
-}
-
 /* test %reg, %reg */
 struct list_head * 
 kedr_mk_test_reg_reg(u8 reg, struct list_head *item, int in_place, int *err)
@@ -531,6 +497,33 @@ kedr_mk_store_eax_to_base_slot(u8 base, struct list_head *item,
 	return kedr_mk_store_reg_to_mem(INAT_REG_CODE_AX, base, 
 		(unsigned long)(base * sizeof(unsigned long)), item, 
 		in_place, err);
+}
+
+/* x86-32: see opcode b8 (Move imm32 to r32.) */
+struct list_head *
+kedr_mk_mov_value32_to_ax(u32 value32, struct list_head *item, int in_place, 
+	int *err)
+{
+	struct kedr_ir_node *node;
+	u8 *pos;
+	
+	if (*err != 0)
+		return item;
+	
+	node = prepare_node(item, in_place, err);
+	if (node == NULL)
+		return item;
+	
+	pos = node->insn_buffer;
+
+	*pos++ = 0xb8; /* B8+r: mov imm32, %r */
+	*(u32 *)pos = value32;
+	pos += 4;
+	
+	decode_insn_in_node(node);
+	BUG_ON(node->insn.length != 
+		(unsigned char)(pos - node->insn_buffer));
+	return &node->list;
 }
 #endif
 
@@ -1020,10 +1013,10 @@ kedr_mk_sub_reg_reg(u8 reg_what, u8 reg_from, struct list_head *item,
 	return &node->list;
 }
 
-/* add <value8>, %reg */
+/* "add <value8>, %reg" or "sub <value8>, %reg" depending on 'is_add'.*/
 struct list_head *
-kedr_mk_add_value8_to_reg(u8 value8, u8 reg, struct list_head *item, 
-	int in_place, int *err)
+kedr_mk_add_sub_value8_reg(u8 value8, u8 reg, int is_add, 
+	struct list_head *item, int in_place, int *err)
 {
 	struct kedr_ir_node *node;
 	u8 *pos;
@@ -1038,8 +1031,8 @@ kedr_mk_add_value8_to_reg(u8 value8, u8 reg, struct list_head *item,
 	pos = node->insn_buffer;
 	pos = write_rex_prefix(pos, 0, KEDR_REG_UNUSED, KEDR_REG_UNUSED,
 		reg);
-	*pos++ = 0x83; /* Opcode: 83/0 */
-	*pos++ = KEDR_MK_MODRM(3, 0, reg);
+	*pos++ = 0x83; /* Opcode: 83/0 for ADD, 83/5 for SUB */
+	*pos++ = KEDR_MK_MODRM(3, (is_add ? 0 : 5), reg);
 	*pos++ = value8;
 	
 	decode_insn_in_node(node);

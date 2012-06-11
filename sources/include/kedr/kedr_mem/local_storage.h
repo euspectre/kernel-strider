@@ -58,6 +58,27 @@ struct kedr_ls_regs
 #endif
 };
 
+/* The registers that can be needed to obtain the arguments of an 
+ * instrumented function. */
+struct kedr_arg_regs
+{
+#ifdef CONFIG_X86_64
+	unsigned long rdi;
+	unsigned long rsi;
+	unsigned long rdx;
+	unsigned long rcx;
+	unsigned long r8;
+	unsigned long r9;
+	unsigned long rsp;
+
+#else /* x86-32 */
+	unsigned long eax;
+	unsigned long edx;
+	unsigned long ecx;
+	unsigned long esp;
+#endif
+};
+
 /* The local storage. */
 struct kedr_local_storage 
 {
@@ -138,6 +159,16 @@ struct kedr_local_storage
 	 *  ret_addr - the saved intermediate return address for a 
 	 * function call. */
 	unsigned long ret_addr;
+	
+	/* The additional slots for the registers that can be used for 
+	 * parameter transfer and therefore may be needed to obtain the 
+	 * arguments of the instrumented function. The values in these slots
+	 * are guaranteed to be preserved during the execution of the 
+	 * function unlike the contents of the register spill slots defined
+	 * above. The arguments of the function may be used in the exit 
+	 * handler (to be exact, in a post handler called from there), so it
+	 * is needed to preserve them. */
+	struct kedr_arg_regs arg_regs;
 	
 	/* This slot can be used if it is necessary to pass data from a
 	 * pre handler of some event to the corresponding post handler.

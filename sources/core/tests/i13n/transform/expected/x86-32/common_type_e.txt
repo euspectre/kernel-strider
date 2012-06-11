@@ -3,7 +3,19 @@ IR:
 
 0xadded: b8 00 00 00 00
 
+0xadded: 83 ec 0c
+
+0xadded: 89 04 24
+
+0xadded: 89 54 24 04
+
+0xadded: 89 4c 24 08
+
+0xadded: 89 e0
+
 0xadded: e8 00 00 00 00
+
+0xadded: 83 c4 0c
 
 0xadded: 85 c0
 
@@ -334,6 +346,10 @@ Block (type: 3)
 0xa0: 5d
 
 Block (type: 12)
+0xadded: 89 83 bc 00 00 00
+
+0xadded: 89 93 c0 00 00 00
+
 0xadded: 50
 
 0xadded: 89 d8

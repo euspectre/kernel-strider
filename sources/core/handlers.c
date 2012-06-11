@@ -133,12 +133,89 @@ static __used void __func ## _holder(void) 	\
 }
 /* ====================================================================== */
 
+struct kedr_prologue_data
+{
+	struct kedr_func_info *fi;
+
+#ifdef CONFIG_X86_64
+	unsigned long rdi;
+	unsigned long rsi;
+	unsigned long rdx;
+	unsigned long rcx;
+	unsigned long r8;
+	unsigned long r9;
+	unsigned long orig_rax;
+
+#else /* x86-32 */
+	unsigned long edx;
+	unsigned long ecx;
+	unsigned long eax;
+#endif
+	/* The return address of the function. */
+	unsigned long ret_addr;
+};
+
+#ifdef CONFIG_X86_64
+
+/* [NB] Call this function before calling a handler for a callback. */
+static void
+copy_arg_regs_to_reg_slots(struct kedr_local_storage *ls)
+{
+	ls->r.di = ls->arg_regs.rdi;
+	ls->r.si = ls->arg_regs.rsi;
+	ls->r.dx = ls->arg_regs.rdx;
+	ls->r.cx = ls->arg_regs.rcx;
+	ls->r.r8 = ls->arg_regs.r8;
+	ls->r.r9 = ls->arg_regs.r9;
+	ls->r.sp = ls->arg_regs.rsp;
+}
+
+/* Copy the values of the registers from '*pd' to 'arg_regs'. Calculate the 
+ * value of %sp before the call to the current function (as KEDR_LS_ARG* 
+ * macros expect it) and save it too. */
+static void
+load_arg_regs(struct kedr_local_storage *ls, struct kedr_prologue_data *pd)
+{
+	ls->arg_regs.rdi = pd->rdi;
+	ls->arg_regs.rsi = pd->rsi;
+	ls->arg_regs.rdx = pd->rdx;
+	ls->arg_regs.rcx = pd->rcx;
+	ls->arg_regs.r8 = pd->r8;
+	ls->arg_regs.r9 = pd->r9;
+	
+	/* The top of the stack as it was right before the function was 
+	 * called is immediately below '*pd' structure. */
+	ls->arg_regs.rsp = (unsigned long)pd + sizeof(*pd);
+}
+
+#else /* x86-32 */
+
+static void
+copy_arg_regs_to_reg_slots(struct kedr_local_storage *ls)
+{
+	ls->r.ax = ls->arg_regs.eax;
+	ls->r.dx = ls->arg_regs.edx;
+	ls->r.cx = ls->arg_regs.ecx;
+	ls->r.sp = ls->arg_regs.esp;
+}
+
+static void
+load_arg_regs(struct kedr_local_storage *ls, struct kedr_prologue_data *pd)
+{
+	ls->arg_regs.edx = pd->edx;
+	ls->arg_regs.ecx = pd->ecx;
+	ls->arg_regs.eax = pd->eax;
+	
+	ls->arg_regs.esp = (unsigned long)pd + sizeof(*pd);
+}
+#endif
+
 /* The operations that can be used in the instrumented code.
  * These functions are static because they should only be called only via 
  * the wrappers. The description of these functions is given in
  * handlers.h in the comments for the respective wrappers. */
 static __used unsigned long
-kedr_on_function_entry(struct kedr_func_info *fi)
+kedr_on_function_entry(struct kedr_prologue_data *pd)
 {
 	struct kedr_local_storage *ls;
 	void (*pre_handler)(struct kedr_local_storage *);
@@ -147,8 +224,13 @@ kedr_on_function_entry(struct kedr_func_info *fi)
 	if (ls == NULL)
 		return 0;
 	
-	ls->fi = fi;
+	ls->fi = pd->fi;
 	ls->tid = kedr_get_thread_id();
+	
+	/* Load everything necessary to be able to obtain the 
+	 * arguments of the function with KEDR_LS_ARGn() in pre- and/or post
+	 * handlers for callbacks, etc. */
+	load_arg_regs(ls, pd);
 	
 	if (sampling_rate != 0) {
 		long tindex;
@@ -170,8 +252,10 @@ kedr_on_function_entry(struct kedr_func_info *fi)
 	/* Call the pre handler if it is set. */
 	rcu_read_lock();
 	pre_handler = rcu_dereference(ls->fi->pre_handler);
-	if (pre_handler != NULL)
+	if (pre_handler != NULL) {
+		copy_arg_regs_to_reg_slots(ls);
 		pre_handler(ls);
+	}
 	rcu_read_unlock();
 	
 	return (unsigned long)ls;
@@ -189,8 +273,14 @@ kedr_on_function_exit(unsigned long storage)
 	/* Call the post handler if it is set. */
 	rcu_read_lock();
 	post_handler = rcu_dereference(ls->fi->post_handler);
-	if (post_handler != NULL)
+	if (post_handler != NULL) {
+		/* Restore everything needed to obtain the arguments of the 
+		 * function. 
+		 * [NB] The return value (if it exists) must already be in 
+		 * 'ls->ret_val*'. */
+		copy_arg_regs_to_reg_slots(ls);
 		post_handler(ls);
+	}
 	rcu_read_unlock();
 	
 	if (eh_current->on_function_exit != NULL)

@@ -41,8 +41,9 @@
  *   function (passed to the function as a parameter).
  *  
  * Parameter: 
- *   struct kedr_func_info *fi - address of the func_info instance for 
- *   the function. It will be saved in the local storage.
+ *   struct kedr_prologue_data *pd - address of a structure containing a 
+ *   pointer to the func_info instance for the function as well as the data
+ *   needed to obtain the arguments of the function, etc. 
  * Return value: 
  *   the address (unsigned long) of the allocated and properly intialized 
  *   local storage if successful, 0 on failure. */

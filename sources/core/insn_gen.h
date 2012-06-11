@@ -52,8 +52,8 @@ struct list_head *
 kedr_mk_load_store_reg_mem(u8 reg, u8 base, unsigned long offset, 
 	int is_load, struct list_head *item, int in_place, int *err);
 
-/* Load data from the given position in the local storage ('ls') to the
- * register ('mov <offset>(%base), %reg'). */
+/* Load data from the given position in the memory to the register 
+ * ('mov <offset>(%base), %reg'). */
 static inline struct list_head *
 kedr_mk_load_reg_from_mem(u8 reg, u8 base, unsigned long offset, 
 	struct list_head *item, int in_place, int *err)
@@ -62,8 +62,8 @@ kedr_mk_load_reg_from_mem(u8 reg, u8 base, unsigned long offset,
 		in_place, err);
 }
 
-/* Store data from the register to the given position in the local 
- * storage ('mov %reg, <offset>(%base)'). */
+/* Store the data from the register to the given position in the memory 
+ * ('mov %reg, <offset>(%base)'). */
 static inline struct list_head *
 kedr_mk_store_reg_to_mem(u8 reg, u8 base, unsigned long offset, 
 	struct list_head *item, int in_place, int *err)
@@ -106,12 +106,6 @@ struct list_head *
 kedr_mk_jcc(u8 cc, struct kedr_ir_node *dest, struct list_head *item, 
 	int in_place, int *err);
 
-/* x86-32: see b8 (Move imm32 to r32.)
- * x86-64: see c7 (Move imm32 sign extended to 64-bits to r/m64.) */
-struct list_head *
-kedr_mk_mov_value32_to_ax(u32 value32, struct list_head *item, int in_place, 
-	int *err);
-
 /* test %reg, %reg */
 struct list_head *
 kedr_mk_test_reg_reg(u8 reg, struct list_head *item, int in_place, 
@@ -126,7 +120,7 @@ kedr_mk_jmp_to_external(unsigned long addr, struct list_head *item,
 	int in_place, int *err);
 
 #ifndef CONFIG_X86_64
-/* The instructions used on x86-32 only (handling of "pushad"/"popad") */
+/* The instructions used on x86-32 only. */
 
 /* mov %eax, <offset_reg_on_stack>(%esp) or 
  * xchg %eax, <offset_reg_on_stack>(%esp), depending on 'is_xchg'.
@@ -154,6 +148,11 @@ kedr_mk_load_eax_from_base_slot(u8 base, struct list_head *item,
 struct list_head *
 kedr_mk_store_eax_to_base_slot(u8 base, struct list_head *item, 
 	int in_place, int *err);
+	
+/* x86-32 only: see opcode b8 (Move imm32 to r32.) */
+struct list_head *
+kedr_mk_mov_value32_to_ax(u32 value32, struct list_head *item, int in_place, 
+	int *err);
 #endif
 
 /* 'lea <expr>, %reg'
@@ -189,6 +188,18 @@ struct list_head *
 kedr_mk_mov_imm64_to_rax(u64 imm64, struct list_head *item, int in_place, 
 	int *err);
 #endif 
+
+/* Move an unsigned long value to eax/rax. */
+static inline struct list_head *
+kedr_mk_mov_ulong_to_ax(unsigned long value, struct list_head *item,
+	int in_place, int *err)
+{
+#ifdef CONFIG_X86_64
+	return kedr_mk_mov_imm64_to_rax((u64)value, item, in_place, err);
+#else /* x86-32 */
+	return kedr_mk_mov_value32_to_ax((u32)value, item, in_place, err);
+#endif
+}
 
 /* mov value32, <offset>(%base) 
  * see c7 (Move imm32 sign extended to 64-bits to r/m64).
@@ -263,12 +274,34 @@ struct list_head *
 kedr_mk_sub_reg_reg(u8 reg_what, u8 reg_from, 
 	struct list_head *item, int in_place, int *err);
 
+/* "add <value8>, %reg" or "sub <value8>, %reg", depending on 'is_add'.*/
+struct list_head *
+kedr_mk_add_sub_value8_reg(u8 value8, u8 reg, int is_add, 
+	struct list_head *item, int in_place, int *err);
+
 /* add <value8>, %reg
  * <value8> - a 8-bit unsigned value, less than 128. 
- * The instruction is used when handling string operations, for example. */
-struct list_head *
+ * The instruction is used when handling function entry and string 
+ * operations, for example. */
+static inline struct list_head *
 kedr_mk_add_value8_to_reg(u8 value8, u8 reg, struct list_head *item, 
-	int in_place, int *err);
+	int in_place, int *err)
+{
+	return kedr_mk_add_sub_value8_reg(value8, reg, 1, item, in_place, 
+		err);
+}
+
+/* sub <value8>, %reg
+ * <value8> - a 8-bit unsigned value, less than 128. 
+ * The instruction is used when handling function entry, for example. */
+static inline struct list_head *
+kedr_mk_sub_value8_from_reg(u8 value8, u8 reg, struct list_head *item, 
+	int in_place, int *err)
+{
+	return kedr_mk_add_sub_value8_reg(value8, reg, 0, item, in_place,
+		err);
+}
+
 
 /* neg %reg 
  * The instruction is used when handling string operations, for example. */
