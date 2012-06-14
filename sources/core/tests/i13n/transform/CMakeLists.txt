@@ -117,8 +117,5 @@ kedr_test_add_script (mem_core.i13n.null_alloc.03
 	test_nulla.sh "kedr_dummy_target" "${CMAKE_BINARY_DIR}/tests/dummy_target"
 )
 
-# TODO: tests checking entry/exit and call pre/post events with handlers
-# (on the same code as calls_jumps2_* tests?)
-
 add_subdirectory(accessor2)
 add_subdirectory(target_common)
