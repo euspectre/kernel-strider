@@ -51,6 +51,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"transform.c"
 	"handlers.c"
 	"annotations.c"
+	"resolve_ip.c"
 	"${THUNKS_SOURCE_FILE}"
 
 # Headers
@@ -67,6 +68,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"transform.h"
 	"handlers.h"
 	"thunks.h"
+	"resolve_ip.h"
 
 # Instruction decoder: sources and headers
 	"${ARCH_DIR}/lib/inat.c"

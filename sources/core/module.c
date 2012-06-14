@@ -40,6 +40,7 @@
 #include "hooks.h"
 #include "tid.h"
 #include "util.h"
+#include "resolve_ip.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -161,7 +162,7 @@ static struct module *target_module = NULL;
 static int handle_module_notifications = 0;
 
 /* A mutex to protect the data related to the target module. */
-static DEFINE_MUTEX(target_mutex);
+DEFINE_MUTEX(target_mutex);
 /* ====================================================================== */
 
 /* A directory for the core in debugfs. */
@@ -171,7 +172,7 @@ const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
 
 /* The instrumentation object. NULL if the instrumentation failed or was not
  * performed. */
-static struct kedr_i13n *i13n = NULL;
+struct kedr_i13n *i13n = NULL;
 /* ====================================================================== */
 
 /* The pool of the IDs that are unique during the session with the target
@@ -911,9 +912,13 @@ core_init_module(void)
 		goto out_free_eh;
 	}
 	
-	ret = create_debugfs_files();
+	ret = kedr_init_resolve_ip(debugfs_dir_dentry);
 	if (ret != 0)
 		goto out_rmdir;
+	
+	ret = create_debugfs_files();
+	if (ret != 0)
+		goto out_cleanup_resolve_ip;
 	
 	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
 	if (ret != 0)
@@ -995,6 +1000,9 @@ out_cleanup_sections:
 out_remove_files:
 	remove_debugfs_files();
 
+out_cleanup_resolve_ip:
+	kedr_cleanup_resolve_ip();
+
 out_rmdir:
 	debugfs_remove(debugfs_dir_dentry);
 
@@ -1016,6 +1024,7 @@ core_exit_module(void)
 	kedr_cleanup_section_subsystem();
 	
 	remove_debugfs_files();
+	kedr_cleanup_resolve_ip();
 	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
 	

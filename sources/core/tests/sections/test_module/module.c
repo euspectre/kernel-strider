@@ -64,7 +64,7 @@ static struct module *target_module = NULL;
 static int handle_module_notifications = 0;
 
 /* A mutex to protect the data related to the target module. */
-static DEFINE_MUTEX(target_mutex);
+DEFINE_MUTEX(target_mutex);
 
 /* A directory for the core in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
