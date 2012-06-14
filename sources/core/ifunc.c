@@ -107,6 +107,8 @@ ifunc_destroy(struct kedr_ifunc *func)
 	 * temporary buffer for the instrumented instance may have remained
 	 * unfreed. Free it now. */
 	kfree(func->tbuf);
+	
+	kfree(func->name);
 	kfree(func);
 }
 /* ====================================================================== */
@@ -140,7 +142,11 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 		return -ENOMEM;
 	
 	tf->info.addr = addr; /* [NB] tf->size is 0 now */
-	tf->name = name;
+	tf->name = kstrdup(name, GFP_KERNEL);
+	if (tf->name == NULL) {
+		kfree(tf);
+		return -ENOMEM;
+	}
 	
 	/* [NB] The pointers to the handlers are both NULL now. */
 	spin_lock_init(&tf->info.handler_lock);

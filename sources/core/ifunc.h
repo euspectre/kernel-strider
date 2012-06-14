@@ -54,12 +54,13 @@ struct kedr_ifunc
 	 * than the real code of the function. */
 	unsigned long size;
 	
-	/* Name of the function */
-	/* [NB] Is it safe to keep only a pointer? The string itself is in
-	 * the string table of the module and that table is unlikely to go 
-	 * away before the module is unloaded. 
-	 * See module_kallsyms_on_each_symbol().*/ 
-	const char *name;
+	/* Name of the function. 
+	 * [NB] It is not safe to keep a pointer if the name is to be used 
+	 * not only during the instrumentation phase but also in runtime 
+	 * (the string table may change after the target module has 
+	 * completed its initialization). So, we need to make a copy of the
+	 * name and store the pointer to the copy here. */ 
+	char *name;
 	
 	/* The list of jump tables (one element per each indirect near jump 
 	 * of the appropriate kind). Some jump tables may have 0 elements, 
