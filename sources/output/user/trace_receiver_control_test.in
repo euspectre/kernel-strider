@@ -1,0 +1,3 @@
+#! /bin/sh
+@CMAKE_CURRENT_BINARY_DIR@/@trace_receiver_control_name@ --receiver-path \
+@CMAKE_CURRENT_BINARY_DIR@/@trace_receiver_program_name@ "$@"

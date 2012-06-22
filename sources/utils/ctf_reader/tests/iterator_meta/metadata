@@ -1,0 +1,43 @@
+
+
+trace
+{
+    byte_order = le;
+    packet.header := struct
+    {
+        integer {size = 32; align = 32; signed = false;} magic;
+    };
+};
+
+typedef integer {size = 32; align = 32; signed = true;} int32_t;
+typedef integer {size = 32; align = 32; signed = false;} uint32_t;
+
+typedef integer {size = 16; align = 16; signed = true;} int16_t;
+typedef integer {size = 16; align = 16; signed = false;} uint16_t;
+
+typedef integer {size = 8; align = 8; signed = false;} uint8_t;
+
+stream
+{
+    packet.context := struct
+    {
+        uint32_t packet_size;
+        uint32_t content_size;
+    };
+    
+    event.header := enum {simple = 1, complex} : uint8_t; /* event type */
+};
+
+event
+{
+    context := variant <stream.event.header>
+    {
+        uint8_t complex;/* array size for complex event */
+    };
+
+    fields := variant <stream.event.header>
+    {
+        int16_t simple;
+        int16_t complex[event.context.complex];
+    };
+};

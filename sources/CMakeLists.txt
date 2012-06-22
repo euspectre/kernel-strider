@@ -107,6 +107,7 @@ include_directories("${CMAKE_BINARY_DIR}/include")
 kbuild_include_directories("${CMAKE_BINARY_DIR}/include")
 
 # For the configuration file (config.h)
+include_directories("${CMAKE_BINARY_DIR}")
 kbuild_include_directories("${CMAKE_BINARY_DIR}")
 #######################################################################
 # Make "Release" the default build type
@@ -134,6 +135,11 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -O0 -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -g -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wall")
+
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall")
+
 
 #######################################################################
 # The path where the user-mode helper scripts are to be installed
@@ -328,13 +334,11 @@ message (STATUS "Creating \"kedr_gen\" - done")
 add_subdirectory(core)
 add_subdirectory(functions)
 
-add_subdirectory(event_collector)
+# Should be before 'output'.
+add_subdirectory(utils)
 add_subdirectory(output)
 
-#For tests only. (Later should be building library.)
-add_subdirectory(utils)
-
-#add_subdirectory(converter)
+add_subdirectory(converter)
 
 add_subdirectory(include)
 

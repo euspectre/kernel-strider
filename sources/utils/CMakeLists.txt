@@ -1,1 +1,2 @@
 add_subdirectory(ctf_reader)
+add_subdirectory(kedr_trace_reader)

@@ -1,0 +1,14 @@
+typedef integer{size = 8; align = 8; byte_order = be; signed = false;} uint8_t;
+
+stream
+{
+	packet.context := struct {
+		uint8_t packet_size;
+		uint8_t context_size;
+	};
+};
+
+event
+{
+	fields := uint8_t;
+};

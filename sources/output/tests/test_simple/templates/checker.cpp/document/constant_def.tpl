@@ -1,0 +1,1 @@
+<$constant.type$> <$constant.name$> = <$constant.value$>;
