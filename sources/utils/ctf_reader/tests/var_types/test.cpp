@@ -198,15 +198,34 @@ CTFTag MessageType::resolveTagImpl(const char* tagStr,
 }
 
 
-/* Context which simply maps given memory region*/
+/* 
+ * Context which maps memory area with constant size and constant address.
+ */
 class StaticContext : public CTFContext
 {
 public:
+	/* 
+	 * Note, that buffer is copied.
+	 * 
+	 * This needed for satisfy alignment of the context mapping.
+	 */
 	StaticContext(const CTFVarPlaceContext *contextVar,
 		const char* buffer, int size) : CTFContext(contextVar)
 	{
-		moveMap(size * 8, buffer, 0);
+		this->buffer = new char[size];
+		memcpy(this->buffer, buffer, size);
+		
+		moveMap(size * 8, this->buffer, 0);
 	}
+	
+	~StaticContext(void) {delete[] buffer;}
+	/* 
+	 * Return map for the context.
+	 * 
+	 * This value is garantee satisfy needed alignment, in contrast to
+	 * 'buffer' parameter of the constructor.
+	 */
+	const char* getMap(void) const{return buffer;}
 protected:
 	int extendMapImpl(int newSize, const char** mapStart_p,
 		int* mapStartShift_p)
@@ -220,6 +239,8 @@ protected:
 		
 		throw std::logic_error("Cannot extend static context");
 	}
+private:
+	char* buffer;
 };
 
 /* Test integer type and its variable */
@@ -248,7 +269,7 @@ int test_int()
 	StaticContext staticContext(messageVar->getContextVar(), buf, 4);
 
 	int val = var->getInt32(staticContext);
-	int val_expected = be32toh(*(const int32_t*)buf);
+	int val_expected = be32toh(*(const int32_t*)staticContext.getMap());
 
 	if(val != val_expected)
 	{
@@ -303,7 +324,7 @@ int test_struct()
 	}
 
 	int val2 = var2->getInt32(staticContext);
-	int val2_expected = be32toh(*(const int32_t*)(buf + 4));
+	int val2_expected = be32toh(*(const int32_t*)(staticContext.getMap() + 4));
 
 	if(val2 != val2_expected)
 	{
@@ -519,7 +540,7 @@ int test_float_offset(void)
 	}
 
 	int val2 = var2->getInt32(staticContext);
-	int val2_expected = be32toh(*(const int32_t*)(buf + 4));
+	int val2_expected = be32toh(*(const int32_t*)(staticContext.getMap() + 4));
 
 	if(val2 != val2_expected)
 	{
@@ -537,7 +558,7 @@ int test_float_offset(void)
 	flexVar->setSize(3*8, staticContext1);
 
 	val2 = var2->getInt32(staticContext1);
-	val2_expected = be32toh(*(const int32_t*)(buf1 + 8));
+	val2_expected = be32toh(*(const int32_t*)(staticContext1.getMap() + 8));
 
 	if(val2 != val2_expected)
 	{
@@ -624,7 +645,7 @@ int test_variant()
 
 
 	int val = varEvenMore->getInt32(staticContext);
-	int val_expected = be32toh(*(const int32_t*)(buf + 4));
+	int val_expected = be32toh(*(const int32_t*)(staticContext.getMap() + 4));
 
 	if(val != val_expected)
 	{
@@ -691,7 +712,7 @@ int test_array()
 		++iter, ++i)
 	{
 		int val = varElem->getInt32(*iter);
-		int val_expected = buf[2 + i];
+		int val_expected = staticContext.getMap()[2 + i];
 
 		if(val != val_expected)
 		{
@@ -703,7 +724,7 @@ int test_array()
 	}
 
 	int val = varLast->getInt32(staticContext);
-	int val_expected = be16toh(*(const int16_t*)(buf + 10));
+	int val_expected = be16toh(*(const int16_t*)(staticContext.getMap() + 10));
 
 	if(val != val_expected)
 	{
@@ -787,7 +808,7 @@ int test_sequence()
 		++iter, ++i)
 	{
 		int val = varElem->getInt32(*iter);
-		int val_expected = buf[2 + i];
+		int val_expected = staticContext.getMap()[2 + i];
 
 		if(val != val_expected)
 		{
@@ -798,7 +819,7 @@ int test_sequence()
 	}
 
 	int val = varLast->getInt32(staticContext);
-	int val_expected = be16toh(*(const int16_t*)(buf + 8));
+	int val_expected = be16toh(*(const int16_t*)(staticContext.getMap() + 8));
 
 	if(val != val_expected)
 	{

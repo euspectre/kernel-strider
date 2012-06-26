@@ -62,7 +62,7 @@ EXPORT_SYMBOL(kedr_unregister_event_handlers);
 
 /* Pattern for callback wrappers */
 #define CALLBACK_CALL(__callback, ...) do {                         \
-if(is_handler_used && current_handler->__callback)                \
+if(is_handler_used && current_handler->__callback)                  \
     current_handler->__callback(current_handler, ##__VA_ARGS__);    \
 }while(0)
 
@@ -139,17 +139,17 @@ void stub_on_call_post(unsigned long tid, unsigned long pc,
 }
 EXPORT_SYMBOL(stub_on_call_post);
 
-void stub_begin_memory_events(unsigned long tid, unsigned long num_events, 
+void stub_on_begin_memory_events(unsigned long tid, unsigned long num_events, 
     void **pdata /* out param*/)
 {
     CALLBACK_CALL(begin_memory_events, tid, num_events, pdata);
 }
-EXPORT_SYMBOL(stub_begin_memory_events);
-void stub_end_memory_events(unsigned long tid, void *data)
+EXPORT_SYMBOL(stub_on_begin_memory_events);
+void stub_on_end_memory_events(unsigned long tid, void *data)
 {
     CALLBACK_CALL(end_memory_events, tid, data);
 }
-EXPORT_SYMBOL(stub_end_memory_events);
+EXPORT_SYMBOL(stub_on_end_memory_events);
 void stub_on_memory_event(unsigned long tid, 
     unsigned long pc, unsigned long addr, unsigned long size, 
     enum kedr_memory_event_type type,
@@ -247,7 +247,7 @@ EXPORT_SYMBOL(stub_on_unlock_pre);
 void stub_on_unlock_post(unsigned long tid, unsigned long pc, 
     unsigned long lock_id, enum kedr_lock_type type)
 {
-    CALLBACK_CALL(on_lock_post, tid, pc, lock_id, type);
+    CALLBACK_CALL(on_unlock_post, tid, pc, lock_id, type);
 }
 EXPORT_SYMBOL(stub_on_unlock_post);
 

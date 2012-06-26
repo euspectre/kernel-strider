@@ -12,21 +12,38 @@
 #include <unistd.h> /* sleep */
 
 /* Wrapper around addresses for pretty printing */
-struct Addr64
+template<class T>
+struct Addr;
+
+template<>
+struct Addr<uint32_t>
 {
-    Addr64(uint64_t addr) : addr(addr) {}
+    Addr(const CTFVarInt& var, CTFContext& context):
+        addr(var.getUInt32(context)) {}
+    
+    uint32_t addr;
+};
+
+template<>
+struct Addr<uint64_t>
+{
+    Addr(const CTFVarInt& var, CTFContext& context):
+        addr(var.getUInt64(context)) {}
     
     uint64_t addr;
 };
 
-std::ostream& operator<<(std::ostream& os, const struct Addr64& addr)
+
+template<class T>
+std::ostream& operator<<(std::ostream& os, const struct Addr<T>& addr)
 {
     std::ios_base::fmtflags oldFlags = os.flags();
     char oldFill = os.fill();
     int oldWidth = os.width();
     
     os.fill('0');
-    os << std::hex << std::setw(16) << std::right << addr.addr;
+    os << "0x" << std::hex << std::setw(2 * sizeof(T)) << std::right
+        << addr.addr;
     
     os.flags(oldFlags);
     os.fill(oldFill);
@@ -95,6 +112,7 @@ public:
     void print(CTFReader::Event& event, std::ostream& os) const;
 
     /* Helper for printers for concrete type of events */
+    template<class T>
     void printHeader(CTFReader::Event& event, std::ostream& os) const;
     
     const KEDRTraceReader& getTraceReader(void) const
@@ -104,13 +122,75 @@ private:
     /* Printers for each index of event type enumeration. */
     std::vector<EventPrinterType*> typePrinters;
     
-    const CTFVarEnum* eventTypeVar;
+    template<class T>
+    void setupTypePrinters(void);
+    
+    const CTFVarEnum& eventTypeVar;
     /* Variable used in header printing */
-    const CTFVarInt* cpuVar;
-    const CTFVarInt* timestampVar;
-    const CTFVarInt* tidVar;
+    const CTFVarInt& cpuVar;
+    const CTFVarInt& timestampVar;
+    const CTFVarInt& tidVar;
 };
 
+EventPrinter::EventPrinter(const KEDRTraceReader& traceReader)
+    : traceReader(traceReader),
+    eventTypeVar(findEnum(traceReader, "stream.event.header.type")),
+    cpuVar(findInt(traceReader, "trace.packet.header.cpu")),
+    timestampVar(findInt(traceReader, "stream.event.context.timestamp")),
+    tidVar(findInt(traceReader, "stream.event.context.tid"))
+{
+    const std::string* pointerBits = traceReader.findParameter("trace.pointer_bits");
+    if(!pointerBits)
+    {
+        std::cerr << "Unknown number bits in pointer for trace.\n";
+        throw std::logic_error("Incorrect trace.");
+    }
+    if(*pointerBits == "32")
+    {
+        setupTypePrinters<uint32_t>();
+    }
+    else if(*pointerBits == "64")
+    {
+        setupTypePrinters<uint64_t>();
+    }
+    else
+    {
+        std::cerr << "Unknown number bits in pointer for trace:"
+            << *pointerBits << ".\n";
+        throw std::logic_error("Incorrect trace.");
+    }
+}
+
+template<class T>
+void EventPrinter::printHeader(CTFReader::Event& event, std::ostream& os) const
+{
+    std::ios_base::fmtflags oldFlags = os.flags();
+    char oldFill = os.fill();
+    int oldWidth = os.width();
+    
+    int cpu = cpuVar.getInt32(event);
+    uint64_t timestamp = timestampVar.getUInt64(event);
+    uint64_t seconds = timestamp / 1000000000L;
+    uint64_t ns = timestamp % 1000000000L;
+    
+    os << Addr<T>(tidVar, event);
+    
+    os << "\t";
+    
+    os.fill('0');
+    os << "[" << std::dec << std::setw(3) << cpu << "]";
+    
+    os << "\t";
+
+    os.fill('0');    
+    os << std::dec << seconds  << "." << std::setw(6) << ns/1000;
+    
+    os << ":\t";
+    
+    os.flags(oldFlags);
+    os.fill(oldFill);
+    os.width(oldWidth);
+}
 
 /* Abstract class which process event of concrete type */
 class EventPrinterType
@@ -124,6 +204,7 @@ public:
 /* Concrete specializations of the class */
 
 /* Print event in one line. This approach is used for the most event types. */
+template<class T>
 class EventPrinterOneLine : public EventPrinterType
 {
 public:
@@ -147,9 +228,10 @@ private:
     const EventPrinter& eventPrinter;
 };
 
-void EventPrinterOneLine::print(CTFReader::Event& event, std::ostream& os)
+template<class T>
+void EventPrinterOneLine<T>::print(CTFReader::Event& event, std::ostream& os)
 {
-    eventPrinter.printHeader(event, os);
+    eventPrinter.printHeader<T>(event, os);
     
     std::ios_base::fmtflags oldFlags = os.flags();
     char oldFill = os.fill();
@@ -165,148 +247,629 @@ void EventPrinterOneLine::print(CTFReader::Event& event, std::ostream& os)
 }
 
 /* Unknown event type (for intermediate implementation). */
-class EventPrinterUnknown: public EventPrinterOneLine
+template<class T>
+class EventPrinterUnknown: public EventPrinterOneLine<T>
 {
 public:
     EventPrinterUnknown(const EventPrinter& eventPrinter)
-        : EventPrinterOneLine(eventPrinter)
-    {
-        eventTypeVar = &findEnum(eventPrinter.getTraceReader(),
-            "stream.event.header.type");
-    }
+        : EventPrinterOneLine<T>(eventPrinter),
+        eventTypeVar(findEnum(eventPrinter.getTraceReader(),
+            "stream.event.header.type"))
+        {}
 protected:
     void printEventFields(CTFReader::Event& event, std::ostream& os)
     {
-        std::string type = eventTypeVar->getEnum(event);
+        std::string type = eventTypeVar.getEnum(event);
         if(type == "") type = "(unknown)";
         
         os << "Unknown event type: " << type;
     }
 private:
-    const CTFVarEnum* eventTypeVar;
+    const CTFVarEnum& eventTypeVar;
+};
+
+/* Function entry/exit(common data - common base class) */
+template<class T>
+class EventPrinterFEE: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterFEE(const EventPrinter& eventPrinter,
+        const std::string& eventType, const std::string& what):
+        EventPrinterOneLine<T>(eventPrinter), what(what),
+        funcAddrVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".func")){}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what << " " << Addr<T>(funcAddrVar, event);
+    }
+private:
+    const std::string what;
+    const CTFVarInt& funcAddrVar;
 };
 
 /* Function entry */
-class EventPrinterFEntry: public EventPrinterOneLine
+template<class T>
+class EventPrinterFEntry: public EventPrinterFEE<T>
 {
 public:
     EventPrinterFEntry(const EventPrinter& eventPrinter)
-        : EventPrinterOneLine(eventPrinter)
-    {
-        funcAddrVar = &findInt(eventPrinter.getTraceReader(),
-            "event.fields.fentry.func");
-    }
-protected:
-    void printEventFields(CTFReader::Event& event, std::ostream& os)
-    {
-        uint64_t funcAddr = funcAddrVar->getUInt64(event);
-        
-        os << "Enter to function " << Addr64(funcAddr);
-    }
-private:
-    const CTFVarInt* funcAddrVar;
+        : EventPrinterFEE<T>(eventPrinter, "fentry", "Enter to function") {}
 };
 
 /* Function exit */
-class EventPrinterFExit: public EventPrinterOneLine
+template<class T>
+class EventPrinterFExit: public EventPrinterFEE<T>
 {
 public:
     EventPrinterFExit(const EventPrinter& eventPrinter)
-        : EventPrinterOneLine(eventPrinter)
-    {
-        funcAddrVar = &findInt(eventPrinter.getTraceReader(),
-            "event.fields.fexit.func");
-    }
-protected:
-    void printEventFields(CTFReader::Event& event, std::ostream& os)
-    {
-        uint64_t funcAddr = funcAddrVar->getUInt64(event);
-        
-        os << "Exit from function " << Addr64(funcAddr);
-    }
-private:
-    const CTFVarInt* funcAddrVar;
+        : EventPrinterFEE<T>(eventPrinter, "fexit", "Exit from function") {}
 };
 
 /* Memory accesses */
+template<class T>
 class EventPrinterMA: public EventPrinterType
 {
 public:
-    EventPrinterMA(const EventPrinter& eventPrinter);
+    EventPrinterMA(const EventPrinter& eventPrinter):
+        eventPrinter(eventPrinter),
+        accessesVar(findArray(eventPrinter.getTraceReader(), "event.fields.ma")),
+        pcVar(findInt(eventPrinter.getTraceReader(), "event.fields.ma[].pc")),
+        addrVar(findInt(eventPrinter.getTraceReader(), "event.fields.ma[].addr")),
+        sizeVar(findInt(eventPrinter.getTraceReader(), "event.fields.ma[].size")),
+        accessTypeVar(findInt(eventPrinter.getTraceReader(), "event.fields.ma[].access_type"))
+        {}
     
     void print(CTFReader::Event& event, std::ostream& os);
 private:
     const EventPrinter& eventPrinter;
     
-    const CTFVarArray* accessesVar;
+    const CTFVarArray& accessesVar;
     
-    const CTFVarInt* pcVar;
-    const CTFVarInt* addrVar;
-    const CTFVarInt* sizeVar;
-    const CTFVarInt* accessTypeVar;
+    const CTFVarInt& pcVar;
+    const CTFVarInt& addrVar;
+    const CTFVarInt& sizeVar;
+    const CTFVarInt& accessTypeVar;
 };
 
-EventPrinterMA::EventPrinterMA(const EventPrinter& eventPrinter)
-    : eventPrinter(eventPrinter)
+template<class T>
+void EventPrinterMA<T>::print(CTFReader::Event& event, std::ostream& os)
 {
-    const CTFReader& reader = eventPrinter.getTraceReader();
-    
-    accessesVar = &findArray(reader, "event.fields.ma");
-    
-    pcVar = &findInt(reader, "event.fields.ma[].pc");
-    addrVar = &findInt(reader, "event.fields.ma[].addr");
-    sizeVar = &findInt(reader, "event.fields.ma[].size");
-    accessTypeVar = &findInt(reader, "event.fields.ma[].access_type");
-}
-
-void EventPrinterMA::print(CTFReader::Event& event, std::ostream& os)
-{
-    //debug
-    int i = 0;
-    for(CTFVarArray::ElemIterator iter(*accessesVar, event);
+    for(CTFVarArray::ElemIterator iter(accessesVar, event);
         iter;
         ++iter)
     {
-        eventPrinter.printHeader(event, os);
+        eventPrinter.printHeader<T>(event, os);
         
-        uint64_t pc = pcVar->getUInt64(*iter);
-        uint64_t addr = addrVar->getUInt64(*iter);
-        uint64_t size = sizeVar->getUInt64(*iter);
-        int accessType = accessTypeVar->getInt32(*iter);
+        Addr<T> addr(addrVar, *iter);
+        uint64_t size = sizeVar.getUInt64(*iter);
+        int accessType = accessTypeVar.getInt32(*iter);
         
-        os << "At " << Addr64(pc) << "\t";
+        os << "At " << Addr<T>(pcVar, *iter) << "\t";
         switch(accessType)
         {
         case KEDR_ET_MREAD:
-            os << "Read " << size << " bytes from " << Addr64(addr);
+            os << "Read " << size << " bytes from " << addr;
         break;
         case KEDR_ET_MWRITE:
-            os << "Write " << size << " bytes to " << Addr64(addr);
+            os << "Write " << size << " bytes to " << addr;
         break;
         case KEDR_ET_MUPDATE:
-            os << "Update " << size << " bytes at " << Addr64(addr);
+            os << "Update " << size << " bytes at " << addr;
         break;
         default:
             os << "Unknown memory access operation";
         }
         
         os << "\n";
-        
-        //debug
-        if((++i % 10) == 0) sleep(1);
     }
 }
 
-EventPrinter::EventPrinter(const KEDRTraceReader& traceReader)
-    : traceReader(traceReader)
+/* Function call pre\post events(common data - common base class) */
+template<class T>
+class EventPrinterFC: public EventPrinterOneLine<T>
 {
-    cpuVar = &findInt(traceReader, "trace.packet.header.cpu");
-    timestampVar = &findInt(traceReader, "stream.event.context.timestamp");
-    tidVar = &findInt(traceReader, "stream.event.context.tid");
+public:
+    EventPrinterFC(const EventPrinter& eventPrinter,
+        const std::string& eventType, const std::string& what):
+        EventPrinterOneLine<T>(eventPrinter), what(what),
+        funcAddrVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".func")),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what << " " << Addr<T>(funcAddrVar, event)
+            << " at " << Addr<T>(pcVar, event);
+    }
+private:
+    const std::string what;
+    const CTFVarInt& funcAddrVar;
+    const CTFVarInt& pcVar;
+};
+
+/* Function call pre */
+template<class T>
+class EventPrinterFCPre: public EventPrinterFC<T>
+{
+public:
+    EventPrinterFCPre(const EventPrinter& eventPrinter):
+        EventPrinterFC<T>(eventPrinter, "fcpre", "Before call of function") {}
+};
+
+/* Function call post */
+template<class T>
+class EventPrinterFCPost: public EventPrinterFC<T>
+{
+public:
+    EventPrinterFCPost(const EventPrinter& eventPrinter):
+        EventPrinterFC<T>(eventPrinter, "fcpost", "After call of function") {}
+};
+
+
+/* Locked operations events(common data - common base class) */
+template<class T>
+class EventPrinterLockedOp: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterLockedOp(const EventPrinter& eventPrinter,
+        const std::string& eventType, const std::string& what):
+        EventPrinterOneLine<T>(eventPrinter), what(what),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc")),
+        addrVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".addr")),
+        sizeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".size"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        uint64_t size = sizeVar.getUInt64(event);
+        
+        os << "Locked " << what << " " << Addr<T>(addrVar, event)
+            << " of size " << size << " at " <<  Addr<T>(pcVar, event);
+    }
+private:
+    const std::string what;
+    const CTFVarInt& pcVar;
+    const CTFVarInt& addrVar;
+    const CTFVarInt& sizeVar;
+};
+
+
+/* Locked update */
+template<class T>
+class EventPrinterLockedUpdate: public EventPrinterLockedOp<T>
+{
+public:
+    EventPrinterLockedUpdate(const EventPrinter& eventPrinter)
+        : EventPrinterLockedOp<T>(eventPrinter, "lma_update", "update of") {}
+};
+
+/* Locked read */
+template<class T>
+class EventPrinterLockedRead: public EventPrinterLockedOp<T>
+{
+public:
+    EventPrinterLockedRead(const EventPrinter& eventPrinter)
+        : EventPrinterLockedOp<T>(eventPrinter, "lma_read", "read from") {}
+};
+
+/* Locked write */
+template<class T>
+class EventPrinterLockedWrite: public EventPrinterLockedOp<T>
+{
+public:
+    EventPrinterLockedWrite(const EventPrinter& eventPrinter)
+        : EventPrinterLockedOp<T>(eventPrinter, "lma_write", "write to") {}
+};
+
+/* I/O operation */
+template<class T>
+class EventPrinterIO: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterIO(const EventPrinter& eventPrinter):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.ioma.pc")),
+        addrVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.ioma.addr")),
+        sizeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.ioma.size")),
+        accessTypeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.ioma.access_type"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        uint64_t size = sizeVar.getUInt64(event);
+        uint8_t accessType = accessTypeVar.getUInt32(event);
+        
+        std::string what;
+        switch(accessType)
+        {
+        case KEDR_ET_MREAD:
+            what = "read from";
+        break;
+        case KEDR_ET_MWRITE:
+            what = "write to";
+        break;
+        case KEDR_ET_MUPDATE:
+            what = "update of";
+        break;
+        }
+        
+        os << "I/O " << what << " " << Addr<T>(addrVar, event)
+            << " of size " << size << " at " << Addr<T>(pcVar, event);
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& addrVar;
+    const CTFVarInt& sizeVar;
+    const CTFVarInt& accessTypeVar;
+};
+
+/* Memory barriers(common data - common base class) */
+template<class T>
+class EventPrinterMB: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterMB(const EventPrinter& eventPrinter,
+        const std::string& eventType, const std::string& what):
+        EventPrinterOneLine<T>(eventPrinter), what(what),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what << " at " <<  Addr<T>(pcVar, event);
+    }
+private:
+    const std::string what;
+    const CTFVarInt& pcVar;
+};
+
+/* Memory write barrier */
+template<class T>
+class EventPrinterMWB: public EventPrinterMB<T>
+{
+public:
+    EventPrinterMWB(const EventPrinter& eventPrinter):
+        EventPrinterMB<T>(eventPrinter, "mwb", "Memory write barrier") {}
+};
+
+/* Memory read barrier */
+template<class T>
+class EventPrinterMRB: public EventPrinterMB<T>
+{
+public:
+    EventPrinterMRB(const EventPrinter& eventPrinter):
+        EventPrinterMB<T>(eventPrinter, "mrb", "Memory read barrier") {}
+};
+
+/* Memory full barrier */
+template<class T>
+class EventPrinterMFB: public EventPrinterMB<T>
+{
+public:
+    EventPrinterMFB(const EventPrinter& eventPrinter):
+        EventPrinterMB<T>(eventPrinter, "mfb", "Full memory barrier") {}
+};
+
+/* Alloc */
+template<class T>
+class EventPrinterAlloc: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterAlloc(const EventPrinter& eventPrinter):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.alloc.pc")),
+        sizeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.alloc.size")),
+        pointerVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.alloc.pointer"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        uint64_t size = sizeVar.getUInt64(event);
+        
+        os << "Allocation of " << size << " bytes " << " at "
+            <<  Addr<T>(pcVar, event)
+            << " (pointer returned is " << Addr<T>(pointerVar, event)
+            <<")";
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& sizeVar;
+    const CTFVarInt& pointerVar;
+};
+
+/* Free */
+template<class T>
+class EventPrinterFree: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterFree(const EventPrinter& eventPrinter):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.free.pc")),
+        pointerVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.free.pointer"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << "Freeing of pointer " << Addr<T>(pointerVar, event) << " at "
+            << Addr<T>(pointerVar, event);
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& pointerVar;
+};
+
+/* Lock events(common data - common base class) */
+template<class T>
+class EventPrinterLockOp: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterLockOp(const EventPrinter& eventPrinter,
+        const std::string& eventType):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc")),
+        objectVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".object")),
+        lockTypeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".type"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what(event) << " at " <<  Addr<T>(pcVar, event) 
+            << " (object is " << Addr<T>(objectVar, event) << ")";
+    }
     
-    eventTypeVar = &findEnum(traceReader, "stream.event.header.type");
+    virtual std::string what(CTFReader::Event& event) = 0;
+
+    enum kedr_lock_type getLockType(CTFReader::Event& event)
+    {
+        return (enum kedr_lock_type)lockTypeVar.getUInt32(event);
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& objectVar;
+    const CTFVarInt& lockTypeVar;
+};
+
+template<class T>
+class EventPrinterLock: public EventPrinterLockOp<T>
+{
+public:
+    EventPrinterLock(const EventPrinter& eventPrinter):
+        EventPrinterLockOp<T>(eventPrinter, "lock"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterLockOp<T>::getLockType(event))
+        {
+        case KEDR_LT_MUTEX:
+            return "Mutex lock";
+        break;
+        case KEDR_LT_SPINLOCK:
+            return "Spinlock lock";
+        break;
+        case KEDR_LT_WLOCK:
+            return "Spinlock writer lock";
+        break;
+        default:
+            return "Unknown lock operation";
+        }
+    }
+};
+
+template<class T>
+class EventPrinterUnlock: public EventPrinterLockOp<T>
+{
+public:
+    EventPrinterUnlock(const EventPrinter& eventPrinter):
+        EventPrinterLockOp<T>(eventPrinter, "unlock"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterLockOp<T>::getLockType(event))
+        {
+        case KEDR_LT_MUTEX:
+            return "Mutex unlock";
+        break;
+        case KEDR_LT_SPINLOCK:
+            return "Spinlock unlock";
+        break;
+        case KEDR_LT_WLOCK:
+            return "Spinlock writer unlock";
+        break;
+        default:
+            return "Unknown unlock operation";
+        }
+    }
+};
+
+template<class T>
+class EventPrinterRLock: public EventPrinterLockOp<T>
+{
+public:
+    EventPrinterRLock(const EventPrinter& eventPrinter):
+        EventPrinterLockOp<T>(eventPrinter, "rlock"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterLockOp<T>::getLockType(event))
+        {
+        case KEDR_LT_RLOCK:
+            return "Spinlock reader lock";
+        break;
+        default:
+            return "Unknown reader lock operation";
+        }
+    }
+};
+
+template<class T>
+class EventPrinterRUnlock: public EventPrinterLockOp<T>
+{
+public:
+    EventPrinterRUnlock(const EventPrinter& eventPrinter):
+        EventPrinterLockOp<T>(eventPrinter, "runlock"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterLockOp<T>::getLockType(event))
+        {
+        case KEDR_LT_RLOCK:
+            return "Spinlock reader unlock";
+        break;
+        default:
+            return "Unknown reader unlock operation";
+        }
+    }
+};
+
+/* Signal/wait events(common data - common base class) */
+template<class T>
+class EventPrinterSW: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterSW(const EventPrinter& eventPrinter,
+        const std::string& eventType):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc")),
+        objectVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".object")),
+        waitTypeVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".type"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what(event) << " at " <<  Addr<T>(pcVar, event) 
+            << " (object is " << Addr<T>(objectVar, event) << ")";
+    }
     
-    const CTFTypeEnum* eventTypeEnum = eventTypeVar->getType();
+    virtual std::string what(CTFReader::Event& event) = 0;
+
+    enum kedr_sw_object_type getWaitType(CTFReader::Event& event)
+    {
+        return (enum kedr_sw_object_type)waitTypeVar.getUInt32(event);
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& objectVar;
+    const CTFVarInt& waitTypeVar;
+};
+
+
+template<class T>
+class EventPrinterSignal: public EventPrinterSW<T>
+{
+public:
+    EventPrinterSignal(const EventPrinter& eventPrinter):
+        EventPrinterSW<T>(eventPrinter, "signal"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterSW<T>::getWaitType(event))
+        {
+        case KEDR_SWT_COMMON:
+            return "Common signal";
+        break;
+        default:
+            return "Unknown signal";
+        }
+    }
+};
+
+template<class T>
+class EventPrinterWait: public EventPrinterSW<T>
+{
+public:
+    EventPrinterWait(const EventPrinter& eventPrinter):
+        EventPrinterSW<T>(eventPrinter, "signal"){}
+protected:
+    std::string what(CTFReader::Event& event)
+    {
+        switch(EventPrinterSW<T>::getWaitType(event))
+        {
+        case KEDR_SWT_COMMON:
+            return "Common wait";
+        break;
+        default:
+            return "Unknown wait";
+        }
+    }
+};
+
+/* Thread create/join(common data - common base) */
+template<class T>
+class EventPrinterTCJ: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterTCJ(const EventPrinter& eventPrinter,
+        const std::string& eventType, const std::string& what):
+        EventPrinterOneLine<T>(eventPrinter), what(what),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".pc")),
+        childTidVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields." + eventType + ".child_tid"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << what << " " << Addr<T>(childTidVar, event)
+            << " at " << Addr<T>(pcVar, event);
+    }
+private:
+    const std::string what;
+    const CTFVarInt& pcVar;
+    const CTFVarInt& childTidVar;
+};
+
+/* Thread create */
+template<class T>
+class EventPrinterThreadCreate: public EventPrinterTCJ<T>
+{
+public:
+    EventPrinterThreadCreate(const EventPrinter& eventPrinter):
+        EventPrinterTCJ<T>(eventPrinter, "tcreate", "Create thread") {}
+};
+
+/* Thread join */
+template<class T>
+class EventPrinterThreadJoin: public EventPrinterTCJ<T>
+{
+public:
+    EventPrinterThreadJoin(const EventPrinter& eventPrinter):
+        EventPrinterTCJ<T>(eventPrinter, "tjoin", "Join to thread") {}
+};
+
+
+void EventPrinter::print(CTFReader::Event& event, std::ostream& os) const
+{
+    int index = eventTypeVar.getValue(event);
+    
+    typePrinters[index]->print(event, os);
+}
+
+template<class T>
+void EventPrinter::setupTypePrinters(void)
+{
+    const CTFTypeEnum* eventTypeEnum = eventTypeVar.getType();
     int nValues = eventTypeEnum->getNValues();
     
     typePrinters.reserve(nValues);
@@ -315,18 +878,55 @@ EventPrinter::EventPrinter(const KEDRTraceReader& traceReader)
     {
         const std::string& eventType = eventTypeEnum->valueToStr(i);
 
-        std::cerr << "Possible event type: " << eventType << std::endl;
+        //std::cerr << "Possible event type: " << eventType << std::endl;
 
         EventPrinterType* eventPrinterType;
         if(eventType == "fentry")
-            eventPrinterType = new EventPrinterFEntry(*this);
+            eventPrinterType = new EventPrinterFEntry<T>(*this);
         else if(eventType == "fexit")
-            eventPrinterType = new EventPrinterFExit(*this);
+            eventPrinterType = new EventPrinterFExit<T>(*this);
+        else if(eventType == "fcpre")
+            eventPrinterType = new EventPrinterFCPost<T>(*this);
+        else if(eventType == "fcpost")
+            eventPrinterType = new EventPrinterFCPost<T>(*this);
         else if(eventType == "ma")
-            eventPrinterType = new EventPrinterMA(*this);
-        //TODO: other event types
+            eventPrinterType = new EventPrinterMA<T>(*this);
+        else if(eventType == "lma_update")
+            eventPrinterType = new EventPrinterLockedUpdate<T>(*this);
+        else if(eventType == "lma_read")
+            eventPrinterType = new EventPrinterLockedRead<T>(*this);
+        else if(eventType == "lma_write")
+            eventPrinterType = new EventPrinterLockedWrite<T>(*this);
+        else if(eventType == "ioma")
+            eventPrinterType = new EventPrinterIO<T>(*this);
+        else if(eventType == "mwb")
+            eventPrinterType = new EventPrinterMWB<T>(*this);
+        else if(eventType == "mrb")
+            eventPrinterType = new EventPrinterMRB<T>(*this);
+        else if(eventType == "mfb")
+            eventPrinterType = new EventPrinterMFB<T>(*this);
+        else if(eventType == "alloc")
+            eventPrinterType = new EventPrinterAlloc<T>(*this);
+        else if(eventType == "free")
+            eventPrinterType = new EventPrinterFree<T>(*this);
+        else if(eventType == "lock")
+            eventPrinterType = new EventPrinterLock<T>(*this);
+        else if(eventType == "unlock")
+            eventPrinterType = new EventPrinterUnlock<T>(*this);
+        else if(eventType == "rlock")
+            eventPrinterType = new EventPrinterRLock<T>(*this);
+        else if(eventType == "runlock")
+            eventPrinterType = new EventPrinterRUnlock<T>(*this);
+        else if(eventType == "signal")
+            eventPrinterType = new EventPrinterSignal<T>(*this);
+        else if(eventType == "wait")
+            eventPrinterType = new EventPrinterWait<T>(*this);
+        else if(eventType == "tcreate")
+            eventPrinterType = new EventPrinterThreadCreate<T>(*this);
+        else if(eventType == "tjoin")
+            eventPrinterType = new EventPrinterThreadJoin<T>(*this);
         else
-            eventPrinterType = new EventPrinterUnknown(*this);
+            eventPrinterType = new EventPrinterUnknown<T>(*this);
         
         typePrinters.push_back(eventPrinterType);
     }
@@ -338,43 +938,6 @@ EventPrinter::~EventPrinter(void)
         delete typePrinters[i];
 }
 
-void EventPrinter::print(CTFReader::Event& event, std::ostream& os) const
-{
-    int index = eventTypeVar->getValue(event);
-    
-    typePrinters[index]->print(event, os);
-}
-
-void EventPrinter::printHeader(CTFReader::Event& event, std::ostream& os) const
-{
-    std::ios_base::fmtflags oldFlags = os.flags();
-    char oldFill = os.fill();
-    int oldWidth = os.width();
-    
-    int cpu = cpuVar->getInt32(event);
-    uint64_t timestamp = timestampVar->getUInt64(event);
-    uint64_t seconds = timestamp / 1000000000L;
-    uint64_t ns = timestamp % 1000000000L;
-    
-    uint64_t tid = tidVar->getUInt64(event);
-    
-    os << Addr64(tid);
-    
-    os << "\t";
-    
-    os << "[" << std::dec << std::setw(3) << cpu << "]";
-    
-    os << "\t";
-
-    os.fill('0');    
-    os << std::dec << seconds  << "." << std::setw(6) << ns/1000;
-    
-    os << ":\t";
-    
-    os.flags(oldFlags);
-    os.fill(oldFill);
-    os.width(oldWidth);
-}
 
 int main(int argc, char** argv)
 {
@@ -388,14 +951,10 @@ int main(int argc, char** argv)
     
     EventPrinter eventPrinter(traceReader);
     
-    int i = 0;
     for(KEDRTraceReader::EventIterator iter(traceReader); iter; ++iter)
     {
         //TODO: output event content
         eventPrinter.print(*iter, std::cout);
-        //debug
-        if((++i % 10) == 0) sleep(1);
-
     }
     
     return 0;

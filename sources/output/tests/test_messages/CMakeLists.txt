@@ -1,5 +1,5 @@
-set(KMODULE_NAME "trace_sender_test_simple_module")
-set(EXECUTABLE_NAME "trace_sender_test_simple_checker")
+set(KMODULE_NAME "trace_sender_test_messages_module")
+set(EXECUTABLE_NAME "trace_sender_test_messages_checker")
 
 kbuild_use_symbols("${core_stub_module_dir}/Module.symvers")
 kbuild_use_symbols("${trace_sender_module_dir}/Module.symvers")
@@ -21,22 +21,22 @@ kedr_test_add_target(${EXECUTABLE_NAME})
 
 add_custom_command(OUTPUT "module.c"
 	COMMAND "${KEDR_GEN_TOOL}"
-	"${CMAKE_CURRENT_SOURCE_DIR}/templates/module.c"
+	"${templates_dir}/generate_messages.c"
 	"${CMAKE_CURRENT_SOURCE_DIR}/test.data" >
 	"${CMAKE_CURRENT_BINARY_DIR}/module.c"
 	DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/test.data")
 
 add_custom_command(OUTPUT "checker.cpp"
 	COMMAND "${KEDR_GEN_TOOL}"
-	"${CMAKE_CURRENT_SOURCE_DIR}/templates/checker.cpp"
+	"${templates_dir}/check_messages.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/test.data" >
 	"${CMAKE_CURRENT_BINARY_DIR}/checker.cpp"
 	DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/test.data")
 
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/test_simple.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/test_simple.sh"
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/test_messages.sh.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/test_messages.sh"
     @ONLY)
 
-kedr_test_add_script("trace_sender.test_simple.01"
-    "test_simple.sh")
+kedr_test_add_script("trace_sender.test_messages.01"
+    "test_messages.sh")

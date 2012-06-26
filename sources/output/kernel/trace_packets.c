@@ -652,6 +652,7 @@ kedr_ctf_stream_process_event_sw(struct msg_builder* builder,
 
     fields_sw->pc = message_sw->pc;
     fields_sw->object = message_sw->obj;
+    fields_sw->type = message_sw->type;
 
     return result;
 }
@@ -802,6 +803,16 @@ ssize_t kedr_trace_add_event(struct kedr_trace* trace,
         result = kedr_ctf_stream_process_event_lock(builder,
             (struct execution_message_lock*)message, size);
         event_header->type = execution_event_type_unlock;
+    break;
+    case execution_message_type_rlock:
+        result = kedr_ctf_stream_process_event_lock(builder,
+            (struct execution_message_lock*)message, size);
+        event_header->type = execution_event_type_rlock;
+    break;
+    case execution_message_type_runlock:
+        result = kedr_ctf_stream_process_event_lock(builder,
+            (struct execution_message_lock*)message, size);
+        event_header->type = execution_event_type_runlock;
     break;
     case execution_message_type_signal:
         result = kedr_ctf_stream_process_event_sw(builder,

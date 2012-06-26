@@ -28,7 +28,7 @@
  * If cannot read all bytes for any reason, throw exception.
  */
 void readFromStreamAt(std::istream& s,
-	char* buf, size_t size, off_t offset)
+	void* buf, size_t size, off_t offset)
 {
 	if(!s.seekg(offset, std::ios_base::beg))
 	{
@@ -37,7 +37,7 @@ void readFromStreamAt(std::istream& s,
 		throw std::runtime_error("Failed to set position in the stream");
 	}
 
-	if(!s.read(buf, size))
+	if(!s.read((char*)buf, size))
 	{
 		std::cerr << "Failed to read " << size << " bytes from stream at "
 			<< offset << " offset.\n";
@@ -444,14 +444,14 @@ uint32_t CTFReader::Packet::getContentSize(void)
 
 CTFTypeInt::ByteOrder CTFReader::MetaPacket::getByteOrder(void) const
 {
-	uint32_t metaMagic = ((CTFMetadataPacketHeader*)header)->magic;
-	return (le32toh(metaMagic) == CTFMetadataPacketHeader::magicValue)
+	uint32_t metaMagic = header.magic;
+	return (le32toh(metaMagic) == magicValue)
 		? CTFTypeInt::le : CTFTypeInt::be;
 }
 
 uint32_t CTFReader::MetaPacket::getPacketSize(void) const
 {
-	uint32_t packetSize = ((CTFMetadataPacketHeader*)header)->packet_size;
+	uint32_t packetSize = header.packet_size;
 	
 	if(getByteOrder() == CTFTypeInt::le)
 		return le32toh(packetSize);
@@ -461,7 +461,7 @@ uint32_t CTFReader::MetaPacket::getPacketSize(void) const
 
 uint32_t CTFReader::MetaPacket::getContentSize(void) const
 {
-	uint32_t contentSize = ((CTFMetadataPacketHeader*)header)->content_size;
+	uint32_t contentSize = header.content_size;
 	
 	if(getByteOrder() == CTFTypeInt::le)
 		return le32toh(contentSize);
@@ -471,17 +471,16 @@ uint32_t CTFReader::MetaPacket::getContentSize(void) const
 
 void CTFReader::MetaPacket::setupMetaPacket(void)
 {
-	readFromStreamAt(s, header, sizeof(header), streamMapStart);
-	uint32_t metaMagic = ((CTFMetadataPacketHeader*)header)->magic;
+	readFromStreamAt(s, &header, headerSize, streamMapStart);
+	uint32_t metaMagic = header.magic;
 	
-	if((be32toh(metaMagic) != CTFMetadataPacketHeader::magicValue)
-		&& (le32toh(metaMagic) != CTFMetadataPacketHeader::magicValue))
+	if((be32toh(metaMagic) != magicValue) && (le32toh(metaMagic) != magicValue))
 	{
 		std::ios_base::fmtflags oldFlags
 			= std::cerr.setf(std::ios_base::hex, std::ios_base::basefield);
 		std::cerr << "Magic field in metadata packet " << metaMagic
 			<< " doesn't correspond to "
-			<< (uint32_t)CTFMetadataPacketHeader::magicValue
+			<< (uint32_t)magicValue
 			<< " in any byte order.\n";
 		std::cerr.setf(oldFlags, std::ios_base::basefield);
 		
@@ -503,7 +502,7 @@ void CTFReader::MetaPacket::setupMetaPacket(void)
 		throw std::logic_error("Invalid content size of metadata");
 	}
 	
-	size_t metadataSizeNew = contentSize / 8 - sizeof(header);
+	size_t metadataSizeNew = contentSize / 8 - headerSize;
 	if(metadataMaxSize < metadataSizeNew)
 	{
 		free(metadata);
@@ -514,13 +513,13 @@ void CTFReader::MetaPacket::setupMetaPacket(void)
 
 	metadataSize = metadataSizeNew;
 	
-	readFromStreamAt(s, metadata, metadataSize, streamMapStart + sizeof(header));
+	readFromStreamAt(s, metadata, metadataSize, streamMapStart + headerSize);
 }
 
 CTFReader::MetaPacket::MetaPacket(std::istream& s)
 	: refs(1), s(s), streamMapStart(0),
 	metadata(NULL), metadataSize(0), metadataMaxSize(0),
-	uuid((const unsigned char*)((CTFMetadataPacketHeader*)header)->uuid)
+	uuid((const unsigned char*)header.uuid)
 {
 	setupMetaPacket();
 }

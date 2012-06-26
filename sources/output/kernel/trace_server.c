@@ -384,38 +384,12 @@ static void sender_on_memory_event(
         (unsigned char)memory_event_type);
 }
 
-static DEFINE_SPINLOCK(locked_access_lock);
-
-static void sender_on_locked_op_pre(struct kedr_event_handlers *eh, 
-    unsigned long tid, unsigned long pc, 
-    void **pdata)
-{
-    /* 
-     * Not only memory operation should be atomic, but also its
-     * writing into trace buffer should be in same atomic sequence.
-     * (timestamp).
-     * 
-     * Use global spinlock for emulate this atomicity.
-     */
-
-    unsigned long flags;
-    
-    spin_lock_irqsave(&locked_access_lock, flags);
-    
-    /* Store flags as pointer(on x86 and x86_64 it is acceptable) */
-    *pdata = (void*)flags;
-}
 static void sender_on_locked_op_post(struct kedr_event_handlers *eh, 
     unsigned long tid, unsigned long pc, 
     unsigned long addr, unsigned long size, 
     enum kedr_memory_event_type type, void *data)
 {
-    /* Restore flags */
-    unsigned long flags = (unsigned long)data;
-
     record_locked_memory_access(tid, pc, addr, size, type);
-
-    spin_unlock_irqrestore(&locked_access_lock, flags);
 }
 
 
@@ -511,7 +485,6 @@ static struct kedr_event_handlers sender_event_handlers =
     .end_memory_events =            sender_end_memory_events,
     .on_memory_event =              sender_on_memory_event,
     
-    .on_locked_op_pre =             sender_on_locked_op_pre,
     .on_locked_op_post =            sender_on_locked_op_post,
     
     .on_io_mem_op_post =            sender_on_io_mem_op_post,

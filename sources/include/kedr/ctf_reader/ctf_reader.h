@@ -382,25 +382,9 @@ private:
     Event* event;
 };
 
-/* Header of metadata; from CTF specification "as is" */
-struct CTFMetadataPacketHeader
+
+struct CTFMetadata
 {
-    uint32_t magic;               /* 0x75D11D57 */
-    uint8_t  uuid[16];            /* Unique Universal Identifier */
-    uint32_t checksum;            /* 0 if unused */
-    uint32_t content_size;        /* in bits */
-    uint32_t packet_size;         /* in bits */
-    uint8_t  compression_scheme;  /* 0 if unused */
-    uint8_t  encryption_scheme;   /* 0 if unused */
-    uint8_t  checksum_scheme;     /* 0 if unused */
-    uint8_t  major;               /* CTF spec version major number */
-    uint8_t  minor;               /* CTF spec version minor number */
-
-    static const uint32_t magicValue = 0x75D11D57;
-    static const uint8_t majorValue = 1;
-    static const uint8_t minorValue = 8;
-
-    static const int headerSize = 37;
 };
 
 
@@ -432,6 +416,29 @@ public:
      */
     MetaPacket* next(void);
 
+    /* Header of metadata; from CTF specification "as is" */
+    struct Header
+    {
+        uint32_t magic;               /* 0x75D11D57 */
+        uint8_t  uuid[16];            /* Unique Universal Identifier */
+        uint32_t checksum;            /* 0 if unused */
+        uint32_t content_size;        /* in bits */
+        uint32_t packet_size;         /* in bits */
+        uint8_t  compression_scheme;  /* 0 if unused */
+        uint8_t  encryption_scheme;   /* 0 if unused */
+        uint8_t  checksum_scheme;     /* 0 if unused */
+        uint8_t  major;               /* CTF spec version major number */
+        uint8_t  minor;               /* CTF spec version minor number */
+        
+        char data[0];
+    };
+
+    static const uint32_t magicValue = 0x75D11D57;
+    static const uint8_t majorValue = 1;
+    static const uint8_t minorValue = 8;
+
+    static const int headerSize = offsetof(Header, data);
+
     void ref(void) {refs++;}
     void unref(void) {if(--refs == 0) delete this;}
 private:
@@ -447,7 +454,7 @@ private:
     /* For reuse metadata buffer without realloc. */
     size_t metadataMaxSize;
     
-    char header[CTFMetadataPacketHeader::headerSize];
+    struct Header header;
     
     UUID uuid;
     

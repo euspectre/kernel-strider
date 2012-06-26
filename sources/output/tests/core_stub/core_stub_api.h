@@ -18,9 +18,9 @@ void stub_on_call_pre(unsigned long tid, unsigned long pc,
 void stub_on_call_post(unsigned long tid, unsigned long pc,
     unsigned long func);
 
-void stub_begin_memory_events(unsigned long tid, unsigned long num_events, 
+void stub_on_begin_memory_events(unsigned long tid, unsigned long num_events, 
     void **pdata /* out param*/);
-void stub_end_memory_events(unsigned long tid, void *data);
+void stub_on_end_memory_events(unsigned long tid, void *data);
 void stub_on_memory_event(unsigned long tid, 
     unsigned long pc, unsigned long addr, unsigned long size, 
     enum kedr_memory_event_type type,

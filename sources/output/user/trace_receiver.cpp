@@ -209,7 +209,7 @@ int main(int argc, char** argv)
         return -1;
     }
     /* Port numbers in native byte order */
-    uint16_t receiverPort_native;
+    uint16_t receiverPort_native = 0;
     
     if(parsePort_native(argv[1], &receiverPort_native))
     {

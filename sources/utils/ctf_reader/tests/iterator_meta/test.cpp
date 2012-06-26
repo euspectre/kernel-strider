@@ -135,7 +135,7 @@ int test2(void)
  * paddingSize is size(in bytes) of padding after metadata.
  * 'isBE' parameter affects on endianess.
  */
-static void fillMetaHeader(char header[37], int chunkSize,
+static void fillMetaHeader(CTFReader::MetaPacket::Header* header, int chunkSize,
     int paddingSize, bool isBE);
 
 /* 
@@ -145,7 +145,7 @@ static int readFromStream(std::istream& in, char* buf, int size);
 
 void packMetadata(std::istream& in, std::ostream& out, bool isBE)
 {
-    static char header[37];
+    static CTFReader::MetaPacket::Header header;
     /* Buffer for metadata chunks */
     static char chunk[67];
     /* Padding of each packet will be calculated using this value */
@@ -182,9 +182,9 @@ void packMetadata(std::istream& in, std::ostream& out, bool isBE)
         chunkSize = readFromStream(in, chunk, chunkSize);
         if(chunkSize <= 0) break;
         
-        fillMetaHeader(header, chunkSize, padding, isBE);
+        fillMetaHeader(&header, chunkSize, padding, isBE);
         
-        out.write(header, sizeof(header));
+        out.write((char*)&header, CTFReader::MetaPacket::headerSize);
         out.write(chunk, chunkSize);
         if(!out)
         {
@@ -199,30 +199,28 @@ void packMetadata(std::istream& in, std::ostream& out, bool isBE)
     //std::cerr << "Number of created packets is " << packetIndex << ".\n";
 }
 
-void fillMetaHeader(char header[37], int chunkSize,
-    int paddingSize, bool isBE)
+void fillMetaHeader(CTFReader::MetaPacket::Header* header,
+    int chunkSize, int paddingSize, bool isBE)
 {
     static uint8_t uuid[16] = {1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6};
     
-    CTFMetadataPacketHeader& headerReal = *((CTFMetadataPacketHeader*)header);
-    
-    memcpy(headerReal.uuid, uuid, 16);
+    memcpy(header->uuid, uuid, 16);
 #define FIELD32(val) (isBE ? htobe32(val) : htole32(val))
-    headerReal.magic = FIELD32(CTFMetadataPacketHeader::magicValue);
+    header->magic = FIELD32(CTFReader::MetaPacket::magicValue);
     
-    uint32_t contentSize = CTFMetadataPacketHeader::headerSize * 8
+    uint32_t contentSize = CTFReader::MetaPacket::headerSize * 8
         + chunkSize * 8;
     uint32_t packetSize = contentSize + paddingSize * 8;
     
-    headerReal.content_size = FIELD32(contentSize);
-    headerReal.packet_size = FIELD32(packetSize);
+    header->content_size = FIELD32(contentSize);
+    header->packet_size = FIELD32(packetSize);
 #undef FIELD32    
-    headerReal.checksum = 0;
-    headerReal.compression_scheme = 0;
-    headerReal.encryption_scheme = 0;
-    headerReal.checksum_scheme = 0;
-    headerReal.major = CTFMetadataPacketHeader::majorValue;
-    headerReal.minor = CTFMetadataPacketHeader::minorValue;
+    header->checksum = 0;
+    header->compression_scheme = 0;
+    header->encryption_scheme = 0;
+    header->checksum_scheme = 0;
+    header->major = CTFReader::MetaPacket::majorValue;
+    header->minor = CTFReader::MetaPacket::minorValue;
 }
 
 int readFromStream(std::istream& in, char* buf, int size)

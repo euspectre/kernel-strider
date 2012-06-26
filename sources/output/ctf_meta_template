@@ -206,6 +206,8 @@ event {
 			addr_t pc;
 			/* Address of wait object */
 			addr_t object;
+			/* Type of the object */
+			uint8_t type;
 		} signal, wait;
 
 		struct {

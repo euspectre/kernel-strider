@@ -256,6 +256,8 @@ struct execution_event_fields_sw
     addr_t pc;
     /* Address of wait object */
     addr_t object;
+    /* Type of object */
+    uint8_t type;
     CTF_STRUCT_END
 };
 

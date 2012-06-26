@@ -197,6 +197,7 @@ void execution_event_locked_memory_access(
     break;
     }
 }
+EXPORT_SYMBOL(execution_event_locked_memory_access);
 
 void execution_event_io_memory_access(
     struct execution_event_collector* collector,
@@ -277,11 +278,22 @@ void execution_event_lock(
     tid_t tid, addr_t pc,
     addr_t lock_object, enum kedr_lock_type type)
 {
-    WRITE_CRITICAL_MESSAGE_BEGIN(lock, lock);
-    message_lock->type = type;
-    message_lock->pc = pc;
-    message_lock->obj = lock_object;
-    WRITE_CRITICAL_MESSAGE_END();
+    if(type == KEDR_LT_RLOCK)
+    {
+        WRITE_CRITICAL_MESSAGE_BEGIN(lock, rlock);
+        message_lock->type = type;
+        message_lock->pc = pc;
+        message_lock->obj = lock_object;
+        WRITE_CRITICAL_MESSAGE_END();
+    }
+    else
+    {
+        WRITE_CRITICAL_MESSAGE_BEGIN(lock, lock);
+        message_lock->type = type;
+        message_lock->pc = pc;
+        message_lock->obj = lock_object;
+        WRITE_CRITICAL_MESSAGE_END();
+    }
 }
 EXPORT_SYMBOL(execution_event_lock);
 
@@ -290,11 +302,22 @@ void execution_event_unlock(
     tid_t tid, addr_t pc,
     addr_t lock_object, enum kedr_lock_type type)
 {
-    WRITE_CRITICAL_MESSAGE_BEGIN(lock, unlock);
-    message_lock->type = type;
-    message_lock->pc = pc;
-    message_lock->obj = lock_object;
-    WRITE_CRITICAL_MESSAGE_END();
+    if(type == KEDR_LT_RLOCK)
+    {
+        WRITE_CRITICAL_MESSAGE_BEGIN(lock, runlock);
+        message_lock->type = type;
+        message_lock->pc = pc;
+        message_lock->obj = lock_object;
+        WRITE_CRITICAL_MESSAGE_END();
+    }
+    else
+    {
+        WRITE_CRITICAL_MESSAGE_BEGIN(lock, unlock);
+        message_lock->type = type;
+        message_lock->pc = pc;
+        message_lock->obj = lock_object;
+        WRITE_CRITICAL_MESSAGE_END();
+    }
 }
 EXPORT_SYMBOL(execution_event_unlock);
 

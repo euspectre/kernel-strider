@@ -49,6 +49,7 @@ if(KEDR_GENERATE_CTF_META_PARSER)
             "${CMAKE_CURRENT_BINARY_DIR}/${ctf_meta_parser_basename}.tab.hh"
             "${CMAKE_CURRENT_BINARY_DIR}/position.hh"
             "${CMAKE_CURRENT_BINARY_DIR}/location.hh"
+			"${CMAKE_CURRENT_BINARY_DIR}/stack.hh"
         COMMAND ${BISON} -Wall -d --location
             "${CMAKE_CURRENT_SOURCE_DIR}/${ctf_meta_parser_basename}.yy"
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${ctf_meta_parser_basename}.yy"
@@ -70,6 +71,7 @@ else(KEDR_GENERATE_CTF_META_PARSER)
     rule_copy_source("${ctf_meta_scanner_basename}.cc")
     rule_copy_source("position.hh")
     rule_copy_source("location.hh")
+	rule_copy_source("stack.hh")
 endif(KEDR_GENERATE_CTF_META_PARSER)
 
 add_library(${ctf_reader_name} STATIC
