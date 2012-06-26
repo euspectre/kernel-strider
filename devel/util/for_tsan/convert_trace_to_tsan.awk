@@ -7,6 +7,9 @@
 # Usage:
 #	awk -f convert_trace_to_tsan.awk \
 #		<test_reporter_trace_file> > <tsan_trace_file>
+#
+# [TODO] TSan offline expects the trace in a format different from what
+# this script currently outputs. The expected format: "%s %x %lx %lx %lx".
 ########################################################################
 
 # Processes the part of the record specifying the "real" thread ID
