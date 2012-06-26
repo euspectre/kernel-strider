@@ -698,7 +698,7 @@ void TypeInt::setVarImpl(CTFVarPlace& varPlace) const
 
     layoutParams.fill(varPlace, align);
 
-    VarLayoutFixed* layoutFixed;
+    VarLayoutFixed* layoutFixed = NULL;
 
     switch(layoutParams.layoutType)
     {
@@ -1706,7 +1706,7 @@ void TypeEnum<T>::setVarImpl(CTFVarPlace& varPlace) const
 
     layoutParams.fill(varPlace, align);
 
-    VarLayoutFixed* layoutFixed;
+    VarLayoutFixed* layoutFixed = NULL;
 
     switch(layoutParams.layoutType)
     {
@@ -2658,7 +2658,7 @@ void TypeArray::setVarImpl(CTFVarPlace& varPlace) const
     CTFVarStartOffsetParams startOffsetParams;
     startOffsetParams.fill(varPlace, elemType->getAlignment());
 
-    VarArray* varArray;
+    VarArray* varArray = NULL;
 
     switch(startOffsetParams.layoutType)
     {
@@ -2830,7 +2830,7 @@ void TypeSequence::setVarImpl(CTFVarPlace& varPlace) const
     CTFVarStartOffsetParams startOffsetParams;
     startOffsetParams.fill(varPlace, elemType->getAlignment());
 
-    VarSequence* varSequence;
+    VarSequence* varSequence = NULL;
 
     switch(startOffsetParams.layoutType)
     {

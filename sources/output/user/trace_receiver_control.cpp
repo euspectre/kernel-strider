@@ -8,9 +8,11 @@
 
 #include <string>
 
+#include <sys/types.h> /* types sendmsg */
 #include <sys/socket.h> /* socket operations */
 #include <netinet/in.h> /* struct sockaddr_in */
 #include <arpa/inet.h> /* inet_addr() */
+#include <stddef.h> /* offsetof */
 
 #include <sstream> /* streams from string */
 #include <iostream> /* cerr */
@@ -671,7 +673,9 @@ int ControlParams::parseParameters(int argc, char** argv)
     /* Options identificators */
     enum OptID
     {
-        optHelp            = 'h',
+        optError = '?',
+        
+        optHelp  = 'h',
         
         optStart = 255,
         optStop,
@@ -705,7 +709,7 @@ int ControlParams::parseParameters(int argc, char** argv)
     {
         switch((OptID)opt)
         {
-        case '?':
+        case optError:
             //error in options
             if(optind < argc)
             {
