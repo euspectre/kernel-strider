@@ -1,1 +1,2 @@
 add_subdirectory(ctf_reader)
+add_subdirectory(simple_trace_recorder)
