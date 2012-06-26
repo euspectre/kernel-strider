@@ -1,0 +1,51 @@
+Usage:
+
+    $command$ [options] action1 ... actionN
+
+where any action may be:
+    
+    --start <trace-directory>
+        start trace reciever, and wait until it is initialized.
+        
+        <trace-directory> is a directory where trace should be stored.
+        
+        Directory may contain "%u" characters sequence, which will be
+        replaced with string representation of UUID of the trace stored.
+    
+    --stop
+        stop trace reciever, and wait until it is exited.
+    
+    --init-session <server-addr>
+        send 'start' signal to the server with given address, and wait
+        until session is started.
+        
+        Address is internet address of the server.
+        
+        Also server port may be specified after ':'. Otherwise default
+        server port is used ($SERVER_PORT$).
+    --break-session <server-addr>
+        send 'stop' signal to the server with given address, and wait
+        until session is broken.
+        
+        Format of the address is the same as for --init-session action.
+    
+    --start-trace
+        wait until transmission of any trace begins.
+        In case of already transmitted trace immidiately returns.
+    
+    --stop-trace
+        wait until transmission of current trace ends.
+        If no trace is currently transmitted, immidiately returns.
+    
+Options may be follows:
+
+    --receiver-port=<number>
+        port on which trace reciever is operate/will be operate after start.
+        If not given, default value $RECEIVER_PORT$ is used.
+        
+        If there are many such options, the last one affects on all actions.
+
+Development options:
+
+    --reciever-path=<path>
+        Path to the reciever program.

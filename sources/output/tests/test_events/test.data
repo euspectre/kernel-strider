@@ -1,0 +1,137 @@
+constant.type = unsigned long
+constant.name = tid1
+constant.value = 0x123456
+
+constant.type = unsigned long
+constant.name = tid2
+constant.value = 0x654321
+
+
+constant.type = unsigned long
+constant.name = func1
+constant.value = 0x4000
+
+constant.type = unsigned long
+constant.name = func2_1
+constant.value = 0x6000
+
+constant.type = unsigned long
+constant.name = func2_2
+constant.value = 0x8000
+
+
+# External call in T2
+[group]
+	event.type = call_pre
+	event.args = tid2, 0x0543, func2_1
+
+# Internal call in T1
+[group]
+	event.type = call_pre
+	event.args = tid1, 0x0500, func1
+[group]
+	event.type = function_entry
+	event.args = tid1, func1
+
+# Some memory accesses in T1
+[group]
+	event.type = memory_events
+	event.args = tid1
+
+	subevent.args = 0x4056, 0x10000, 123, KEDR_ET_MREAD
+	subevent.args = 0x4060, 0x3000, 2, KEDR_ET_MWRITE
+	subevent.args = 0x4100, 0x1002, 8, KEDR_ET_MUPDATE
+
+# Call from outside in T2
+[group]
+	event.type = function_entry
+	event.args = tid2, func2_2
+
+# Memory allocation in T2
+[group]
+	event.type = alloc
+	event.args = tid2, 0x6100, 345, 0x7654
+
+# Return to outside in T2
+[group]
+    event.type = function_exit
+    event.args = tid2, func2_2
+
+# Lock in T1
+[group]
+    event.type = lock
+    event.args = tid1, 0x834, 0x100, KEDR_LT_SPINLOCK
+
+# Free inside lock in T1
+[group]
+	event.type = free
+	event.args = tid1, 0x9432, 0x1234
+
+# Release lock in T1
+[group]
+	event.type = unlock
+	event.args = tid1, 0x9876, 0x100, KEDR_LT_SPINLOCK
+
+# Locked memory access in T2
+[group]
+	event.type = locked_op
+	event.args = tid2, 0x543, 0x2567, 543, KEDR_ET_MUPDATE
+
+# cmpxchng-like operation in T1, unexpected value
+[group]
+	event.type = locked_op
+	event.args = tid1, 0x543, 0x2567, 4, KEDR_ET_MREAD
+
+# External call in T2 returns
+[group]
+	event.type = call_post
+	event.args = tid2, 0x543, func2_1
+
+# Read locks
+[group]
+	event.type = lock
+	event.args = tid2, 0x834, 0x200, KEDR_LT_RLOCK
+
+[group]
+	event.type = unlock
+	event.args = tid2, 0x854, 0x200, KEDR_LT_RLOCK
+
+# IO operations
+[group]
+	event.type = io_mem_op
+	event.args = tid1, 0x900, 0x3456, 4, KEDR_ET_MREAD
+
+# Different barriers
+[group]
+	event.type = memory_barrier
+	event.args = tid1, 0x1000, KEDR_BT_STORE
+#.. around memory accesses
+[group]
+	event.type = memory_events
+	event.args = tid1
+
+	subevent.args = 0x1050, 0x100, 4, KEDR_ET_MUPDATE
+[group]
+	event.type = memory_barrier
+	event.args = tid1, 0x1100, KEDR_BT_LOAD
+
+[group]
+	event.type = memory_barrier
+	event.args = tid2, 0x1200, KEDR_BT_FULL
+
+# Thread creation and joining
+[group]
+	event.type = thread_create
+	event.args = tid1, 0x456, tid2
+[group]
+	event.type = thread_join
+	event.args = tid1, 0x456, tid2
+
+# Common signal-wait events
+[group]
+	event.type = signal
+	event.args = tid2, 0x800, 0x20000, KEDR_SWT_COMMON
+
+[group]
+	event.type = wait
+	event.args = tid1, 0x1800, 0x20000, KEDR_SWT_COMMON

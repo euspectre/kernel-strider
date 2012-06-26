@@ -1,0 +1,1 @@
+generate_subevent_<$event.type$>(<$subevent.args$>);

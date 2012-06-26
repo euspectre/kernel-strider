@@ -1,0 +1,232 @@
+/* CTF 1.8 */
+
+/* Trace common data */
+
+trace {
+    major = 1;
+    minor = 8;
+    uuid = "$uuid$";
+    /*
+     * Currently Thread Sanitizer have different executions for
+     * process 32- and 64-bits.
+     *
+     * NOTE: CTF Reader itself doesnt't need this parameter.
+     */
+    pointer_bits = $pointer_bits$;
+    /* Native byte order of trace producer */
+    byte_order = $byte_order$;
+	/* 
+	 * Number of cpus, which may generate events.
+	 *
+	 * Any cap value may be used for that purpose. E.g., NR_CPUS.
+	 */
+	nr_cpus = $nr_cpus$;
+	
+    packet.header := struct {
+        integer {size = 32; align = 32; signed = false;} magic;
+        integer {size = 8; align = 8; signed = false;} uuid[16];
+        enum : integer {size = 8; align = 8; signed = false;}
+		{
+			stream_normal = 0,
+			stream_critical
+		} stream_type;
+		integer {size = 8; align = 8; signed = false;} cpu;
+    };
+	/* 
+	 * Difference(in ns) between timestamps when event counter should be taken
+	 * into account for order events.
+	 */
+	time_precision = 100000000;
+};
+
+/* Types(use native endianess) */
+
+typedef integer {$uint8_t_spec$} uint8_t;
+typedef integer {$int16_t_spec$} int16_t;
+typedef integer {$uint16_t_spec$} uint16_t;
+typedef integer {$int32_t_spec$} int32_t;
+typedef integer {$uint32_t_spec$} uint32_t;
+typedef integer {$uint64_t_spec$} uint64_t;
+typedef integer {$size_t_spec$} size_t;
+
+typedef size_t tid_t, addr_t;
+
+/* Event types */
+enum event_type : uint8_t {
+    /*
+     * Event contains array of information about consequent
+     * memory accesses.
+     */
+    ma = 0,
+    /* Event contains information about one locked memory access */
+    lma_update,
+	lma_read,
+	lma_write,
+	
+	/* Event contains information about one I/O with memory access */
+    ioma,
+
+    /*
+     * Event contains information about one memory barrier
+     * (read, write, full).
+     */
+    mrb,
+    mwb,
+    mfb,
+    /*
+     * Event contains information about one memory management operation
+     * (alloc/free).
+     */
+    alloc,
+    free,
+    /*
+     * Event contains information about one lock operation
+     * (lock/unlock or its read variants).
+     */
+    lock,
+    unlock,
+
+    rlock,
+    runlock,
+    /* Event contains information about one signal/wait operation */
+    signal,
+    wait,
+    /* Event contains information about thread create/join operation */
+    tcreate,
+    tjoin,
+    /* Event contains information about function entry/exit */
+    fentry,
+    fexit,
+	/* Event contains information about function pre-/post- call */
+    fcpre,
+    fcpost,
+};
+
+/* Stream-related data */
+stream {
+    packet.context := struct {
+        /* Timestamp of the first event in the packet */
+        uint64_t timestamp_begin;
+        /* Timestamp of the last event in the packet */
+        uint64_t timestamp_end;
+        /* Packet count inside stream */
+        uint32_t stream_packet_count;
+        /* Size of packet in bits*/
+        uint16_t content_size;
+        /* Size of packet in bits, including padding */
+        uint16_t packet_size;
+    };
+
+    event.header := struct {
+        enum event_type type;
+    };
+
+    event.context := struct {
+        /* Timestamp of the event */
+        uint64_t timestamp;
+        /* Thread id of the event */
+        tid_t tid;
+        /* Counter for ordering events */
+        int32_t counter;
+    };
+};
+
+
+/******************** Events per-type data ****************************/
+event {
+    context := variant <stream.event.header.type>{
+		    struct { uint8_t n_subevents; } 	ma;
+            /* For other types context is empty */
+    };
+
+    fields := variant <stream.event.header.type> {
+		struct {
+			/* Program counter of the instruction*/
+			addr_t pc;
+			/* Access address */
+			addr_t addr;
+			/* Access size */
+			addr_t size;
+			/* Type of access */
+			uint8_t access_type;
+		} ma[event.context.ma.n_subevents];
+
+		struct {
+			/* Program counter of the instruction*/
+			addr_t pc;
+			/* Access address */
+			addr_t addr;
+			/* Access size */
+			size_t size;
+		} lma_update, lma_read, lma_write;
+
+		struct {
+			/* Program counter of the instruction*/
+			addr_t pc;
+			/* Access address */
+			addr_t addr;
+			/* Access size */
+			size_t size;
+			/* Type of access */
+			uint8_t access_type;
+		} ioma;
+
+		struct {
+			/* Program counter of the instruction*/
+			addr_t pc;
+		} mrb, mwb, mfb;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*alloc>)*/
+			addr_t pc;
+			/* Access size */
+			size_t size;
+			/* Pointer returned from operation */
+			addr_t pointer;
+		} alloc;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*free>)*/
+			addr_t pc;
+			/* Pointer for free */
+			addr_t pointer;
+		} free;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*(un)lock*>)*/
+			addr_t pc;
+			/* Address of lock object */
+			addr_t object;
+			/* Type of lock object */
+			uint8_t type;
+		} lock, unlock, rlock, runlock;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*>) */
+			addr_t pc;
+			/* Address of wait object */
+			addr_t object;
+			/* Type of the object */
+			uint8_t type;
+		} signal, wait;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*>) */
+			addr_t pc;
+			/* Created or joined thread */
+			tid_t child_tid;
+		} tcreate, tjoin;
+
+		struct {
+			/* Function address */
+			addr_t func;
+		} fentry, fexit;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*>) */
+			addr_t pc;
+			/* Function address */
+			addr_t func;
+		} fcpre, fcpost;
+    };
+};

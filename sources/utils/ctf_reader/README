@@ -1,0 +1,983 @@
+						CTF READER
+C++ library for read trace in format similar to Common Trace Format
+(http://www.efficios.com/ctf)
+
+Really, only subset of that official CTF is supported, but without some
+restrictions.
+
+
+			************Format description*********
+						
+						1.Global.
+
+Trace is an array of binary streams.
+
+Each stream consist from packets.
+
+Each packet may contains follow parts:
+
+1.1. Trace Packet Header(optional)
+
+This part may contain 4-byte CTF magic value(C1FC1FC1) for distinguish files,
+in which CTF streams usually stored.
+
+Also this part may contain trace identifier as 16-byte UUID
+(Unique Universal Identifier) for distiguish streams from different traces.
+
+Also, this part may contain some stream identifier, which distinguish streams.
+
+1.2. Stream Packet Context
+
+This part contains common information about packet, and information, which
+is same for all events in the stream.
+
+Only one required field is 'packet_size', which denotes size of packet
+in bits(really, whole CTF operates with bits).
+
+Also, this part may contain field 'content_size', which denotes size
+(in bits) of useful information in the packet (that is, all information
+after this size has no sence, and may be used for packet padding).
+If this field is absent, whole packet is expected to contain useful information.
+
+Also may be timestamps of the first and last events, contained in the packet.
+
+If stream is generated on one CPU, CPU index may be included here.
+
+1.3. One or more events, packed in sequential order.
+
+Last event in the packet should be finished at 'content_size' number bit
+(see Stream Packet Context description).
+
+Each event may have next optional parts:
+
+1.3.1. Stream Event Header(optional)
+
+This part usually contain field, which denotes event type.
+
+1.3.2. Stream Event Context(optional)
+
+This part usually contains common fields of all events in the stream,
+such as timestamp of the event, cpu, where event arise, thread, etc.
+
+1.3.3. Event Context(optional)
+1.3.4. Event Payload(optional)
+These parts contain type-specific event fields.
+
+Usually, the first part(Event Context) contains fields which value affects
+on event size, and the last part(Event Payload) contains all other fields.
+
+
+						2.Types
+						
+All parts of CTF packet contains binary representation of typed variables.
+
+2.1. Integer
+
+Usuall integer type(like in C), which has next attributes:
+
+- size (in bits)
+- alignment (in bits)
+- signedness (signed or unsigned)
+- byte order or endianess (little endian or big endian)
+
+Example of the description of integer type:
+
+integer
+{
+	size = 16;
+	align = 16;
+	signed = false;
+	byte_order = le;
+}
+
+2.2. Structure
+
+Container type, arrange all its fields in sequential order. Similar to
+structure in C language.
+
+Example:
+
+struct
+{
+	uint16_t a;
+	int8_t b;
+	uint64_t c;
+}
+
+(Here and below it is expected that (u)int_*t type are defined as
+integer type with corresponded signedness and size; alignment is equal to size).
+
+Like in C, alignment of the structure is a maximum alignment of its fields.
+Unlike to C, there is no padding after the last field in the structure.
+
+That is, this structure
+
+struct
+{
+	int16_t a;
+	int8_t b;
+}
+
+has 24-bit size,
+
+and this outmost structure
+
+struct
+{
+	struct
+	{
+		int16_t a;
+		int8_t b;
+	} c;
+	int8_t d;
+}
+
+has 32-bit size, because its 'd' field follows by 'c.b' field without padding.
+
+(But this structure
+
+struct
+{
+	int8_t a;
+	int16_t b;
+}
+
+has 32-bit size, because 8-bit padding is required after field 'a' for
+make field 'b' aligned.)
+
+Like in C, fields of same base type may be grouped into one sentence:
+
+struct
+{
+	int8_t a;
+	int16_t b, c, d[10]; /* Fields 'b' and 'c' has int16_t type,
+							field 'd' is array of elements of int16_t
+							type (see below) */
+};
+
+2.3. Array.
+
+Container type, sequence of elements of the same type with constant
+number of elements.
+
+Example of array variable declaration:
+
+uint16_t a[10];
+
+Like in C, alignment of array is same as alignment of its elements.
+Unlike C, there is no padding after the last element in the array.
+
+2.4. Sequences.
+
+Container type, sequence of elements of the same type, but with
+non-constant number of them. Number of elements in the sequence is
+determined according to value of some other integer variable
+(this variable is referred to as 'tag' of the sequence).
+
+Example:
+
+struct
+{
+	int16_t n_elems;
+	uint8_t elems[n_elems];
+};
+
+This struct contains integer field 'n_elems' and sequence 'elems', which
+contains 'n_elems' elements.
+
+2.5. Enumeration.
+
+Integer type with named values. Very similar to C enumeration, but with
+2 differences:
+
+1) Each enumeration type has base integer type. There is no automatical
+determination of integer type here.
+
+2) One name may corresponds not only to one value, but also to any value
+in the range.
+
+Example:
+
+enum: uint8_t
+{
+	zero = 0,
+	one,
+	two,
+	ten = 10,
+	tens = 11...99,
+	handreds = 100...255
+}
+
+This enumeration has same layout as 8-bit unsigned integer, and
+correlates all values except ones in range 3-9 with their string
+representations.
+
+2.6. Variant.
+
+Container type like a structure, but in any configuration corresponds
+only to one of its fields, which reffered to as 'active'.
+
+Variant is similar to C union in sence, that all its fields share start
+address. But it is the only similarity with C.
+
+Like to the number of elements in the sequence type, the choice of variant's
+field is fully deterministic:
+there is some other enumeration variable, referred to as a 'tag' of the
+variant, and value of this variable determine field, which is active in
+variant at that moment.
+
+Example:
+
+struct
+{
+	enum: uint8_t
+	{
+		simple,
+		complex,
+		very_complex
+	} type;
+	variant<type>
+	{
+		int16_t simple;
+		struct
+		{
+			int64_t first_part;
+			int16_t second_part;
+		} complex;
+	} value;
+}
+
+Here 'value' field of the structure has variant type, which tag is 'type'
+field of the same structure.
+If type equal to 0(simple), then 'simple' variant field is active.
+If type equal to 1(complex), then 'complex' variant field is active.
+If type equal to 2(very_complex), then no field in the variant is active,
+because there is no field with name 'very_complex' in the variant.
+
+Variant has no constant size and alignment. In any configuration size
+and alignment of variant is determined by active field.
+With no active field size of variant is 0 and alignment is 1(bit).
+
+When embedded into structure, array or sequence type, variant doesn't
+affect on their alignment.
+
+2.7. Typedef.
+
+Way to assign name to any type:
+
+typedef integer
+{
+	size = 32;
+	align = 32;
+	is_signed = false;
+	byte_order = be;
+} __u32; /* Unsigned 32-bit integer used for network messages. */
+
+typedef struct
+{
+	int8_t first;
+	int8_t second
+} pair; /* Named structure type */
+
+struct
+{
+	uint8_t size;
+	typedef uint16_t sequence16[size];/* names sequence type */
+	
+	sequence16 val; /* Using sequence type for declare variable */
+}
+
+...
+
+					3. Metadata
+Description of variales in the packet is represented in the textual format.
+
+This format operates with scopes, which are enclosed into '{' and '}'.
+
+3.1. Global scope.					
+
+Without scope, only types and named scope may be defined.
+
+Any type which is defined in that manner may be used in any point after
+its definition.
+
+3.2. Structure and variant scopes.
+
+Any structure or variant type definition may introduce its own scope,
+which may contain fields or other types definitions.
+Type, defined in structure or variant scopes, may be used only in that
+scopes in any point after its definition. That is, such types are usefull
+only for declare structure/variant fields or their subfields.
+
+3.3. Named scopes.
+
+There are several keywords, which may introduce scopes without type
+definition. These keywords are:
+
+ - trace
+ - stream
+ - event
+
+Example of named scope definition:
+
+trace
+{
+	/*...*/
+};
+
+Named scopes is allowed to appear only in the global scope
+(that is, them are forbidden in structure/variant scopes, or inside other
+named scope).
+
+Named scope may contains:
+
+ - type definition(which become valid until scope ends)
+ - type assignment to predefined top-level variable
+ - parameter definition
+
+3.4. Top-level variables.
+
+Each part of the packet or event is really variable with predefined name:
+
+ - "trace.packet.header" 	corresponds to Trace Packet Header,
+ - "stream.packet.context" 	corresponds to Stream Packet Context,
+ - "stream.event.header" 	corresponds to Stream Event Header
+ - "stream.event.context" 	corresponds to Stream Event Context,
+ - "event.context" 			corresponds to Event Context,
+ - "event.fields" 			corresponds to Event Payload.
+
+For assign types to these variable, next construction is used:
+
+trace
+{
+	/*...*/
+	packet.header := type;
+};
+
+where 'type' may be any simple or compound type described above.
+
+Note here, that name of assigned variable is compound from the name of
+the named scope and string left from assignment operator ':='.
+That is, each type for top-level variable may be assigned only in one
+named scope.
+
+3.5. Tags and top-level variables.
+
+As you have seen in sequence and variant types descriptions, that types may
+use fields in the same structure as tags.
+
+Really, tags may be relative and absolute.
+
+Relative tag may be used only in structure or variant scopes, and refer
+to field or subfield, which is declared before sequence/variant is declared.
+
+Example:
+
+struct
+{
+	struct
+	{
+		int8_t a;
+		uint16_t b;
+	}c;
+	uint32_t d[c.b];/* Tag referres to 'a' subfield of structure 'c'. */
+}
+
+Absolute tag may be used anywhere and refer to top-level variable which
+type has been assigned before or to field(subfield) of that variable.
+
+Example:
+
+stream
+{
+	/*...*/
+	event.header := enum: uint8_t
+	{
+		type1,
+		type2,
+		type3
+	};
+};
+
+event
+{
+	/* Tag referres to top-level variable of enumeration type */
+	event.fields := variant<stream.event.header>
+	{
+		int8_t type1;
+		int16_t type2;
+		int32_t type3;
+	};
+};
+
+NOTE: Tag is only allowed to refer backward.
+That is, variable instantiated from variabnt/sequence type should come
+in packet after the variable, which corresponds to its tag.
+
+Because structure fields are ordered in the same way as them appears in
+the structure, any relative tag is automatically correct in the sence of
+variable-tag ordering.
+
+Top-level variables are ordered in same way as them are listed in
+Section 3.4.
+So, any type which use absolute tag, may be used only for top-level
+variable(or its field) which come after one, reffered by the tag,
+in the list.
+
+Simple rule: always assign types for top-level variables in same order
+as these variables are listed in Section 3.4.
+
+3.6. Parameters
+
+Parameters are named constant string, defined for the whole trace.
+
+Example:
+
+trace
+{
+	machine_type = x86;
+};
+
+Here parameter with name 'trace.machine_type' and value 'x86' is defined.
+
+Parameter value may be any identificator or integer(decimal, octal, hexadecimal)
+or any string enclosed into '"' ('"' itself isn't added to parameter value):
+
+stream
+{
+	dec_param = 1234;
+	oct_param = 01234;
+	hex_param = 0x1234;
+	string_param = "1234 + \"abc\"";
+};
+
+Parameters which has special meaning:
+
+3.6.1. 'trace.uuid'- UUID of the trace in the string representation.
+
+If there is variable 'trace.uuid' in the trace, value of this variable
+will be compared with parameter value. In case of any mistmatch packet
+is treated as invalid.
+any mistmatch
+
+3.6.2. 'trace.byte_order' - default byte order for the integers in the
+trace.
+
+If definition of integer type doesn't contain 'byte_order' attribute,
+it is assumed to be same as global parameter value.
+
+Note, that this rule applies only for integer types, which are defined
+after the parameter(in any scope). For other integer types 'byte_order'
+attribute should be set explicitly.
+
+						4. More about types declaration and using.
+						
+Like in C, any type may be used in the same sentence where it is declared,
+and only named types may be used in the next sentences.
+
+4.1. Integer.
+Integers types may be only unnamed. That is, using identificator between
+'integer' keyword and open brace is forbidden.
+
+4.2. Structure.
+Structures may be named and unnamed. For declare named structure, use
+identificator between 'struct' keyword and open brace.
+
+Example:
+
+struct a
+{
+	int8_t field1;
+	int8_t field2;
+};
+
+This sentence declare named structure, which may be referred using
+
+'struct a'
+
+(like in C, 'struct' keyword is required for refer to the structure type).
+
+4.3. Enumeration.
+Like a structure, enumerations may be named and unnamed. For declare
+named enumeration, use identificator between 'enum' keyword and colon.
+
+Example:
+
+enum a: uint8_t
+{
+	var1 = 0,
+	var2,
+	var3
+};
+
+This sentence declate named enumeration, which may be referred using
+
+'enum a'
+
+(like in C, 'enum' keyword is required for refer to the enumeration type).
+
+4.4. Variant.
+
+Like a structure, variants may be named and unnamed. For declare named
+variane, use identificator between 'variant' keyword and angle bracket.
+
+Example:
+
+/* Structure scope */
+/* 'b' field of enumeration type is declared before. */
+variant a<b>
+{
+	/*...*/
+};
+
+This sentence declate named variant, which may be referred using
+
+'variant a'
+
+It is allowed to declate named variant type without tag.
+In that case tag should be specified when type is used (for field,
+typedef or type assignment to top-level variable). Example:
+
+variant v
+{
+	/*...*/
+};
+
+/*...*/
+/* Structure scope */
+/* 'b' field of enumeration type is declared before. */
+variant v<b> c;
+
+Here 'c' field of the structure declared using name of untagged variant
+('variant v') and specification of field 'b' as tag.
+
+4.5 Arrays and sequences.
+
+Array and sequence types may be only unnamed. Moreover, syntax allow
+to used them only for fields or typedefs, but not for type assignment
+for top-level variable (typedefs may be used for assign array or
+sequence type to the top variable):
+
+struct a
+{
+	uint8_t b;
+	uint16_t c[10];/* Field 'c' of array type */
+	typedef seq[b];/* Typedef for sequence type */
+	seq d; /* Field 'd' of sequence type */
+};
+
+				5. How CTF streams are interpreted.
+
+Here is short algorithm description for how to extract packets and events
+from CTF stream.
+
+First packet has zero-th offset inside the stream.
+
+Trace Packet Header part, if it exists, has zero-th offset inside the packet.
+
+From that part variables 'trace.packet.header.magic' and
+'trace.packet.header.uuid', if them exist, are tested for correctness.
+
+Stream Packet Context part is started at first suitable aligned position
+after Trace Packet Header part ends.
+
+NOTE: all offsets are calculated from the packet start.
+
+First event in the packet starts just after Stream Packet Context part ends.
+
+First part of the event is started at first suitable aligned position
+after event itself starts.
+Every next part of the event is started at first suitable aligned position
+after previous part ends.
+
+When all parts of the event are readed, there is a check whether the
+event ends at bit with number equal to 'stream.packet.context.content_size'
+variable value(or to 'stream.packet.context.packet_size' variable value,
+if previous variable doesn't exist).
+
+If check comes true, event is the last in the packet,
+otherwise next event starts just after previous one ends.
+
+After read all events in the packet, check is performed, whether
+'stream.packet.context.packet_size' bit is the last in the stream.
+Normally, stream is stored in files(or other sequence of bytes), so
+only check that some byte is the last one may be performed.
+Because of this, 'stream.packet.context.packet_size' value should be
+always multiple to 8.
+
+If check comes true, packet is the last in the stream,
+otherwise next packet starts just after tested bit.
+
+
+				******Library Usage*********
+
+				6. Basic.
+
+6.1. Header file
+
+#include <kedr/ctf_reader/ctf_reader.h>
+
+6.2. CTFReader class.
+
+For read packets and/or events from the stream(s), you should firstly
+create object of CTFReader class.
+
+Constructor of that CTFReader class takes reference to the stream,
+contained CTF metadata. It may be fstream for file, contained metadata,
+or stringstream, if metadata are stored in one string.
+
+fstream metadataFile("<path-to-file-with-metadata>");
+CTFReader reader(metadataFile);
+
+6.3. Packets and events.
+
+class CTFReader::Packet represent one packet in the CTF stream.
+class CTFReader::Event represent one event in the CTF stream.
+
+These classes may be created and used directly, but it is simpler to use
+them via iterators.
+
+6.4. Packets and events iteration.
+
+6.4.1. class CTFReader::PacketIterator - iterator through packets.
+
+This iterator allows to iterate through all packets in the stream.
+
+Constructor of that class takes reference to the CTFReader, created for
+trace to which stream is belong, and C++ stream, which contains CTF stream.
+That constructor create iterator pointed to the first packet in the stream.
+
+fstream streamFile("<path-to-file-with-stream>");
+CTFReader::PacketIterator packetIter(reader, streamFile);
+
+operator++ may be used for move iterator to the next packet in the stream:
+
+++packetIter;
+
+For test whether stream ends either construction may be used:
+
+(packetIter)
+
+or
+
+(packetIter != CTFReader::PacketIterator())
+
+6.4.2. class CTFReader::PacketEventIterator - iterator through events in packet.
+
+This iterator allows to iterate through all events in the packet.
+
+Constructor of that class takes reference to the packet iterator.
+That constructor create iterator pointed to the first event in the packet.
+
+CTFReader::PacketEventIterator packetEventIter(packetIter);
+
+operator++ may be used for move iterator to the next packet in the stream:
+
+++packetEventIter;
+
+For test whether event is the last one in the packet
+either construction may be used:
+
+(packetEventIter)
+
+or
+
+(packetEventIter != CTFReader::PacketEventIterator())
+
+6.4.3. class CTFReader::EventIterator - iterator through events in the stream.
+
+This iterator allows to iterate through all events in the whole stream,
+ignoring packet boundaries.
+
+Constructor of that class takes same arguments as one for PacketIterator:
+reference to the CTFReader, created for
+trace to which stream is belong, and C++ stream, which contains CTF stream.
+That constructor create iterator pointed to the first event in the first
+packet in the stream.
+
+CTFReader::EventIterator eventIter(reader, streamFile);
+
+operator++ may be used for move iterator to the next event in the stream:
+
+++eventIter;
+
+For test whether event is the last one in the stream
+either construction may be used:
+
+(eventIter)
+
+or
+
+(eventIter != CTFReader::EventIterator())
+
+					7. Variables.
+
+CTFVar object refers to one typed variable, according to CTF metadata.
+
+7.1. Definition.
+More precisely, variable may be:
+
+1) One of the top-level variable, for which type is assigned.
+	Type of that variable is type which has been assigned.
+2) If variable has structure type, its fields also treated as variables.
+	Types of field variables corresponds to types, with which fields
+	has been declared.
+3) If variable has variant type, its fields also treated as variables.
+	Types of field variables corresponds to types, with which fields
+	has been declared.
+4) If variable has array or sequence type, element of that array/sequence
+	is treated as variable(one array/sequence variable -> one element variable).
+	Type of that variable is the base type of the array/sequence.
+
+7.2. Names.
+
+Names of variables, referred to top-level variables, are same as in
+Section 3.4.
+
+Example:
+
+trace.packet.header
+
+Names of variables, referred to the structure/variant fields, are composed
+from the structure variable name, dot, and field name:
+
+stream.packet.context.packet_size
+
+Names of variables, referred to the array/sequence element, are composed
+from array/sequence name and '[]':
+
+event.fields.values[]
+
+(It is assumed, that declaration was something like
+
+event
+{
+	event.fields = struct
+	{
+		int8_t values[10];
+	};
+};
+
+)
+
+7.3. Search variables.
+
+Variable may be searched either by its full name in CTFReader object or
+by its relative name in other variable object:
+
+const CTFVar* packetSizeVar = reader.findVar("stream.packet.context.packet_size");
+
+is same as
+
+const CTFVar* packetContextVar = reader.findVar("stream.packet.context");
+const CTFVar* packetSizeVar = packetContextVar.findVar("packet_size");
+
+7.4. Value of variable.
+
+CTFVar* object doesn't contains value of variable.
+Instead, it provide way to get variable value in context - array of bytes,
+to which variable is "mapped".
+
+For example, variables "trace.packet.header" and "stream.packet.context"
+are mapped to the context, denoted by CTFReader::Packet object.
+If variable is mapped to some context, all its subvariables(that is,
+fields in structure or variant, or element in array or sequence) are also
+mapped to this context, and their values may requested for it.
+
+7.5. Variable type and its interpretation.
+
+Aside from returning value of variable, there are another ways for
+interpret variable, depending of variable's type.
+
+For determine, whether variable has given type, construction isType()
+should be used:
+
+const CTFVar* timestampVar = reader.findVar("stream.event.context.timestamp");
+timestampVar->isInt()
+
+returns true, if variable with given name is integer.
+
+
+After determination, that variable has desired type, it should be casted
+to corresponded variable subtype for perform variable interpretation:
+
+const CTFVarInt* timestampVarInt = static_cast<const CTFVarInt*> timestampVar;
+
+Also, type object may be requested for variable.
+
+const CTFTypeInt* timestampType = timestampVarInt->getType();
+
+This object contains some variable parameters and may be useful
+in some cases(see below).
+
+
+Follow variable types are available:
+
+7.5.1. Integer variable.
+
+Type checker:
+ - isInt()
+
+Variable type for cast:
+ - CTFVarInt
+
+Interpretation methods:
+ - int32_t  getInt32(CTFContext& context)
+ - uint32_t getUInt32(CTFContext& context)
+ - int64_t  getInt64(CTFContext& context)
+ - uint64_t getUInt64(CTFContext& context)
+
+Methods return value of variable, casted to corresponded integer type.
+
+Note, that unlike to C casts for integer values, these casts are dynamic,
+and throw exception if variable value cannot be represented by
+given integer type.
+
+Type:
+ - CTFTypeInt
+
+Type methods:
+ - int getSize()
+ - int getAlignment()
+ - bool isSigned()
+ - CTFTypeInt::ByteOrder getByteOrder()
+
+Methods returnes corresponded attributes for integer type, used for variable.
+E.g., getSize() method may be used for choose between 32-bit or 64-bit
+interpretation.
+
+7.5.2. Enumeration variable.
+
+Type checker:
+ - isEnum()
+
+Object type for cast:
+ - CTFVarEnum
+
+Interpretation methods:
+ - const std::string& getEnum(CTFContext& context)
+ - int getValue(CTFContext& context)
+
+First methods returns string representation for given variable's integer
+value. If value has no string representation, return empty string.
+
+Second method return index of string, represented variable's integer value.
+See enumeration type object description below.
+
+Type:
+ - CTFTypeEnum
+
+Type methods:
+ - const std::string& ValueToStr(int index)
+ - int getNValues(void)
+
+First method return string, representing enumeration value for some index.
+Second method return number of such indexes(maximum index plus one).
+
+These both methods together with getValue() method of enumeration variable
+object may be used for implements quick switches depended of variable value.
+
+(similar to 'switch' operator implementation is C).
+
+
+Really, enumeration variable support all methods of integer variable.
+It may be usefull in some cases.
+
+7.5.3. Variants.
+
+Type checker:
+ - isVariant()
+
+Object type for cast:
+ - CTFVarVariant
+ 
+Interpretation methods:
+ - const CTFVar* getSelection(int index)
+ - int getActiveIndex(CTFContext& context)
+ - const CTFVar* getActiveField(CTFContext& context)
+
+First method returns variable corresponded to field of variant with given
+"selection index"(see below).
+Second method returns active index, corresponded to the variant tag value
+in given context.
+Third method returns variable corresponded to the variant's active field
+in the given context.
+
+getActiveField(context) == getSelection(getActiveIndex(context))
+
+Type:
+ - CTFTypeVariant
+
+Type methods:
+ - std::string selectionToStr(int index)
+ - int getNSelections()
+
+First method returns string corresponded to given selection index. This
+is same index as used in getSelection() method of variant variable.
+Second method return number of such indexes for given variant variable.
+
+Same as for enumeration, these variant's type methods may be used for
+quick switch, but it is likely that one prefer switch for variant tag instead.
+
+7.5.4. Arrays and sequences.
+Variables corresponded to array and sequence type share same class.
+
+Type checker:
+ - isArray()
+
+Object type for cast:
+ - CTFVarArray
+
+Interpretation methods:
+ - getNElems(CTFContext& context)
+ - getNElems()
+ - CTFVarArray::Elem* begin(CTFContext& arrayContext)
+
+First method return number of elements in the array/sequence in the given
+context.
+Second method return number of elements in the array or -1 for the sequence.
+Third method return pointer to the first element of the array/sequence.
+
+Even it is allowed to use third method directly, it is easier to use
+iterator object for iterate throw elements in the array:
+
+CTFVarArray::ElemIterator elemIter(arrayVar, arrayContext);
+for(;elemIter; ++elemIter)
+{
+	/* Interpret element variable *elemIter and its fields */
+}
+
+7.5.5 Structure.
+There is no variable of structure type - its interpretation may be performed
+via common variable methods(such as 'findVar()').
+
+7.6. More about contexts and variable interpretation.
+
+When try to interpret variable in some context, the key moment is that
+there is ONLY ONE INSTANCE OF MAPPING variable to that context.
+
+
+For example, there is only one variable 'stream.packet.context.packet_size'
+in the packet, so its value may be requested:
+
+const CTFVarInt* packetSizeVar = static_cast<const CTFVarInt*>
+	findVar(reader, "stream.packet.context.packet_size");
+uint32_t packetSize = packetSizeVar->getUInt32(packet);
+
+
+From another side, even event is contained in the packet, value of any event-
+related variable cannot be requested from the packet variable:
+
+const CTFVarInt* timestampVar = static_cast<const CTFVarInt*>
+	findVar(reader, "stream.packet.context.packet_size");
+uint64_t timestamp = timestampVar->getUInt64(packet); /* INCORRECT */
+
+Instead, one should choose one event from that packet(e.g., first one),
+and request value of variable in that event:
+
+CTFReader::Event event(packet);/* 'event' points to the first event in the packet. */
+uint64_t val = timestampVar->getUInt64(event); /* CORRECT */
+
+
+Another example: one cannot request value of array element from the context
+of the array, but should create element context and request value from it.

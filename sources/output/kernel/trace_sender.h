@@ -5,7 +5,7 @@
 #ifndef TRACE_SENDER_H
 #define TRACE_SENDER_H
 
-#include "kedr/event_collector/event_handler.h"
+#include <kedr/output/event_collector.h>
 
 struct trace_sender;
 
@@ -73,20 +73,24 @@ void trace_sender_stop(struct trace_sender* sender);
  */
 int trace_sender_wait_stop(struct trace_sender* sender);
 
-/*
- * Set trace sender to process events from event collector.
+/* 
+ * Start collect messages from given module.
+ * 
+ * Return collector for that module.
  */
-int trace_sender_add_event_collector(struct trace_sender* sender,
-    struct execution_event_collector* event_collector);
+struct execution_event_collector*
+    trace_sender_collect_messages(struct trace_sender* sender,
+    struct module* m,
+    size_t buffer_normal_size, size_t buffer_critical_size);
 
 /*
- * Stop to process given event collector.
+ * Stop collect messages from given module.
  * 
- * NOTE: this function is wait until all messages from collector
+ * NOTE: this function waits until all messages from this module
  * will be sent (only in case when sender has session set).
  */
-int trace_sender_remove_event_collector(
-    struct execution_event_collector* event_collector);
+int trace_sender_stop_collect_messages(struct trace_sender* sender,
+    struct module* m);
 
 /* 
  * Return information about current session.

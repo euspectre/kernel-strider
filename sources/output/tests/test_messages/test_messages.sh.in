@@ -1,0 +1,113 @@
+#!/bin/sh
+
+trace_sender_module="@trace_sender_module_dir@/@trace_sender_module_name@.ko"
+trace_receiver_control=@trace_receiver_control_test_dir@/@trace_receiver_control_test_name@
+
+core_stub_module="@core_stub_module_dir@/@core_stub_module_name@.ko"
+
+test_module="@CMAKE_CURRENT_BINARY_DIR@/@KMODULE_NAME@.ko"
+
+checker="@CMAKE_CURRENT_BINARY_DIR@/@EXECUTABLE_NAME@"
+
+trace_dir=@CMAKE_CURRENT_BINARY_DIR@/trace
+
+unload_all()
+{
+    ${trace_receiver_control} --stop
+    /sbin/rmmod "$test_module"
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+}
+
+# Clear trace from previous executions
+rm -rf ${trace_dir}
+
+# Initialize
+if ! /sbin/insmod "$core_stub_module"; then
+    printf "Cannot load core stub module.\n"
+    exit 1
+fi
+
+
+if ! /sbin/insmod "$trace_sender_module"; then
+    printf "Cannot load trace sender module.\n"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! ${trace_receiver_control} --start ${trace_dir}; then
+    printf "Failed to start trace receiver.\n"
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+
+if ! ${trace_receiver_control} --init-session 127.0.0.1; then
+    printf "Trace receiver has failed to initialize session with trace sender.\n"
+    ${trace_receiver_control} --stop
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+# Test
+if ! /sbin/insmod "$test_module"; then
+    printf "Cannot load test module or error occures during test.\n"
+    ${trace_receiver_control} --stop
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! ${trace_receiver_control} --start-trace; then
+    printf "Trace receiver has failed to wait until trace is started to send.\n"
+    unload_all
+    exit 1
+fi
+
+
+if ! /sbin/rmmod "$test_module"; then
+    printf "Cannot unload test module.\n"
+    exit 1
+fi
+
+if ! ${trace_receiver_control} --stop-trace; then
+    printf "Trace receiver has failed to wait until trace sending is stopped.\n"
+    ${trace_receiver_control} --stop
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+# Finalize
+if ! ${trace_receiver_control} --break-session 127.0.0.1; then
+    printf "Trace receiver has failed to wait until session with trace sender is broken.\n"
+    ${trace_receiver_control} --stop
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! ${trace_receiver_control} --stop; then
+    printf "Error occures while stop trace receiver.\n"
+    /sbin/rmmod "$trace_sender_module"
+    /sbin/rmmod "$core_stub_module"
+    exit 1
+fi
+
+if ! /sbin/rmmod "$trace_sender_module"; then
+    printf "Cannot unload trace sender module.\n"
+    exit 1
+fi
+
+
+if ! /sbin/rmmod "$core_stub_module"; then
+    printf "Cannot unload core stub module.\n"
+    exit 1
+fi
+
+if ! ${checker} ${trace_dir}; then
+    printf "Stored trace has unexpected data.\n"
+    exit 1
+fi

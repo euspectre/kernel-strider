@@ -9,15 +9,23 @@ set(KEDR_INCLUDE_FILES_SRC
 	kedr_mem/local_storage.h
 	kedr_mem/block_info.h
 	kedr_mem/functions.h
-	event_collector/event_collector.h
-	event_collector/event_handler.h
+	output/event_collector.h
 	ctf_reader/ctf_reader.h
-	ctf_reader/ctf_meta_types.h
+	ctf_reader/ctf_meta.h
+	ctf_reader/ctf_type.h
+	ctf_reader/ctf_var.h
+	ctf_reader/ctf_var_place.h
+	ctf_reader/ctf_context.h
+	ctf_reader/ctf_hash.h
+	ctf_reader/ctf_tag.h
+	kedr_trace_reader/kedr_trace_reader.h
+	utils/template_parser.h
+	utils/uuid.h
 )
 
 # Copy the headers from the src tree into the build tree
 foreach(include_file ${KEDR_INCLUDE_FILES_SRC})
-    set(include_file_src "${CMAKE_CURRENT_SOURCE_DIR}/kedr/${include_file}")
+	set(include_file_src "${CMAKE_CURRENT_SOURCE_DIR}/kedr/${include_file}")
 	get_filename_component(dest_dir 
 		"${CMAKE_CURRENT_BINARY_DIR}/kedr/${include_file}" 
 		PATH)
