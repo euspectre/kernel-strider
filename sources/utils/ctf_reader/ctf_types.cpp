@@ -2158,7 +2158,7 @@ void TypeVariant::setVarImpl(CTFVarPlace& varPlace) const
     CTFVarStartOffsetParams startOffsetParams;
     startOffsetParams.fill(varPlace, 1);
 
-    VarVariant* varVariant;
+    VarVariant* varVariant = NULL;
 
     switch(startOffsetParams.layoutType)
     {
