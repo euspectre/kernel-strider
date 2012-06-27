@@ -318,7 +318,7 @@ static int print_spec_##TYPE(char* buf, int buf_size, void* user_data) \
 { \
     (void)user_data; \
     return snprintf(buf, buf_size, "size = %d; align = %d; signed = %s;", \
-        sizeof(TYPE) * 8, ALIGN_OF(TYPE) * 8, ((TYPE)(-1)) <= 0 ? "true" : "false"); \
+        (int)sizeof(TYPE) * 8, (int)ALIGN_OF(TYPE) * 8, ((TYPE)(-1)) <= 0 ? "true" : "false"); \
 }
 
 PRINT_SPEC_INT(uint8_t)

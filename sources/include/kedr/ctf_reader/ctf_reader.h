@@ -13,6 +13,8 @@
 #include <string>
 #include <cstring> /* memcmp */
 
+#include <sys/types.h> /* off_t */
+
 #include <iostream>
 
 #include <cassert>
