@@ -62,6 +62,7 @@ class VarLayoutFixedAlign
 {
 public:
     VarLayoutFixedAlign(int align): align(align) {}
+    virtual ~VarLayoutFixedAlign(void) {}
     
     int getAlignment(CTFContext& context) const
     {
@@ -88,6 +89,7 @@ class VarLayoutFixed
 {
 public:
     VarLayoutFixed(int align, int size): align(align), size(size) {}
+    virtual ~VarLayoutFixed(void) {}
 
     int getAlignment(CTFContext& context) const
     {
