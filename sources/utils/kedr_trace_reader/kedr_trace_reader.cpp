@@ -11,6 +11,8 @@
 #include <fcntl.h> /* O_RDONLY */
 #include <errno.h>
 
+#include <unistd.h> /* read() */
+
 /* Helpers for search typed variables */
 static const CTFVarInt& findInt(const CTFReader& reader, const std::string& name)
 {

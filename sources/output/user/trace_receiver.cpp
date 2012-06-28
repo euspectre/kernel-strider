@@ -32,6 +32,9 @@
 
 #include <errno.h> /* errno */
 
+#include <unistd.h> /* write(), getppid() */
+#include <sys/types.h> /* pid_t */
+
 class TraceReceiver;
 
 /* Information about waiter of some state-transition. */
