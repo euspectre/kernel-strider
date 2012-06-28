@@ -373,7 +373,7 @@ buffer_file_release(struct inode *inode, struct file *filp)
 }
 
 /* read() and write() system calls should not be used for the file. The
- * file oeprations are provided here just in case. 
+ * file operations are provided here just in case. 
  * A user-space application should use poll() to wait until the data become 
  * available and then - mmap() to get to the data. */
 static ssize_t 

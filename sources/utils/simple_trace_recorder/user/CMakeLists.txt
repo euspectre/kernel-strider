@@ -1,11 +1,3 @@
-#######################################################################
-# Currently, only GNU C compilers are supported.
-if (NOT CMAKE_COMPILER_IS_GNUCC)
-    message (FATAL_ERROR 
-"Only GNU C compiler is currently supported."
-    )
-endif ()
-
 include_directories (
     "${CMAKE_SOURCE_DIR}/utils/simple_trace_recorder"
 )
