@@ -70,7 +70,7 @@ unsigned int nr_data_pages = 128;
 module_param(nr_data_pages, uint, S_IRUGO);
 
 /* For each 'notify_mark' data pages filled in the buffer, this module wakes
- * up the process waiting (in poll()) for the data to be come available for
+ * up the process waiting (in poll()) for the data to become available for
  * reading. */
 unsigned int notify_mark = 1;
 module_param(notify_mark, uint, S_IRUGO);
