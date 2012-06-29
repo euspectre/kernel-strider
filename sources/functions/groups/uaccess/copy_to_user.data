@@ -11,7 +11,7 @@
 		n -= ret;
 		if (n > 0) { /* copied n bytes */
 			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 2,
+				eh->begin_memory_events(eh, ls->tid, 1,
 					&data);
 			
 			if (eh->on_memory_event != NULL) {
