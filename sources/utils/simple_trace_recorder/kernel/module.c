@@ -70,7 +70,7 @@ unsigned int nr_data_pages = 128;
 module_param(nr_data_pages, uint, S_IRUGO);
 
 /* For each 'notify_mark' data pages filled in the buffer, this module wakes
- * up the process waiting (in poll()) for the data to be come available for
+ * up the process waiting (in poll()) for the data to become available for
  * reading. */
 unsigned int notify_mark = 1;
 module_param(notify_mark, uint, S_IRUGO);
@@ -373,7 +373,7 @@ buffer_file_release(struct inode *inode, struct file *filp)
 }
 
 /* read() and write() system calls should not be used for the file. The
- * file oeprations are provided here just in case. 
+ * file operations are provided here just in case. 
  * A user-space application should use poll() to wait until the data become 
  * available and then - mmap() to get to the data. */
 static ssize_t 
