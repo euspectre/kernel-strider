@@ -467,46 +467,65 @@ ssize_t kedr_stream_meta_next_packet(struct kedr_stream_meta* stream_meta,
  */
 static ssize_t
 kedr_ctf_stream_process_event_ma(struct msg_builder* builder,
-    struct execution_message_ma* message_ma, size_t size)
+    const struct execution_message_ma* message_ma, size_t size)
 {
     ssize_t result;
     ssize_t msg_size = 0;
 
     char n_subevents;
+    char n_subevents_real;
 
-    struct execution_message_ma_subevent* message_ma_subevent;
     int i;
     struct execution_event_context_ma* context_ma;
-    struct execution_event_fields_ma* fields_ma;
     struct execution_event_fields_ma_elem* fields_ma_elem;
 
     n_subevents = message_ma->n_subevents;
-    BUG_ON(size < sizeof(*message_ma) + n_subevents * sizeof(*message_ma_subevent));
-    message_ma_subevent = message_ma->subevents;
+    
+    BUG_ON(size < sizeof(*message_ma) + n_subevents
+        * sizeof(struct execution_message_ma_subevent));
+
+    /* Count real subevents(exclude ones which doesn't occure)*/
+    n_subevents_real = 0;
+    for(i = 0; i < n_subevents; i++)
+    {
+        const struct execution_message_ma_subevent* message_ma_subevent
+            = message_ma->subevents + i;
+        
+        if(message_ma_subevent->addr) ++n_subevents_real;
+    }
+    if(n_subevents_real == 0)
+    {
+        /* 
+         * Ignore event with memory accesses when really no access
+         * is registered.
+         */
+        return 0;
+    }
+    
 
     result = msg_builder_append(builder, context_ma);
     if(result < 0) return result;
     msg_size += result;
 
-    context_ma->n_subevents = n_subevents;
+    context_ma->n_subevents = n_subevents_real;
 
-    result = msg_builder_append(builder, fields_ma);
-    if(result < 0) goto err;
-    msg_size += result;
-
-    /* Nothing to fill - structure is empty and terminates with 0-sized array */
     result = msg_builder_append_array(builder,
-        n_subevents, fields_ma_elem);
+        n_subevents_real, fields_ma_elem);
     if(result < 0) goto err;
     msg_size += result;
 
-    for(i = 0; i < n_subevents;
-        i++, message_ma_subevent++, fields_ma_elem++)
+    for(i = 0; i < n_subevents; i++)
     {
+        const struct execution_message_ma_subevent* message_ma_subevent
+            = message_ma->subevents + i;
+        
+        if(message_ma_subevent->addr == 0) continue;
+        
         fields_ma_elem->pc = message_ma_subevent->pc;
         fields_ma_elem->addr = message_ma_subevent->addr;
         fields_ma_elem->size = message_ma_subevent->size;
         fields_ma_elem->access_type = message_ma_subevent->access_type;
+        fields_ma_elem++;
     }
     return msg_size;
 
@@ -517,7 +536,7 @@ err:
 
 static ssize_t
 kedr_ctf_stream_process_event_lma(struct msg_builder* builder,
-    struct execution_message_lma* message_lma, size_t size)
+    const struct execution_message_lma* message_lma, size_t size)
 {
     ssize_t result;
 
@@ -537,7 +556,7 @@ kedr_ctf_stream_process_event_lma(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_ioma(struct msg_builder* builder,
-    struct execution_message_ioma* message_ioma, size_t size)
+    const struct execution_message_ioma* message_ioma, size_t size)
 {
     ssize_t result;
 
@@ -559,7 +578,7 @@ kedr_ctf_stream_process_event_ioma(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_mb(struct msg_builder* builder,
-    struct execution_message_mb* message_mb, size_t size)
+    const struct execution_message_mb* message_mb, size_t size)
 {
     ssize_t result;
 
@@ -577,7 +596,7 @@ kedr_ctf_stream_process_event_mb(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_alloc(struct msg_builder* builder,
-    struct execution_message_alloc* message_alloc, size_t size)
+    const struct execution_message_alloc* message_alloc, size_t size)
 {
     ssize_t result;
 
@@ -597,7 +616,7 @@ kedr_ctf_stream_process_event_alloc(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_free(struct msg_builder* builder,
-    struct execution_message_free* message_free, size_t size)
+    const struct execution_message_free* message_free, size_t size)
 {
     ssize_t result;
 
@@ -616,7 +635,7 @@ kedr_ctf_stream_process_event_free(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_lock(struct msg_builder* builder,
-    struct execution_message_lock* message_lock, size_t size)
+    const struct execution_message_lock* message_lock, size_t size)
 {
     ssize_t result;
 
@@ -639,7 +658,7 @@ kedr_ctf_stream_process_event_lock(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_sw(struct msg_builder* builder,
-    struct execution_message_sw* message_sw, size_t size)
+    const struct execution_message_sw* message_sw, size_t size)
 {
     ssize_t result;
 
@@ -660,7 +679,7 @@ kedr_ctf_stream_process_event_sw(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_tcj(struct msg_builder* builder,
-    struct execution_message_tcj* message_tcj, size_t size)
+    const struct execution_message_tcj* message_tcj, size_t size)
 {
     ssize_t result;
 
@@ -679,7 +698,7 @@ kedr_ctf_stream_process_event_tcj(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_fee(struct msg_builder* builder,
-    struct execution_message_fee* message_fee, size_t size)
+    const struct execution_message_fee* message_fee, size_t size)
 {
     ssize_t result;
 
@@ -697,7 +716,7 @@ kedr_ctf_stream_process_event_fee(struct msg_builder* builder,
 
 static ssize_t
 kedr_ctf_stream_process_event_fc(struct msg_builder* builder,
-    struct execution_message_fc* message_fc, size_t size)
+    const struct execution_message_fc* message_fc, size_t size)
 {
     ssize_t result;
 
@@ -857,10 +876,11 @@ ssize_t kedr_trace_add_event(struct kedr_trace* trace,
 
     default:
         pr_err("Unknown message type: %d. Ignore it.", (int)type);
-        goto ignore;
+        result = 0;
     }
     if(result < 0) goto err;
-
+    else if(result == 0) goto ignore;
+    
     msg_size += result;
 
     return msg_size;

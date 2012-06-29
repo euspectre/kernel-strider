@@ -18,7 +18,7 @@ public:
 	
 	//TODO: getters for common parameters/variable values
 private:
-	std::string dirname;
+	const std::string dirname;
 	/* Standard filestream with refcount support. Used in event iterator */
 	class KEDRStream;
 	
@@ -38,7 +38,7 @@ public:
     /* Create past-the-end iterator*/
     EventIterator();
     /* Create iterator points to the first event in the trace */
-    EventIterator(KEDRTraceReader& traceReader);
+    EventIterator(const KEDRTraceReader& traceReader);
     
     EventIterator(const EventIterator& eventIterator);
     

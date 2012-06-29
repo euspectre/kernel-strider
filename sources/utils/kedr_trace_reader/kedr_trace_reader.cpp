@@ -162,7 +162,7 @@ void KEDRTraceReader::EventIterator::reorderLast(void)
 
 KEDRTraceReader::EventIterator::EventIterator(void) {}
 
-KEDRTraceReader::EventIterator::EventIterator(KEDRTraceReader& traceReader)
+KEDRTraceReader::EventIterator::EventIterator(const KEDRTraceReader& traceReader)
 {
 	DIR* dir = opendir(traceReader.dirname.c_str());
 	if(!dir)

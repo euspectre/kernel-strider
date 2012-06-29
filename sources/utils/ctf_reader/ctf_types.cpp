@@ -2273,6 +2273,7 @@ ElemContext::ElemContext(const VarFlexer* flexer, CTFContext* arrayContext,
             arrayContext),
         flexer(flexer), elemVar(elemVar), nElems(nElems), index(0)
 {
+   assert(nElems > 0);
    moveMap(arrayContext->mapSize(), arrayContext->mapStart(),
         arrayContext->mapStartShift());
 }
@@ -2568,9 +2569,11 @@ CTFVarArray::Elem* VarArrayBase::beginImpl(CTFContext& arrayContext) const
     CTFContext* contextAdjusted = adjustContext(arrayContext);
     assert(contextAdjusted);
 
+    int nElems = getNElems(*contextAdjusted);
+    if(nElems <= 0) return NULL;/* empty array */
+    
     ElemContext* elemContext = new ElemContext(varPlaceFlexer.getVar(),
-        contextAdjusted,
-        arrayElemPlace.getVar(), getNElems(*contextAdjusted));
+        contextAdjusted, arrayElemPlace.getVar(), nElems);
 
     elemContext->setStartOffset(getStartOffset(*contextAdjusted));
     

@@ -11,6 +11,8 @@
 
 #include <unistd.h> /* sleep */
 
+#include <fstream>
+
 /* Wrapper around addresses for pretty printing */
 template<class T>
 struct Addr;
@@ -886,7 +888,7 @@ void EventPrinter::setupTypePrinters(void)
         else if(eventType == "fexit")
             eventPrinterType = new EventPrinterFExit<T>(*this);
         else if(eventType == "fcpre")
-            eventPrinterType = new EventPrinterFCPost<T>(*this);
+            eventPrinterType = new EventPrinterFCPre<T>(*this);
         else if(eventType == "fcpost")
             eventPrinterType = new EventPrinterFCPost<T>(*this);
         else if(eventType == "ma")
@@ -941,9 +943,9 @@ EventPrinter::~EventPrinter(void)
 
 int main(int argc, char** argv)
 {
-    if(argc != 2)
+    if(argc < 2)
     {
-        std::cerr << "Usage: kedr_simple_converter <directory-with-trace>";
+        std::cerr << "Usage: kedr_simple_converter <directory-with-trace> [stream]";
         return -1;
     }
     
@@ -951,9 +953,24 @@ int main(int argc, char** argv)
     
     EventPrinter eventPrinter(traceReader);
     
+    if(argc > 2)
+    {
+        /* Output content of one stream instead of full trace */
+        std::string streamFilename = std::string(argv[1]) + '/' + argv[2];
+        std::ifstream is(streamFilename.c_str());
+        if(!is)
+        {
+            std::cerr << "Failed to open file '" << streamFilename << "'\n";
+            return -1;
+        }
+        for(CTFReader::EventIterator iter(traceReader, is); iter; ++iter)
+        {
+            eventPrinter.print(*iter, std::cout);
+        }
+        return 0;
+    }
     for(KEDRTraceReader::EventIterator iter(traceReader); iter; ++iter)
     {
-        //TODO: output event content
         eventPrinter.print(*iter, std::cout);
     }
     

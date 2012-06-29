@@ -1129,7 +1129,7 @@ int TraceReceiverControl::waitForFinalized(void)
     
     while(!isReceiverTerminated)
     {
-        sigsuspend(&signalMask);
+        errno = sigsuspend(&signalMask);
         assert(errno == -EINTR);
     }
 

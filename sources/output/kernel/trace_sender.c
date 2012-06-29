@@ -588,7 +588,7 @@ static int trace_sender_send_trace(struct trace_sender* sender,
 {
     int result = 0;
     int size = 0;
-    int msg_size;
+    int msg_size = 0;
     /* Upper limit to stop the cycle*/
     int size_out = size_limit - sender->transmition_size_limit;
 
