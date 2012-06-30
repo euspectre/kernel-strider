@@ -1,0 +1,7 @@
+﻿Plugins modules which implement models for different subsystems.
+
+Most models require interception of callbacks, so modules implemented
+them use KEDR COI for implementation.
+For build these modules, KEDR_COI_INSTALL_DIR parameter should be passed
+to CMake at configuration stage. This parameter should contain path, at
+which KEDR COI is installed or will be installed before building modules.

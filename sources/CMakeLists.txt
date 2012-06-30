@@ -343,6 +343,8 @@ add_subdirectory(converter)
 add_subdirectory(include)
 
 add_subdirectory(tools)
+
+add_subdirectory(plugins)
 #######################################################################
 
 # "Global" tests 

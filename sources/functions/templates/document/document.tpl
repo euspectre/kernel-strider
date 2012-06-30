@@ -63,7 +63,13 @@ static DEFINE_MUTEX(target_mutex);
 
 /* ID of the happens-before arc from the end of the init function to the 
  * beginning of the exit function of the target. */
-static unsigned long id_init_hb_exit = 0;
+// Really, target module structure may be used for that purpose.
+// This fact reflects Linux kernel internals and may be used by others
+// for set happens-before arc before exit function.
+//TODO: If someone want to access module structure's fields,
+// field '*refptr' of module structure may be used as id. But it is per-cpu.
+#define id_init_hb_exit ((unsigned long)target_module)
+//static unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 <$if concat(header.main)$>
 <$header.main: join(\n)$>
@@ -612,7 +618,7 @@ repl_exit(void)
 	struct kedr_event_handlers *eh;
 	unsigned long tid;
 	unsigned long pc;
-	struct kedr_cdev_hb_id *pos;
+	//struct kedr_cdev_hb_id *pos;
 	
 	BUG_ON(target_exit_func == NULL);
 	
@@ -637,8 +643,8 @@ repl_exit(void)
 		fh_plugin->on_before_exit_call(target_module);
 	
 	/* [NB] cdev-specific */
-	list_for_each_entry(pos, &cdev_hb_ids, list)
-		kedr_trigger_end_exit_wait_events(eh, tid, pc, pos);
+	//list_for_each_entry(pos, &cdev_hb_ids, list)
+	//	kedr_trigger_end_exit_wait_events(eh, tid, pc, pos);
 	/* [NB] end cdev-specific */
 	
 	/* Call the original function */
@@ -656,14 +662,15 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 	
 	/* The target module has just been loaded into memory.
 	 * [NB] Perform session-specific initialization here if needed. */
-	id_init_hb_exit = kedr_get_unique_id();
-	if (id_init_hb_exit == 0) {
-		pr_warning(KEDR_MSG_PREFIX 
-		"on_load(): failed to obtain the ID.\n");
-		/* Go on after issuing this warning. The IDs of signal-wait
-		 * pairs can be unreliable as a result but it is not fatal.
-		 */
-	}
+	// See comments for 'id_init_hb_exit' declaration.
+    //id_init_hb_exit = kedr_get_unique_id();
+	//if (id_init_hb_exit == 0) {
+	//	pr_warning(KEDR_MSG_PREFIX 
+	//	"on_load(): failed to obtain the ID.\n");
+	//	/* Go on after issuing this warning. The IDs of signal-wait
+	//	 * pairs can be unreliable as a result but it is not fatal.
+	//	 */
+	//}
 	
 	target_module = mod;
 	target_init_func = target_module->init;
@@ -693,8 +700,8 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 static void
 on_unload(struct kedr_function_handlers *fh, struct module *mod)
 {
-	struct kedr_cdev_hb_id *pos;
-	struct kedr_cdev_hb_id *tmp;
+	//struct kedr_cdev_hb_id *pos;
+	//struct kedr_cdev_hb_id *tmp;
 	
 	if (mutex_lock_killable(&target_mutex) != 0) {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -710,10 +717,10 @@ on_unload(struct kedr_function_handlers *fh, struct module *mod)
 	 * (different groups of ID structures, etc.). */
 	
 	/* cdev */
-	list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
-		list_del(&pos->list);
-		kfree(pos);
-	}
+	//list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
+	//	list_del(&pos->list);
+	//	kfree(pos);
+	//}
 	/* end cdev */
 	
 	if (fh_plugin != NULL) {

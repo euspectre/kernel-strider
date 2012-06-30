@@ -16,7 +16,7 @@ set(FUNCTION_GROUPS
 	"uaccess"
 	"dup"
 	"strings"
-	"cdev"
+#	"cdev"
 )
 
 set(HANDLER_C_FILES)
