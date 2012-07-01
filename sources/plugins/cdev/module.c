@@ -27,6 +27,8 @@
 
 #include <kedr-coi/interceptors/file_operations_interceptor.h>
 #include "cdev_file_operations_interceptor.h"
+
+#include "file_operations_model.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Andrey Tsyvarev");
@@ -125,19 +127,36 @@ static inline void generate_ref_last(unsigned long tid,
     generate_wait_post(tid, pc, ref_addr, KEDR_SWT_COMMON);
 }
 
-/* release() should be called after all other file callbacks*/
-static inline unsigned long filp_ref(struct file* filp) {return (unsigned long)filp;}
-/* module_exit() should be called after all module references are put. */
-static inline unsigned long module_ref(struct module* m) {return (unsigned long)m;}
-/* open() should be called before all other file callbacks */
-static inline unsigned long filp_created(struct file* filp) {return (unsigned long)&filp->f_op;}
 /* cdev_add should be called before devices may be opened */
 static inline unsigned long cdev_added(struct cdev* dev) {return (unsigned long)&dev->ops;}
 
 
 /* ====================================================================== */
-/* Interception of file callbacks. */
+/* Interception of file callbacks which determine lifetime of object. */
+static void 
+fop_open_post(struct inode* inode, struct file* filp, int ret_val,
+	struct kedr_coi_operation_call_info* call_info)
+{
+	if (ret_val != 0) {
+		/* If open() has failed, we may inform the interceptor that
+		 * it does not need to bother watching the current '*filp' 
+		 * object. */
+		file_operations_interceptor_forget(filp);
+	}
+}
 
+static void 
+fop_release_post(struct inode* inode, struct file* filp, int ret_val,
+	struct kedr_coi_operation_call_info* call_info)
+{
+	if (ret_val == 0) {
+		/* If release() has been successful, the interceptor may
+		 * stop watching '*filp'. */
+		file_operations_interceptor_forget(filp);
+	}
+}
+
+/* character-device-specific model*/
 static void 
 fop_open_pre(struct inode* inode, struct file* filp,
 	struct kedr_coi_operation_call_info* call_info)
@@ -148,174 +167,13 @@ fop_open_pre(struct inode* inode, struct file* filp,
     /* File may be opened only if corresponded device is added.*/
     generate_wait_pre(tid, pc, cdev_added(inode->i_cdev), KEDR_SWT_COMMON);
     generate_wait_post(tid, pc, cdev_added(inode->i_cdev), KEDR_SWT_COMMON);
-    
-	/* Allocation of file structure has done. */
-    generate_alloc_pre(tid, pc, sizeof(*filp));
-    generate_alloc_post(tid, pc, sizeof(*filp), filp);
-
-    /* Owner of operations cannot be unloaded now. */
-    if(filp->f_op->owner)
-        generate_ref_get(tid, pc, module_ref(filp->f_op->owner));
 }
 
-static void 
-fop_open_post(struct inode* inode, struct file* filp, int ret_val,
-	struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-
-	if (ret_val != 0) {
-		
-		/* If open() has failed, we may inform the interceptor that
-		 * it does not need to bother watching the current '*filp' 
-		 * object. */
-		file_operations_interceptor_forget(filp);
-	
-        /* Owner of operations may be unloaded now. */
-        if(filp->f_op->owner)
-            generate_ref_put(tid, pc, module_ref(filp->f_op->owner));
-
-		/* Specify that the struct file instance pointed to by 
-		 * 'filp' is no longer available ("memory released"). */
-        generate_free_pre(tid, pc, filp);
-        generate_free_post(tid, pc, filp);
-	}
-    /* Operations may be changed in open(), so update watching. */
-	file_operations_interceptor_watch(filp);
-
-    /* The first 'Reference' on filp is acquired. */
-    generate_ref_get(tid, pc, filp_ref(filp));
-
-    /* Relation: "Callbacks may be called only after open() returns. */
-    generate_signal_pre(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    generate_signal_post(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-}
-
-static void 
-fop_release_pre(struct inode* inode, struct file* filp,
-	struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-	
-    /* Relation: "release() may be called only after open() returns. */
-    generate_wait_pre(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-
-    /* Relation: "All callbacks should be finished at release call. */
-    generate_ref_last(tid, pc, filp_ref(filp));
-}
-
-
-static void 
-fop_release_post(struct inode* inode, struct file* filp, int ret_val,
-	struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-
-	if (ret_val == 0) {
-		/* If release() has been successful, the interceptor may
-		 * stop watching '*filp'. */
-		file_operations_interceptor_forget(filp);
-		
-        /* Owner of operations may be unloaded now. */
-        if(filp->f_op->owner)
-            generate_ref_put(tid, pc, module_ref(filp->f_op->owner));
-        
-        /* Specify that the struct file instance pointed to by 
-		 * 'filp' is no longer available ("memory released"). */
-		generate_free_pre(tid, pc, filp);
-        generate_free_post(tid, pc, filp);
-	}
-}
-
-/* Other callback operations in file */
-static void fop_write_pre(struct file * filp, const char __user * buf,
-    size_t count, loff_t * f_pos,
-    struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-    /* Relation: "write() may be called only after open() returns. */
-    generate_wait_pre(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    /* Acquire reference on file('filp' cannot be destroyed now)*/
-    generate_ref_get(tid, pc, filp_ref(filp));
-}
-
-static void fop_write_post(struct file * filp, const char __user * buf,
-    size_t count, loff_t * f_pos, ssize_t result,
-    struct kedr_coi_operation_call_info* call_info)
-{
-    unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-
-    /* Drop reference on file('filp' may be destroyed now)*/
-    generate_ref_put(tid, pc, filp_ref(filp));
-}
-
-static void fop_read_pre(struct file * filp, char __user * buf,
-    size_t count, loff_t * f_pos,
-    struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-
-    /* Relation: "read() may be called only after open() returns. */
-    generate_wait_pre(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    /* Acquire reference on file('filp' cannot be destroyed now)*/
-    generate_ref_get(tid, pc, filp_ref(filp));
-}
-
-static void fop_read_post(struct file * filp, char __user * buf,
-    size_t count, loff_t * f_pos, ssize_t result,
-    struct kedr_coi_operation_call_info* call_info)
-{
-    unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-    /* Drop reference on file('filp' may be destroyed now)*/
-    generate_ref_put(tid, pc, filp_ref(filp));
-}
-
-
-static void fop_llseek_pre(struct file *filp, loff_t off, int whence,
-    struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-
-    /* Relation: "llseek() may be called only after open() returns. */
-    generate_wait_pre(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, filp_created(filp), KEDR_SWT_COMMON);
-    /* Acquire reference on file('filp' cannot be destroyed now)*/
-    generate_ref_get(tid, pc, filp_ref(filp));
-}
-
-
-static void fop_llseek_post(struct file *filp, loff_t off, int whence,
-    loff_t result,
-    struct kedr_coi_operation_call_info* call_info)
-{
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-    /* Drop reference on file('filp' may be destroyed now)*/
-    generate_ref_put(tid, pc, filp_ref(filp));
-}
-// Other callbacks in same manner.
-// Templates are needed.
 
 
 static struct kedr_coi_pre_handler fop_pre_handlers[] =
 {
 	file_operations_open_pre_external(fop_open_pre),
-    file_operations_release_pre_external(fop_release_pre),
-    
-    file_operations_write_pre(fop_write_pre),
-    file_operations_read_pre(fop_read_pre),
-    file_operations_llseek_pre(fop_llseek_pre),
 	kedr_coi_pre_handler_end
 };
 
@@ -323,10 +181,6 @@ static struct kedr_coi_post_handler fop_post_handlers[] =
 {
     file_operations_open_post_external(fop_open_post),
 	file_operations_release_post_external(fop_release_post),
-    
-    file_operations_write_post(fop_write_post),
-    file_operations_read_post(fop_read_post),
-    file_operations_llseek_post(fop_llseek_post),
 	kedr_coi_post_handler_end
 };
 
@@ -358,8 +212,15 @@ coi_init(void)
 	if (ret != 0) 
 		goto out_cdev;
 
+    ret = file_operations_model_connect(&file_operations_interceptor_payload_register);
+	if (ret != 0) 
+		goto out_file_payload;
+
+
     return 0;
 
+out_file_payload:
+    file_operations_interceptor_payload_unregister(&fop_payload);
 out_cdev:
 	cdev_file_operations_interceptor_destroy();
 out_fop:
@@ -371,6 +232,7 @@ out:
 static void 
 coi_cleanup(void)
 {
+    file_operations_model_disconnect(&file_operations_interceptor_payload_unregister);
 	file_operations_interceptor_payload_unregister(&fop_payload);
 	cdev_file_operations_interceptor_destroy();
 	file_operations_interceptor_destroy();
@@ -408,7 +270,6 @@ static void
 repl_cdev_del(struct cdev *p)
 {
 	/* It is caller who should order this call wrt others. */
-    
     cdev_file_operations_interceptor_forget(p);
 }
 

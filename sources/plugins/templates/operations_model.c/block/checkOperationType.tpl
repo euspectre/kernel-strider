@@ -1,0 +1,1 @@
+CHECK_OPERATION_TYPE(<$operation.name$>, <$if operation.returnType$><$operation.returnType$><$else$>void<$endif$> (*)(<$operation.arg.type: join(,)$>))

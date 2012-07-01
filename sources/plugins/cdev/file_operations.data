@@ -1,0 +1,399 @@
+model.name = file_operations_model
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+#include <linux/fs.h>
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/file_operations_interceptor.h>
+<<
+
+implementation_header =>>
+#include <linux/aio.h>
+
+#include <linux/poll.h>
+
+#include <linux/sched.h>
+#include <linux/mm_types.h>
+<<
+
+object.type = struct file
+object.operations_field = f_op
+
+operations.type = struct file_operations
+
+operations.owner_field = owner
+
+
+[group]
+operation.name = llseek
+operation.returnType = loff_t
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = loff_t
+operation.arg.name = offset
+
+operation.arg.type = int
+operation.arg.name = whence
+
+operation.object = filp
+
+[group]
+operation.name = read
+operation.returnType = ssize_t
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = char __user *
+operation.arg.name = buf
+
+operation.arg.type = size_t
+operation.arg.name = count
+
+operation.arg.type = loff_t *
+operation.arg.name = f_pos
+
+operation.object = filp
+
+[group]
+operation.name = write
+operation.returnType = ssize_t
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = const char __user *
+operation.arg.name = buf
+
+operation.arg.type = size_t
+operation.arg.name = count
+
+operation.arg.type = loff_t *
+operation.arg.name = f_pos
+
+operation.object = filp
+
+[group]
+operation.name = aio_read
+operation.returnType = ssize_t
+
+operation.arg.type = struct kiocb *
+operation.arg.name = iocb
+
+operation.arg.type = const struct iovec*
+operation.arg.name = iov
+
+operation.arg.type = unsigned long
+operation.arg.name = nr_segs
+
+operation.arg.type = loff_t
+operation.arg.name = pos
+
+operation.object = iocb->ki_filp
+
+operation.default = return generic_file_aio_read(iocb, iov, nr_segs, pos);
+
+
+[group]
+operation.name = aio_write
+operation.returnType = ssize_t
+
+operation.arg.type = struct kiocb *
+operation.arg.name = iocb
+
+operation.arg.type = const struct iovec*
+operation.arg.name = iov
+
+operation.arg.type = unsigned long
+operation.arg.name = nr_segs
+
+operation.arg.type = loff_t
+operation.arg.name = pos
+
+operation.object = iocb->ki_filp
+
+[group]
+operation.name = readdir
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = void *
+operation.arg.name = buf
+
+operation.arg.type = filldir_t
+operation.arg.name = filler
+
+operation.object = filp
+
+[group]
+operation.name = poll
+operation.returnType = unsigned int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = struct poll_table_struct *
+operation.arg.name = wait
+
+
+operation.object = filp
+
+[group]
+operation.name = unlocked_ioctl
+operation.returnType = long
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = unsigned int
+operation.arg.name = cmd
+
+operation.arg.type = unsigned long
+operation.arg.name = arg
+
+operation.object = filp
+
+[group]
+operation.name = compat_ioctl
+operation.returnType = long
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = unsigned int
+operation.arg.name = cmd
+
+operation.arg.type = unsigned long
+operation.arg.name = arg
+
+operation.object = filp
+
+[group]
+operation.name = mmap
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = filp
+
+[group]
+operation.name = open
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.object = filp
+
+operation.role.constructor = yes
+operation.role.new = yes
+
+operation.success_condition = (returnValue == 0)
+
+[group]
+operation.name = flush
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = fl_owner_t
+operation.arg.name = id
+
+operation.object = filp
+
+[group]
+operation.name = release
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.object = filp
+
+operation.role.destructor = yes
+operation.role.delete = yes
+
+operation.success_condition = (returnValue == 0)
+
+[group]
+operation.name = aio_fsync
+operation.returnType = int
+
+operation.arg.type = struct kiocb *
+operation.arg.name = iocb
+
+operation.arg.type = int
+operation.arg.name = datasync
+
+operation.object = iocb->ki_filp
+
+[group]
+operation.name = fasync
+operation.returnType = int
+
+operation.arg.type = int
+operation.arg.name = fd
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = int
+operation.arg.name = mode
+
+operation.object = filp
+
+[group]
+operation.name = lock
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = int
+operation.arg.name = cmd
+
+operation.arg.type = struct file_lock *
+operation.arg.name = fl
+
+operation.object = filp
+
+[group]
+operation.name = sendpage
+operation.returnType = ssize_t
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = struct page *
+operation.arg.name = page
+
+operation.arg.type = int
+operation.arg.name = offset
+
+operation.arg.type = size_t
+operation.arg.name = size
+
+operation.arg.type = loff_t *
+operation.arg.name = ppos
+
+operation.arg.type = int
+operation.arg.name = more
+
+operation.object = filp
+
+[group]
+operation.name = get_unmapped_area
+operation.returnType = unsigned long
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = unsigned long
+operation.arg.name = addr
+
+operation.arg.type = unsigned long
+operation.arg.name = len
+
+operation.arg.type = unsigned long
+operation.arg.name = pgoff
+
+operation.arg.type = unsigned long
+operation.arg.name = flags
+
+operation.object = filp
+
+[group]
+operation.name = flock
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = int
+operation.arg.name = flags
+
+operation.arg.type = struct file_lock *
+operation.arg.name = fl
+
+operation.object = filp
+
+[group]
+operation.name = splice_write
+operation.returnType = ssize_t
+
+operation.arg.type = struct pipe_inode_info *
+operation.arg.name = pipe
+
+operation.arg.type = struct file *
+operation.arg.name = out
+
+operation.arg.type = loff_t *
+operation.arg.name = ppos
+
+operation.arg.type = size_t
+operation.arg.name = len
+
+operation.arg.type = unsigned int
+operation.arg.name = flags
+
+operation.object = out
+
+[group]
+operation.name = splice_read
+operation.returnType = ssize_t
+
+operation.arg.type = struct file *
+operation.arg.name = in
+
+operation.arg.type = loff_t *
+operation.arg.name = ppos
+
+operation.arg.type = struct pipe_inode_info *
+operation.arg.name = pipe
+
+operation.arg.type = size_t
+operation.arg.name = len
+
+operation.arg.type = unsigned int
+operation.arg.name = flags
+
+operation.object = in
+
+[group]
+operation.name = setlease
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = long
+operation.arg.name = arg
+
+operation.arg.type = struct file_lock **
+operation.arg.name = lease
+
+operation.object = filp
