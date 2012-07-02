@@ -618,8 +618,9 @@ repl_exit(void)
 	struct kedr_event_handlers *eh;
 	unsigned long tid;
 	unsigned long pc;
-	//struct kedr_cdev_hb_id *pos;
-	
+#ifndef NO_CDEV
+	struct kedr_cdev_hb_id *pos;
+#endif	
 	BUG_ON(target_exit_func == NULL);
 	
 	/* Restore the callback - just in case */
@@ -641,12 +642,13 @@ repl_exit(void)
 	/* Call the callback from a plugin, if set. */
 	if (fh_plugin != NULL && fh_plugin->on_before_exit_call != NULL)
 		fh_plugin->on_before_exit_call(target_module);
-	
+
+#ifndef NO_CDEV	
 	/* [NB] cdev-specific */
-	//list_for_each_entry(pos, &cdev_hb_ids, list)
-	//	kedr_trigger_end_exit_wait_events(eh, tid, pc, pos);
+	list_for_each_entry(pos, &cdev_hb_ids, list)
+		kedr_trigger_end_exit_wait_events(eh, tid, pc, pos);
 	/* [NB] end cdev-specific */
-	
+#endif	
 	/* Call the original function */
 	target_exit_func();
 }
@@ -700,9 +702,10 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 static void
 on_unload(struct kedr_function_handlers *fh, struct module *mod)
 {
-	//struct kedr_cdev_hb_id *pos;
-	//struct kedr_cdev_hb_id *tmp;
-	
+#ifndef NO_CDEV
+	struct kedr_cdev_hb_id *pos;
+	struct kedr_cdev_hb_id *tmp;
+#endif	
 	if (mutex_lock_killable(&target_mutex) != 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 			"on_unload(): failed to lock the mutex.\n");
@@ -716,13 +719,14 @@ on_unload(struct kedr_function_handlers *fh, struct module *mod)
 	 * [NB] In the future, this code should be modularized
 	 * (different groups of ID structures, etc.). */
 	
+#ifndef NO_CDEV
 	/* cdev */
-	//list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
-	//	list_del(&pos->list);
-	//	kfree(pos);
-	//}
+	list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
+		list_del(&pos->list);
+		kfree(pos);
+	}
 	/* end cdev */
-	
+#endif	
 	if (fh_plugin != NULL) {
 		if (fh_plugin->on_target_about_to_unload != NULL)
 			fh_plugin->on_target_about_to_unload(mod);

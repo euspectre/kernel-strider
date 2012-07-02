@@ -16,8 +16,13 @@ set(FUNCTION_GROUPS
 	"uaccess"
 	"dup"
 	"strings"
-#	"cdev"
 )
+
+if(NOT KEDR_COI_INSTALL_DIR)
+	# Without KEDR COI plugin for cdev operations will not builded.
+	# Instead, some model for that subsystem will be compiled into standard functions.
+	list(APPEND FUNCTION_GROUPS "cdev")
+endif(NOT KEDR_COI_INSTALL_DIR)
 
 set(HANDLER_C_FILES)
 set(HANDLER_DATA_FILES)
@@ -55,9 +60,17 @@ add_custom_target(${KMODULE_NAME}_module.c
 )
 add_dependencies(${KMODULE_NAME}_module.c ${KMODULE_NAME}_data_file)
 
-kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers") 
+kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
 kbuild_add_dependencies("kedr_mem_core")
-kbuild_add_module(${KMODULE_NAME} 
+
+if(KEDR_COI_INSTALL_DIR)
+	# Main module depends on existence of 'cdev' group.
+	# If this group is not builded, tell main module to not include
+	# corresponded lines
+	kbuild_add_definitions("-DNO_CDEV")
+endif(KEDR_COI_INSTALL_DIR)
+
+kbuild_add_module(${KMODULE_NAME}
 # sources
 	${MAIN_C_FILE}
 	${HANDLER_C_FILES}
