@@ -267,6 +267,19 @@ static const CTFVarEnum& findEnum(const CTFReader& reader, const std::string& na
 }
 
 
+/* For auto closing file descriptor */
+class auto_fd
+{
+public:
+    auto_fd(int fd): fd(fd) {}
+    ~auto_fd(void) {if(fd != -1) close(fd);}
+    
+    int get(void) {return fd;}
+    void reset(int fd = -1) {if(this->fd != -1) close(this->fd); this->fd = fd;}
+private:
+    int fd;
+};
+
 /* Trace Session */
 
 /* 
@@ -313,14 +326,14 @@ TraceSession::TraceSession(const std::string& traceDirectoryFormat,
     }
 
     std::string metadataFilename(getMetadataFilename());
-    int metaFD = open(metadataFilename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0755);
-    if(metaFD == -1)
+    auto_fd metaFD(open(metadataFilename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0755));
+    if(metaFD.get() == -1)
     {
         std::cerr << "Failed to open/create metadata file '" 
             << metadataFilename << "': " << strerror(errno) << ".\n";
         throw std::runtime_error("Failed to create file with metadata");
     }
-    result = write(metaFD, metaPacket.getMetadata(), metaPacket.getMetadataSize());
+    result = write(metaFD.get(), metaPacket.getMetadata(), metaPacket.getMetadataSize());
     if(result != (int)metaPacket.getMetadataSize())
     {
         std::cerr << "Failed to write metadata portion to file '"
@@ -347,15 +360,15 @@ void TraceSession::addMetaPacket(const char* data, size_t dataSize)
     
     std::string metadataFilename = getMetadataFilename();
     
-    int metaFD = open(metadataFilename.c_str(), O_WRONLY | O_APPEND);
-    if(metaFD == -1)
+    auto_fd metaFD(open(metadataFilename.c_str(), O_WRONLY | O_APPEND));
+    if(metaFD.get() == -1)
     {
         std::cerr << "Failed to open metadata file '" 
             << metadataFilename << "': " << strerror(errno) << ".\n";
         throw std::runtime_error("Failed to add metadata portion.");
     }
     
-    result = write(metaFD,
+    result = write(metaFD.get(),
         metaPacket.getMetadata(), metaPacket.getMetadataSize());
     if(result != (int)metaPacket.getMetadataSize())
     {
@@ -413,16 +426,16 @@ void TraceSession::addPacket(const char* data, size_t dataSize)
     
     std::string streamFilename = getStreamFilename(packet);
     
-    int streamFD = open(streamFilename.c_str(), O_WRONLY | O_CREAT | O_APPEND,
-        0755);
-    if(streamFD == -1)
+    auto_fd streamFD(open(streamFilename.c_str(), O_WRONLY | O_CREAT | O_APPEND,
+        0755));
+    if(streamFD.get() == -1)
     {
         std::cerr << "Failed to open stream file '" 
             << streamFilename <<"': " << strerror(errno) << ".\n";
         throw std::runtime_error("Failed to add trace portion.");
     }
     
-    result = write(streamFD, data, dataSize);
+    result = write(streamFD.get(), data, dataSize);
     if(result != (int)dataSize)
     {
         std::cerr << "Failed to add trace portion to file '"
@@ -434,7 +447,7 @@ void TraceSession::addPacket(const char* data, size_t dataSize)
     if(padSize != 0)
     {
         std::vector<char> padding(padSize, '\0');
-        result = write(streamFD, padding.data(), padding.size());
+        result = write(streamFD.get(), padding.data(), padding.size());
         if(result != (int)padding.size())
         {
             std::cerr << "Failed to add padding of trace packet to file '"

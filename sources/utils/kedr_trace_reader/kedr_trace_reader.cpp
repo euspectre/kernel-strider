@@ -185,6 +185,7 @@ KEDRTraceReader::EventIterator::EventIterator(const KEDRTraceReader& traceReader
 		}
 		uint32_t magic;
 		int result = read(streamFD, &magic, sizeof(magic));
+		close(streamFD);
 		if(result != sizeof(magic)) continue;/* Ignore file in any errors */
 		
 		if((magic != htobe32(CTFReader::magicValue))
