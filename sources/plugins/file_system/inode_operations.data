@@ -1,0 +1,412 @@
+model.name = inode_operations_model
+sw_id.prefix = INODE_MODEL_STATE
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2011, Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ ======================================================================== */
+
+
+#include <linux/fs.h>
+<<
+
+implementation_header=>>
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/inode_operations_interceptor.h>
+<<
+
+object.type = struct inode
+object.operations_field = i_op
+
+operations.type = struct inode_operations
+
+object.state.value = INITIALIZED
+
+object.state.pre_id = &obj->i_sb_list
+object.state.post_id = &obj->i_dentry
+
+[group]
+operation.name = create
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = int
+operation.arg.name = mode
+
+operation.arg.type = struct nameidata *
+operation.arg.name = nd
+
+operation.object = dir
+
+operation.state.value = INITIALIZED
+
+# State transition of inode created
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = returnValue == 0
+
+[group]
+operation.name = lookup
+operation.returnType = struct dentry *
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct nameidata *
+operation.arg.name = nd
+
+operation.object = inode
+
+operation.state.value = INITIALIZED
+
+# State transition of inode found
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = !returnValue && dentry->d_inode
+
+# State transition of inode found new
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = returnValue->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = returnValue && !IS_ERR(returnValue) && returnValue->d_inode
+
+
+[group]
+operation.name = link
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = old_dentry
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = new_dentry
+
+operation.object = dir
+
+[group]
+operation.name = unlink
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.object = dir
+
+[group]
+operation.name = symlink
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = const char *
+operation.arg.name = oldname
+
+operation.object = dir
+
+# Called by vfs_symlink
+operation.default = return -EPERM;
+
+
+[group]
+operation.name = mkdir
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = int
+operation.arg.name = mode
+
+operation.object = dir
+
+[group]
+operation.name = rmdir
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.object = dir
+
+# Called by vfs_rmdir
+operation.default = return -EPERM;
+
+
+[group]
+operation.name = mknod
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = int
+operation.arg.name = mode
+
+operation.arg.type = dev_t
+operation.arg.name = dev
+
+operation.object = dir
+
+[group]
+operation.name = rename
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = old_dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = old_dentry
+
+operation.arg.type = struct inode *
+operation.arg.name = new_dir
+
+operation.arg.type = struct dentry *
+operation.arg.name = new_dentry
+
+operation.object = old_dentry
+
+# Called by vfs_rename
+operation.default = return -EPERM;
+
+
+[group]
+operation.name = readlink
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = char __user *
+operation.arg.name = buffer
+
+operation.arg.type = int
+operation.arg.name = buflen
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = follow_link
+operation.returnType = void*
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct nameidata *
+operation.arg.name = nd
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = put_link
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct nameidata *
+operation.arg.name = nd
+
+operation.arg.type = void *
+operation.arg.name = cookie
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = truncate
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode
+
+
+[group]
+operation.name = truncate_range
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = loff_t
+operation.arg.name = offset
+
+operation.arg.type = loff_t
+operation.arg.name = end
+
+[group]
+operation.name = setattr
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct iattr *
+operation.arg.name = attr
+
+operation.object = dentry->d_inode
+
+# Called from notify_change
+# Default implementation is system-depended and not easy.
+
+[group]
+operation.name = getattr
+operation.returnType = int
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct kstat *
+operation.arg.name = stat
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = setxattr
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = const char *
+operation.arg.name = name
+
+operation.arg.type = const void *
+operation.arg.name = value
+
+operation.arg.type = size_t
+operation.arg.name = size
+
+operation.arg.type = int
+operation.arg.name = flags
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = getxattr
+operation.returnType = ssize_t
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = const char *
+operation.arg.name = name
+
+operation.arg.type = void *
+operation.arg.name = value
+
+operation.arg.type = size_t
+operation.arg.name = size
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = listxattr
+operation.returnType = ssize_t
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = char *
+operation.arg.name = list
+
+operation.arg.type = size_t
+operation.arg.name = size
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = removexattr
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = const char *
+operation.arg.name = name
+
+operation.object = dentry->d_inode
+
+[group]
+operation.name = fiemap
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct fiemap_extent_info*
+operation.arg.name = fieinfo
+
+operation.arg.type = u64
+operation.arg.name = start
+
+operation.arg.type = u64
+operation.arg.name = len
+
+operation.object = inode
+
+[group]
+operation.name = fallocate
+operation.returnType = long
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = int
+operation.arg.name = mode
+
+operation.arg.type = loff_t
+operation.arg.name = offset
+
+operation.arg.type = loff_t
+operation.arg.name = len
+
+operation.object = inode
+
+operation.protection = defined(INODE_OPERATIONS_HAS_FALLOCATE)

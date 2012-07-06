@@ -738,7 +738,7 @@ void TsanTraceBuilder<T>::setupEventBuilders(void)
         else if(eventType == "fcpre")
             eventBuilder = new TsanEventBuilderFunctionCallPre<T>(*this);
         else if(eventType == "fcpost")
-            eventBuilder = new TsanEventBuilderFunctionCallPre<T>(*this);
+            eventBuilder = new TsanEventBuilderFunctionCallPost<T>(*this);
         else if(eventType == "ma")
             eventBuilder = new TsanEventBuilderMA<T>(*this);
         else if(eventType == "lma_update")

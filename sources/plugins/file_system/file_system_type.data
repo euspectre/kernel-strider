@@ -1,0 +1,135 @@
+model.name = file_system_type_model
+sw_id.prefix = FST_MODEL_STATE
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+#include <linux/fs.h>
+<<
+
+implementation_header=>>
+#include <linux/mount.h> /* fields of mount structure */
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/file_system_type_interceptor.h>
+
+/* Need for use sw identificators of super block object */
+#include "super_operations_model.h"
+
+/* In the future, this should be definition in <kedr/..> header. */
+
+#ifndef MODULE_MODEL_STATE_POST_INITIALIZED
+/* 
+ * Signal-wait id for module object.
+ *
+ * NOTE: Only 'POST' id is exist. 'PRE' id has no sence because
+ * module is initialized before first instruction is executed.
+ */
+#define MODULE_MODEL_STATE_POST_INITIALIZED(mod) (mod)
+#endif
+<<
+
+object.type = struct file_system_type
+
+object.state.value = REGISTERED
+object.state.pre_id = obj
+# 'post' identificator is not needed - no relations use it.
+# But template generation require it.
+object.state.post_id = &obj->fs_supers
+
+[group]
+operation.name = kill_sb
+
+operation.arg.type = struct super_block *
+operation.arg.name = s
+
+operation.object = s->s_type
+
+operation.state.value = REGISTERED
+
+# State transition of super block killed
+operation.external.state.transition.prefix = SUPER_MODEL_STATE
+operation.external.state.transition.object = s
+operation.external.state.transition.pre_value = BEFORE_KILL
+operation.external.state.transition.post_value =
+operation.external.state.transition.condition =
+
+# module_put() model
+operation.code.post.external =>>
+	if(s->s_type->owner)
+		generate_signal(tid, pc,
+			MODULE_MODEL_STATE_POST_INITIALIZED(s->s_type->owner),
+			KEDR_SWT_COMMON);
+<<
+
+[group]
+operation.name = get_sb
+operation.returnType = int
+
+operation.arg.type = struct file_system_type *
+operation.arg.name = type
+
+operation.arg.type = int
+operation.arg.name = flags
+
+operation.arg.type = const char *
+operation.arg.name = name
+
+operation.arg.type = void*
+operation.arg.name = data
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.object = type
+
+operation.state.value = REGISTERED
+
+# State transition of super block created
+operation.external.state.transition.prefix = SUPER_MODEL_STATE
+operation.external.state.transition.object = mnt->mnt_sb
+operation.external.state.transition.pre_value = 
+# TODO: Really, super block is created inside callback call and may be used here.
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = returnValue == 0
+
+operation.protection = defined(FILE_SYSTEM_TYPE_HAS_GET_SB)
+
+[group]
+operation.name = mount
+operation.returnType = struct dentry *
+
+operation.arg.type = struct file_system_type *
+operation.arg.name = type
+
+operation.arg.type = int
+operation.arg.name = flags
+
+operation.arg.type = const char *
+operation.arg.name = name
+
+operation.arg.type = void*
+operation.arg.name = data
+
+operation.object = type
+
+operation.state.value = REGISTERED
+
+# State transition of super block created
+operation.external.state.transition.prefix = SUPER_MODEL_STATE
+operation.external.state.transition.object = returnValue->d_sb
+operation.external.state.transition.pre_value = 
+# TODO: Really, super block is created inside callback call and may be used here.
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = (returnValue != NULL) && (!IS_ERR(returnValue))
+
+
+operation.protection = defined(FILE_SYSTEM_TYPE_HAS_MOUNT)

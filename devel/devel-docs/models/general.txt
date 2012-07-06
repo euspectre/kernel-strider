@@ -1,0 +1,202 @@
+Memory accesses and syncronization models.
+
+Kernel-strider can watch only on single(in the future - several) module
+under test.
+But interaction between this module and the rest of the kernel(including
+other modules) may introduce addtional accesses to memory, with which
+the module works. Also, such interaction may introduce some
+syncronization relations for execution of module.
+
+For make data race analizers(such as Thread Sanitizer) to correcly
+detect races, module-kernel interactions are required to be modelled in
+terms of memory accesses and syncronization operations.
+
+While some module-kernel interactions, such as memcpy() of mutex_lock()
+can be simply modelled, other ones are more complex. This document
+provides guide for modelling interactions.
+
+                
+                Main principles: memory accesses.
+
+1. Model of memory accesses may simple repeate operations, caused by
+interaction.
+Some accesses, if them concerned local variables of external function,
+may be omitted from model. Same for accesses to global variables,
+which are not interesting for tested module or otherwise cannot cause
+race from the module.
+
+2. Accesses to user-space memory should't be modelled: from one side,
+different pointers to user-space may points to same phisycal memory;
+from the other size, accesses to user-space memory hardly cause race
+from the kernel.
+But accesses to memory, to which user-space is mapped, shouldn't be
+dropped from model.
+
+
+                Main principles: syncronization relations.
+
+1. Main purpose of syncronization model: If external function(s) impose
+contstraints on ordering of tested module code execution, this ordering
+should appear in the execution trace.
+Syncronization model doesn't require to order execution of external
+functions(s) themselves.
+
+Example: Ordering of alloc-like and free-like functions call with same
+pointer.
+
+If free call comes after alloc in real execution, then it is module who
+should arrange these calls(e.g., arrange them in one thread). The model
+shouldn't impose any constraints in that case.
+If alloc call comes after free call in real execution, then that order
+is imposed by that functions implementations, which are external to
+module. So, the model is required to reflect this ordering in the trace.
+
+Possible model:
+
+free(p) -> signal(p); free(p)
+p = alloc() -> p = alloc(); wait(p)
+
+With this model, if free call comes after alloc call with same pointer,
+then we get trace
+
+p = alloc(); wait(p); ... signal(p); free(p);
+
+Because 'wait' before 'signal' has no sence, whole model has no sence in
+that case. If module itself doesn't order free after alloc, race detector
+will detect race(and will be right).
+
+From the other side, if alloc call comes after free, then trace will be
+
+signal(p); free(p); p = alloc(p); wait(p);
+
+Because of signal-wait pair, all operations with memory at 'p' pointer,
+ordered before free(), will be ordered BEFORE operations with memory at 'p'
+pointer, ordered after alloc(). So, race detector will not consider these
+accesses as race, which is really true.
+
+NOTE: Proposed model covers only part of free-alloc interactions features.
+Real model is more complex, but it already exists in quiality race
+detectors.
+
+2. Syncronization model should try to not impose restrictions, which are
+not imposed by the interaction itself.
+Otherwise, such additional restrictions may hide real races.
+
+3. It is strongly prohibited to model using locks sections, which may be
+executed concurrently. Otherwise it is possible to get execution
+trace which cannot be processed with race detectors.
+
+4. Usually only part of external function's code is executed exclusively
+in functions from same group.
+The other code may be executed concurrently even with functions from
+the same group.
+E.g., kfree() and kmalloc() may be called at the same moment by different
+threads.
+
+When some functions calls imply some ordering of module code execution,
+CALL of one function is ordered BEFORE RETUR of other function, but
+not vice versa.
+So, model should generate events before CALL which ordering BEFORE other
+RETURN, and after that return.
+
+Guide sequence:
+
+    What                     By whom                alloc/free example
+
+generate_signal();          Model                       signal(p);
+call f1;                    Module                      call free(p);
+
+HAPPENS BEFORE;             External restriction    'p' should be freed before it
+                                                    may be used by alloc.
+
+<return from f2>;           Module                      alloc() returns p;
+generate_wait();            Model                       wait(p);
+
+
+5. Situation with modelling callbacks is differ from one with modelling
+external functions call. But it follows with similar principles.
+
+Guide sequence for callbacks.
+
+
+    What                        By whom              open/write example
+
+generate_signal();          Model                       signal(filp);
+return from callback1;      Module                  return from open(filp) callback;
+
+HAPPENS BEFORE              External restriction    open(filp) should return
+                                                    before write(filp) may be called.
+
+callback2 is called         Module                  write(filp) is called from outside;
+from outside;
+generate_wait();            Model                       wait(p);
+
+
+Example in this guide use external relation between callbacks call in
+file structure.
+
+
+                    Main principles: natural syncronization objects.
+
+Even for any synchronization relation private object identificator may
+be requested, it is very convinient to use for that purposes objects,
+which are involved into modelled interaction. Or fields of that objects.
+
+
+Advantages:
+
+1. Calculate instead of store.
+
+If some identificator has been used for signal, same identificator
+should be used for wait, otherwise model has no effect.
+
+With private identificators one should store it, either in variable
+(one relation) or in some container(several relations) with searching feature.
+
+With natural objects, identificators are simply derived from arguments
+of model itself: parameters of the functions, parameters of the callbacks.
+No need to store and search that identificators.
+
+2. No needs to explecitely delete identificators for deleted objects.
+
+If object is recreated, then old relations on that object shouldn't
+be connected with new ones. This means, that private identificators should
+be explicitely deleted when object is destroyed.
+
+With natural object identificators it is sufficient to model object
+destruction as free() operation (this model should exist in any case).
+When interpret trace, data race detector will automatically distinguish
+same identificators with free() call between them.
+
+3. Model should share algorithm instead of needs to have API for access
+internal structures.
+
+Let us have models for several subsystems and want to combine them into
+large system (e.g., models for file operations, inode operations... may
+be comibined into model for FS driver).
+
+With private identificators it is needed to rewrite models for subsystems,
+because subsystems interconnection requires to know about private
+identificators from both connected subsystems. In the best case, it is
+required from subsystems to have API for access(search) private identificators.
+
+With natural object identificators, subsystem is only required to share
+algorithm, which should be used for get identificator of object.
+
+
+Disadvantages:
+
+1. If several different relations are imposed on same object, different
+object fields should be used as identificators for that relations.
+
+If number of relation types is not fixed, then natural objects as
+identificators strategy is not fitted in that case.
+
+2. When different models impose different relations on same object,
+used fields should't coincide.
+
+
+Usually, disadvantages of using natural objects as syncronization
+identificators are easy overcomed.
+In return, we have a way for develop models simply, quickly and without
+difficult-to-reveal errors.

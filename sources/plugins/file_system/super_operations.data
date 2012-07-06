@@ -1,0 +1,374 @@
+model.name = super_operations_model
+sw_id.prefix = SUPER_MODEL_STATE
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+
+#include <linux/fs.h>
+<<
+
+implementation_header =>>
+#include <linux/mount.h>
+#include <linux/slab.h>
+
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/super_operations_interceptor.h>
+
+/* For use state of file_system_type object */
+#include "file_system_type_model.h"
+<<
+
+object.type = struct super_block
+object.operations_field = s_op
+
+operations.type = struct super_operations
+
+object.state.value = INITIALIZED
+object.state.pre_id = &obj->s_list
+object.state.post_id = &obj->s_op
+
+object.state.value = BEFORE_KILL
+# TODO: new id
+object.state.pre_id = obj
+object.state.post_id = obj
+
+
+[group]
+operation.name = alloc_inode
+operation.returnType = struct inode *
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+operation.code.post.external =>>
+	if(!call_info->op_orig && returnValue)
+	{
+		generate_alloc(tid, pc, sizeof(*returnValue), returnValue);
+	}
+<<
+
+[group]
+operation.name = destroy_inode
+
+operation.arg.type = struct inode*
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.state.value = INITIALIZED
+
+operation.code.post.external =>>
+	if(!call_info->op_orig)
+	{
+		generate_free(tid, pc, inode);
+	}
+<<
+
+
+[group]
+operation.name = put_super
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.transition.pre_value = INITIALIZED
+operation.state.transition.post_value = BEFORE_KILL
+
+[group]
+operation.name = write_super
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = sync_fs
+operation.returnType = int
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.arg.type = int
+operation.arg.name = wait
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = freeze_fs
+operation.returnType = int
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = unfreeze_fs
+operation.returnType = int
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = statfs
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct kstatfs *
+operation.arg.name = buf
+
+operation.object = dentry->d_sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = remount_fs
+operation.returnType = int
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.arg.type = int *
+operation.arg.name = flags
+
+operation.arg.type = char*
+operation.arg.name = data
+
+operation.object = sb
+
+# 'sb' may be invalid during remount. So use state transition.
+operation.state.transition.pre_value = INITIALIZED
+operation.state.transition.post_value = INITIALIZED
+
+[group]
+operation.name = umount_begin
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = show_options
+operation.returnType = int
+
+operation.arg.type = struct seq_file *
+operation.arg.name = m
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.object = mnt->mnt_sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = show_stats
+operation.returnType = int
+
+operation.arg.type = struct seq_file *
+operation.arg.name = m
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.object = mnt->mnt_sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = bdev_try_to_free_page
+operation.returnType = int
+
+operation.arg.type = struct super_block *
+operation.arg.name = sb
+
+operation.arg.type = struct page *
+operation.arg.name = page
+
+operation.arg.type = gfp_t
+operation.arg.name = wait
+
+operation.object = sb
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = write_inode_with_wbc
+operation.callback_name = write_inode
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct writeback_control*
+operation.arg.name = wbc
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_WRITE_INODE_ACCEPT_WBC != 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = write_inode_with_sync
+operation.callback_name = write_inode
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = int
+operation.arg.name = sync
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_WRITE_INODE_ACCEPT_WBC == 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = show_path
+operation.returnType = int
+
+operation.arg.type = struct seq_file *
+operation.arg.name = m
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.object = mnt->mnt_sb
+
+operation.protection = defined(SUPER_OPERATIONS_HAS_SHOW_PATH)
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = show_devname
+operation.returnType = int
+
+operation.arg.type = struct seq_file *
+operation.arg.name = m
+
+operation.arg.type = struct vfsmount *
+operation.arg.name = mnt
+
+operation.object = mnt->mnt_sb
+
+operation.protection = defined(SUPER_OPERATIONS_HAS_SHOW_DEVNAME)
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = drop_inode_return_int
+operation.callback_name = drop_inode
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_DROP_INODE_RETURN_INT != 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = drop_inode
+operation.callback_name = drop_inode
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_DROP_INODE_RETURN_INT == 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = dirty_inode_with_flags
+operation.callback_name = dirty_inode
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = int
+operation.arg.name = flags
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_DIRTY_INODE_ACCEPT_FLAGS != 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = dirty_inode
+operation.callback_name = dirty_inode
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.protection = SUPER_OPERATIONS_DIRTY_INODE_ACCEPT_FLAGS == 0
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = delete_inode
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.protection = defined(SUPER_OPERATIONS_HAS_DELETE_INODE)
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = clear_inode
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = inode->i_sb
+
+operation.protection = defined(SUPER_OPERATIONS_HAS_CLEAR_INODE)
+
+operation.state.value = INITIALIZED

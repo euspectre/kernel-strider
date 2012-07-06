@@ -1,0 +1,23 @@
+[group]
+operation.name = open_from_inode
+operation.callback_name = open
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.factory = inode
+operation.object = filp
+
+implementation_header =>>
+/* For use state of inode object */
+#include "inode_operations_model.h"
+<<
+
+operation.external.state.value = INITIALIZED
+operation.external.state.prefix = INODE_MODEL_STATE
+operation.external.state.object = inode

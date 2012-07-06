@@ -1,0 +1,1 @@
+<$if object.operations_field$><$operations.type$><$else$><$object.type$><$endif$>

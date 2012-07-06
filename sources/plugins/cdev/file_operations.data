@@ -1,4 +1,5 @@
 model.name = file_operations_model
+sw_id.prefix = FILE_MODEL_STATE
 
 header =>>
 /* ========================================================================
@@ -12,8 +13,7 @@ header =>>
  * by the Free Software Foundation.
  ======================================================================== */
 #include <linux/fs.h>
-/* Only need for define macros, which affects on operations existence */
-#include <kedr-coi/interceptors/file_operations_interceptor.h>
+
 <<
 
 implementation_header =>>
@@ -23,6 +23,21 @@ implementation_header =>>
 
 #include <linux/sched.h>
 #include <linux/mm_types.h>
+
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/file_operations_interceptor.h>
+
+/* In the future, this should be definition in <kedr/..> header. */
+
+#ifndef MODULE_MODEL_STATE_POST_INITIALIZED
+/* 
+ * Signal-wait id for module object.
+ *
+ * NOTE: Only 'POST' id is exist. 'PRE' id has no sence because
+ * module is initialized before first instruction is executed.
+ */
+#define MODULE_MODEL_STATE_POST_INITIALIZED(mod) (mod)
+#endif
 <<
 
 object.type = struct file
@@ -30,8 +45,9 @@ object.operations_field = f_op
 
 operations.type = struct file_operations
 
-operations.owner_field = owner
-
+object.state.value = INITIALIZED
+object.state.pre_id = obj
+object.state.post_id = &obj->f_op
 
 [group]
 operation.name = llseek
@@ -47,6 +63,8 @@ operation.arg.type = int
 operation.arg.name = whence
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = read
@@ -66,6 +84,8 @@ operation.arg.name = f_pos
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = write
 operation.returnType = ssize_t
@@ -83,6 +103,8 @@ operation.arg.type = loff_t *
 operation.arg.name = f_pos
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = aio_read
@@ -102,8 +124,7 @@ operation.arg.name = pos
 
 operation.object = iocb->ki_filp
 
-operation.default = return generic_file_aio_read(iocb, iov, nr_segs, pos);
-
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = aio_write
@@ -123,6 +144,8 @@ operation.arg.name = pos
 
 operation.object = iocb->ki_filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = readdir
 operation.returnType = int
@@ -138,6 +161,8 @@ operation.arg.name = filler
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = poll
 operation.returnType = unsigned int
@@ -148,8 +173,9 @@ operation.arg.name = filp
 operation.arg.type = struct poll_table_struct *
 operation.arg.name = wait
 
-
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = unlocked_ioctl
@@ -166,6 +192,8 @@ operation.arg.name = arg
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = compat_ioctl
 operation.returnType = long
@@ -181,6 +209,8 @@ operation.arg.name = arg
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = mmap
 operation.returnType = int
@@ -192,6 +222,8 @@ operation.arg.type = struct vm_area_struct *
 operation.arg.name = vma
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = open
@@ -205,10 +237,24 @@ operation.arg.name = filp
 
 operation.object = filp
 
-operation.role.constructor = yes
-operation.role.new = yes
+operation.pre_state.value =
+operation.post_state.value = INITIALIZED
+operation.post_state.condition = (returnValue == 0)
 
-operation.success_condition = (returnValue == 0)
+operation.code.pre.external =>>
+	generate_alloc(tid, pc, sizeof(struct file), filp);
+<<
+
+operation.code.post =>>
+	if(returnValue != 0)
+	{
+		if(filp->f_op->owner)
+			generate_signal(tid, pc,
+				MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
+				KEDR_SWT_COMMON);
+		generate_free(tid, pc, filp);
+	}
+<<
 
 [group]
 operation.name = flush
@@ -222,6 +268,8 @@ operation.arg.name = id
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = release
 operation.returnType = int
@@ -234,10 +282,20 @@ operation.arg.name = filp
 
 operation.object = filp
 
-operation.role.destructor = yes
-operation.role.delete = yes
+operation.pre_state.value = INITIALIZED
+operation.post_state.value = 
+operation.post_state.condition = (returnValue == 0)
 
-operation.success_condition = (returnValue == 0)
+operation.code.post.external =>>
+	if(returnValue == 0)
+	{
+		if(filp->f_op->owner)
+			generate_signal(tid, pc,
+				MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
+				KEDR_SWT_COMMON);
+		generate_free(tid, pc, filp);
+	}
+<<
 
 [group]
 operation.name = aio_fsync
@@ -250,6 +308,8 @@ operation.arg.type = int
 operation.arg.name = datasync
 
 operation.object = iocb->ki_filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = fasync
@@ -266,6 +326,8 @@ operation.arg.name = mode
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = lock
 operation.returnType = int
@@ -280,6 +342,8 @@ operation.arg.type = struct file_lock *
 operation.arg.name = fl
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = sendpage
@@ -305,6 +369,8 @@ operation.arg.name = more
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = get_unmapped_area
 operation.returnType = unsigned long
@@ -326,6 +392,8 @@ operation.arg.name = flags
 
 operation.object = filp
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = flock
 operation.returnType = int
@@ -340,6 +408,8 @@ operation.arg.type = struct file_lock *
 operation.arg.name = fl
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = splice_write
@@ -362,6 +432,8 @@ operation.arg.name = flags
 
 operation.object = out
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = splice_read
 operation.returnType = ssize_t
@@ -383,6 +455,8 @@ operation.arg.name = flags
 
 operation.object = in
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = setlease
 operation.returnType = int
@@ -397,3 +471,82 @@ operation.arg.type = struct file_lock **
 operation.arg.name = lease
 
 operation.object = filp
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = fsync
+
+# Name of corresponded callback operation. The thing is that operations
+# names should be unique because them used as handler names in document.
+operation.callback_name = fsync
+
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = int
+operation.arg.name = datasync
+
+operation.object = filp
+
+operation.state.value = INITIALIZED
+
+# Conditional existence of operation
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_DENTRY == 0
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_RANGE == 0
+
+[group]
+operation.name = fsync_with_dentry
+
+# Name of corresponded callback operation. The thing is that operations
+# names should be unique because them used as handler names in document.
+operation.callback_name = fsync
+
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = int
+operation.arg.name = datasync
+
+operation.object = filp
+
+operation.state.value = INITIALIZED
+
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_DENTRY != 0
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_RANGE == 0
+
+[group]
+operation.name = fsync_with_range
+
+# Name of corresponded callback operation. The thing is that operations
+# names should be unique because them used as handler names in document.
+operation.callback_name = fsync
+
+operation.returnType = int
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.arg.type = loff_t
+operation.arg.name = start
+
+operation.arg.type = loff_t
+operation.arg.name = end
+
+operation.arg.type = int
+operation.arg.name = datasync
+
+operation.object = filp
+
+operation.state.value = INITIALIZED
+
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_DENTRY == 0
+operation.protection = FILE_OPERATIONS_FSYNC_ACCEPT_RANGE != 0
+

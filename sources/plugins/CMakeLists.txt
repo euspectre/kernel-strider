@@ -16,4 +16,5 @@ if(KEDR_COI_INSTALL_DIR)
 
     # Plugins themselves
     add_subdirectory(cdev)
+    add_subdirectory(file_system)
 endif(KEDR_COI_INSTALL_DIR)

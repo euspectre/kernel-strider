@@ -1,1 +1,1 @@
-CHECK_OPERATION_TYPE(<$operation.name$>, <$if operation.returnType$><$operation.returnType$><$else$>void<$endif$> (*)(<$operation.arg.type: join(,)$>))
+CHECK_OPERATION_TYPE(<$callback_name$>, <$if operation.returnType$><$operation.returnType$><$else$>void<$endif$> (*)(<$operation.arg.type: join(,)$>))

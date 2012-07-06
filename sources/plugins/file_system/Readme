@@ -1,0 +1,5 @@
+﻿Plugin module which implements model of filesystem driver from the sence
+of serialization mechanizms.
+
+The plugin requires KEDR Callback Operations Interception installed
+before it can be builded.
