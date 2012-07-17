@@ -245,9 +245,7 @@ kedr_on_function_entry(struct kedr_prologue_data *pd)
 		ls->tindex = (unsigned long)tindex;
 	}
 	
-	if (eh_current->on_function_entry != NULL)
-		eh_current->on_function_entry(eh_current, ls->tid, 
-			ls->fi->addr);
+	kedr_eh_on_function_entry(ls->tid, ls->fi->addr);
 	
 	/* Call the pre handler if it is set. */
 	rcu_read_lock();
@@ -283,10 +281,7 @@ kedr_on_function_exit(unsigned long storage)
 	}
 	rcu_read_unlock();
 	
-	if (eh_current->on_function_exit != NULL)
-		eh_current->on_function_exit(eh_current, ls->tid, 
-			ls->fi->addr);
-	
+	kedr_eh_on_function_exit(ls->tid, ls->fi->addr);
 	ls_allocator->free_ls(ls_allocator, ls);
 }
 KEDR_DEFINE_WRAPPER(kedr_on_function_exit);
@@ -298,10 +293,7 @@ static void
 default_pre_handler(struct kedr_local_storage *ls)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	
-	if (eh_current->on_call_pre != NULL)
-		eh_current->on_call_pre(eh_current, ls->tid, info->pc,
-			info->target);
+	kedr_eh_on_call_pre(ls->tid, info->pc, info->target);
 }
 
 /* Default post-handler for a function call, just reports the respective
@@ -310,10 +302,7 @@ static void
 default_post_handler(struct kedr_local_storage *ls)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	
-	if (eh_current->on_call_post != NULL)
-		eh_current->on_call_post(eh_current, ls->tid, info->pc,
-			info->target);
+	kedr_eh_on_call_post(ls->tid, info->pc, info->target);
 }
 
 void
@@ -501,16 +490,10 @@ kedr_on_common_block_end(unsigned long storage)
 	void *data = NULL;
 	
 	if (should_report_events(ls, info)) {
-		if (eh_current->begin_memory_events != NULL) {
-			eh_current->begin_memory_events(eh_current, ls->tid, 
-				info->max_events, &data);
-		}
-		
+		kedr_eh_begin_memory_events(ls->tid, info->max_events, 
+			&data);
 		report_events(ls, data);
-		
-		if (eh_current->end_memory_events != NULL)
-			eh_current->end_memory_events(eh_current, ls->tid, 
-				data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	}
 	
 	/* Prepare the storage for later use. */
@@ -623,9 +606,7 @@ kedr_on_barrier_pre(unsigned long storage)
 	enum kedr_barrier_type bt = (enum kedr_barrier_type)(u8)ls->temp;
 	unsigned long pc = ls->temp1;
 	
-	if (eh_current->on_memory_barrier_pre != NULL)
-		eh_current->on_memory_barrier_pre(eh_current, ls->tid, pc,
-			bt);
+	kedr_eh_on_memory_barrier_pre(ls->tid, pc, bt);
 }
 KEDR_DEFINE_WRAPPER(kedr_on_barrier_pre);
 
@@ -637,9 +618,7 @@ kedr_on_barrier_post(unsigned long storage)
 	enum kedr_barrier_type bt = (enum kedr_barrier_type)(u8)ls->temp;
 	unsigned long pc = ls->temp1;
 	
-	if (eh_current->on_memory_barrier_post != NULL)
-		eh_current->on_memory_barrier_post(eh_current, ls->tid, pc,
-			bt);
+	kedr_eh_on_memory_barrier_post(ls->tid, pc, bt);
 }
 KEDR_DEFINE_WRAPPER(kedr_on_barrier_post);
 /* ====================================================================== */

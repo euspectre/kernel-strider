@@ -288,7 +288,6 @@ happens_before_pre(struct kedr_local_storage *ls)
 static void 
 happens_before_post(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long obj_id;
 	
@@ -296,20 +295,12 @@ happens_before_post(struct kedr_local_storage *ls)
 	 * is expected to be right before the latter), so we report "SIGNAL"
 	 * event here rather than in the pre handler. */
 	obj_id = KEDR_LS_ARG1(ls);
-	
-	eh = kedr_get_event_handlers();
-	if (eh->on_signal_pre != NULL)
-		eh->on_signal_pre(eh, ls->tid, info->pc, obj_id, 
-			KEDR_SWT_COMMON);
-	if (eh->on_signal_post != NULL)
-		eh->on_signal_post(eh, ls->tid, info->pc, obj_id, 
-			KEDR_SWT_COMMON);
+	kedr_eh_on_signal(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
 }
 
 static void 
 happens_after_pre(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long obj_id;
 	
@@ -317,14 +308,7 @@ happens_after_pre(struct kedr_local_storage *ls)
 	 * is expected to be right after the latter), so we report "WAIT"
 	 * event here rather than in the post handler. */
 	obj_id = KEDR_LS_ARG1(ls);
-	
-	eh = kedr_get_event_handlers();
-	if (eh->on_wait_pre != NULL)
-		eh->on_wait_pre(eh, ls->tid, info->pc, obj_id, 
-			KEDR_SWT_COMMON);
-	if (eh->on_wait_post != NULL)
-		eh->on_wait_post(eh, ls->tid, info->pc, obj_id, 
-			KEDR_SWT_COMMON);
+	kedr_eh_on_wait(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
 }
 
 static void 
@@ -351,57 +335,46 @@ handlers_kedr_annotate_happens_after = {
 static void 
 memory_acquired_pre(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long size;
 	
 	size = KEDR_LS_ARG2(ls);
-	eh = kedr_get_event_handlers();
-	
-	if (eh->on_alloc_pre != NULL && size != 0)
-		eh->on_alloc_pre(eh, ls->tid, info->pc, size);
+	if (size != 0)
+		kedr_eh_on_alloc_pre(ls->tid, info->pc, size);
 }
 static void 
 memory_acquired_post(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long addr;
 	unsigned long size;
 	
 	addr = KEDR_LS_ARG1(ls);
 	size = KEDR_LS_ARG2(ls);
-	eh = kedr_get_event_handlers();
 	
-	if (eh->on_alloc_post != NULL && size != 0 && addr != 0)
-		eh->on_alloc_post(eh, ls->tid, info->pc, size, addr);
+	if (size != 0 && addr != 0)
+		kedr_eh_on_alloc_post(ls->tid, info->pc, size, addr);
 }
 
 static void 
 memory_released_pre(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long addr;
 	
 	addr = KEDR_LS_ARG1(ls);
-	eh = kedr_get_event_handlers();
-	
-	if (eh->on_free_pre != NULL && addr != 0)
-		eh->on_free_pre(eh, ls->tid, info->pc, addr);
+	if (addr != 0)
+		kedr_eh_on_free_pre(ls->tid, info->pc, addr);
 }
 static void 
 memory_released_post(struct kedr_local_storage *ls)
 {
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long addr;
 	
 	addr = KEDR_LS_ARG1(ls);
-	eh = kedr_get_event_handlers();
-	
-	if (eh->on_free_post != NULL && addr != 0)
-		eh->on_free_post(eh, ls->tid, info->pc, addr);
+	if (addr != 0)
+		kedr_eh_on_free_post(ls->tid, info->pc, addr);
 }
 
 static struct kedr_func_drd_handlers 
@@ -584,7 +557,6 @@ static int
 repl_init(void)
 {
 	int ret = 0;
-	struct kedr_event_handlers *eh;
 	unsigned long tid;
 	
 	BUG_ON(target_init_func == NULL);
@@ -599,16 +571,9 @@ repl_init(void)
 		return ret;
 	
 	/* Specify the relation "init happens-before cleanup" */
-	eh = kedr_get_event_handlers();
 	tid = kedr_get_thread_id();
-	
-	if (eh->on_signal_pre != NULL)
-		eh->on_signal_pre(eh, tid, (unsigned long)target_init_func,
-			id_init_hb_exit, KEDR_SWT_COMMON);
-	
-	if (eh->on_signal_post != NULL)
-		eh->on_signal_post(eh, tid, (unsigned long)target_init_func,
-			id_init_hb_exit, KEDR_SWT_COMMON);
+	kedr_eh_on_signal(tid, (unsigned long)target_init_func,
+		id_init_hb_exit, KEDR_SWT_COMMON);
 	return ret;
 }
 
@@ -631,13 +596,7 @@ repl_exit(void)
 	tid = kedr_get_thread_id();
 	pc = (unsigned long)target_exit_func;
 	
-	if (eh->on_wait_pre != NULL)
-		eh->on_wait_pre(eh, tid, pc, id_init_hb_exit, 
-			KEDR_SWT_COMMON);
-	
-	if (eh->on_wait_post != NULL)
-		eh->on_wait_post(eh, tid, pc, id_init_hb_exit, 
-			KEDR_SWT_COMMON);
+	kedr_eh_on_wait(tid, pc, id_init_hb_exit, KEDR_SWT_COMMON);
 	
 	/* Call the callback from a plugin, if set. */
 	if (fh_plugin != NULL && fh_plugin->on_before_exit_call != NULL)
@@ -664,16 +623,6 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 	
 	/* The target module has just been loaded into memory.
 	 * [NB] Perform session-specific initialization here if needed. */
-	// See comments for 'id_init_hb_exit' declaration.
-    //id_init_hb_exit = kedr_get_unique_id();
-	//if (id_init_hb_exit == 0) {
-	//	pr_warning(KEDR_MSG_PREFIX 
-	//	"on_load(): failed to obtain the ID.\n");
-	//	/* Go on after issuing this warning. The IDs of signal-wait
-	//	 * pairs can be unreliable as a result but it is not fatal.
-	//	 */
-	//}
-	
 	target_module = mod;
 	target_init_func = target_module->init;
 	if (target_init_func != NULL)

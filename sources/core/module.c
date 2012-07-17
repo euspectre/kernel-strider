@@ -525,14 +525,10 @@ on_module_load(struct module *mod)
 	blocks_total = 0;
 	blocks_skipped = 0;
 	
-	/* Invoke the callback registered by the function handling
-	 * subsystem (if set). */
 	if (function_handlers->on_target_loaded != NULL)
 		function_handlers->on_target_loaded(function_handlers, mod);
 	
-	/* Call the event handler, if set. */
-	if (eh_current->on_target_loaded != NULL)
-		eh_current->on_target_loaded(eh_current, mod);
+	kedr_eh_on_target_loaded(mod);
 	return;
 }
 
@@ -558,13 +554,8 @@ on_module_unload(struct module *mod)
 	if (i13n == NULL)
 		return;
 	
-	/* Call the event handler, if set. */
-	if (eh_current->on_target_about_to_unload != NULL)
-		eh_current->on_target_about_to_unload(eh_current, 
-			mod);
+	kedr_eh_on_target_about_to_unload(mod);
 	
-	/* Invoke the callback registered by the function handling
-	 * subsystem (if set). */
 	if (function_handlers->on_target_about_to_unload != NULL)
 		function_handlers->on_target_about_to_unload(
 			function_handlers, mod);

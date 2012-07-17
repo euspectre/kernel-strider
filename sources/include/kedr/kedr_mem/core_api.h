@@ -3,6 +3,7 @@
 #ifndef CORE_API_H_1049_INCLUDED
 #define CORE_API_H_1049_INCLUDED
 
+#include <linux/stddef.h>
 #include <kedr/object_types.h>
 
 struct module;
@@ -235,6 +236,366 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh);
  * handlers remain valid and do not change. */
 struct kedr_event_handlers *
 kedr_get_event_handlers(void);
+/* ====================================================================== */
+
+/* Convenience wrappers that can be used if it is needed to obtain the 
+ * current set of handlers and call some of these handlers. The wrapper 
+ * functions have no effect if the corresponding handlers are not set. */
+static inline void
+kedr_eh_on_target_loaded(struct module *target_module)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_target_loaded != NULL)
+		eh->on_target_loaded(eh, target_module);
+}
+
+static inline void
+kedr_eh_on_target_about_to_unload(struct module *target_module)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_target_about_to_unload != NULL)
+		eh->on_target_about_to_unload(eh, target_module);
+}
+
+static inline void
+kedr_eh_on_function_entry(unsigned long tid, unsigned long func)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_function_entry != NULL)
+		eh->on_function_entry(eh, tid, func);
+}
+
+static inline void
+kedr_eh_on_function_exit(unsigned long tid, unsigned long func)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_function_exit != NULL)
+		eh->on_function_exit(eh, tid, func);
+}
+
+static inline void
+kedr_eh_on_call_pre(unsigned long tid, unsigned long pc, unsigned long func)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_call_pre != NULL)
+		eh->on_call_pre(eh, tid, pc, func);
+}
+
+static inline void
+kedr_eh_on_call_post(unsigned long tid, unsigned long pc, 
+	unsigned long func)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_call_post != NULL)
+		eh->on_call_post(eh, tid, pc, func);
+}
+
+static inline void
+kedr_eh_begin_memory_events(unsigned long tid, unsigned long num_events, 
+	void **pdata /* out param*/)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->begin_memory_events != NULL)
+		eh->begin_memory_events(eh, tid, num_events, pdata);
+}
+
+static inline void
+kedr_eh_end_memory_events(unsigned long tid, void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->end_memory_events != NULL)
+		eh->end_memory_events(eh, tid, data);
+}
+
+static inline void
+kedr_eh_on_memory_event(unsigned long tid, 
+	unsigned long pc, unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type,
+	void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_memory_event != NULL)
+		eh->on_memory_event(eh, tid, pc, addr, size, type, data);
+}
+
+static inline void
+kedr_eh_on_locked_op_pre(unsigned long tid, unsigned long pc, 
+	void **pdata)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_locked_op_pre != NULL)
+		eh->on_locked_op_pre(eh, tid, pc, pdata);
+}
+
+static inline void
+kedr_eh_on_locked_op_post(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type, void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_locked_op_post != NULL)
+		eh->on_locked_op_post(eh, tid, pc, addr, size, type, data);
+}
+
+static inline void
+kedr_eh_on_io_mem_op_pre(unsigned long tid, unsigned long pc, 
+	void **pdata)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_io_mem_op_pre != NULL)
+		eh->on_io_mem_op_pre(eh, tid, pc, pdata);
+}
+
+static inline void
+kedr_eh_on_io_mem_op_post(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type, void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_io_mem_op_post != NULL)
+		eh->on_io_mem_op_post(eh, tid, pc, addr, size, type, data);
+}
+
+static inline void
+kedr_eh_on_memory_barrier_pre(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_memory_barrier_pre != NULL)
+		eh->on_memory_barrier_pre(eh, tid, pc, type);
+}
+
+static inline void
+kedr_eh_on_memory_barrier_post(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_memory_barrier_post != NULL)
+		eh->on_memory_barrier_post(eh, tid, pc, type);
+}
+
+/* "barrier pre" + "barrier post" */
+static inline void
+kedr_eh_on_memory_barrier(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	kedr_eh_on_memory_barrier_pre(tid, pc, type);
+	kedr_eh_on_memory_barrier_post(tid, pc, type);
+}
+
+static inline void
+kedr_eh_on_alloc_pre(unsigned long tid, unsigned long pc, 
+	unsigned long size)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_alloc_pre != NULL)
+		eh->on_alloc_pre(eh, tid, pc, size);
+}
+
+static inline void
+kedr_eh_on_alloc_post(unsigned long tid, unsigned long pc, 
+	unsigned long size, unsigned long addr)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_alloc_post != NULL)
+		eh->on_alloc_post(eh, tid, pc, size, addr);
+}
+
+/* "alloc pre" + "alloc post" */
+static inline void
+kedr_eh_on_alloc(unsigned long tid, unsigned long pc, unsigned long size, 
+	unsigned long addr)
+{
+	kedr_eh_on_alloc_pre(tid, pc, size);
+	kedr_eh_on_alloc_post(tid, pc, size, addr);
+}
+
+static inline void
+kedr_eh_on_free_pre(unsigned long tid, unsigned long pc, 
+	unsigned long addr)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_free_pre != NULL)
+		eh->on_free_pre(eh, tid, pc, addr);
+}
+
+static inline void
+kedr_eh_on_free_post(unsigned long tid, unsigned long pc, 
+	unsigned long addr)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_free_post != NULL)
+		eh->on_free_post(eh, tid, pc, addr);
+}
+
+/* "free pre" + "free post" */
+static inline void
+kedr_eh_on_free(unsigned long tid, unsigned long pc, unsigned long addr)
+{
+	kedr_eh_on_free_pre(tid, pc, addr);
+	kedr_eh_on_free_post(tid, pc, addr);
+}
+
+static inline void
+kedr_eh_on_lock_pre(unsigned long tid, unsigned long pc, 
+	unsigned long lock_id, enum kedr_lock_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_lock_pre != NULL)
+		eh->on_lock_pre(eh, tid, pc, lock_id, type);
+}
+
+static inline void
+kedr_eh_on_lock_post(unsigned long tid, unsigned long pc, 
+	unsigned long lock_id, enum kedr_lock_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_lock_post != NULL)
+		eh->on_lock_post(eh, tid, pc, lock_id, type);
+}
+
+/* "lock pre" + "lock post" */
+static inline void
+kedr_eh_on_lock(unsigned long tid, unsigned long pc, unsigned long lock_id, 
+	enum kedr_lock_type type)
+{
+	kedr_eh_on_lock_pre(tid, pc, lock_id, type);
+	kedr_eh_on_lock_post(tid, pc, lock_id, type);
+}
+
+static inline void
+kedr_eh_on_unlock_pre(unsigned long tid, unsigned long pc, 
+	unsigned long lock_id, enum kedr_lock_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_unlock_pre != NULL)
+		eh->on_unlock_pre(eh, tid, pc, lock_id, type);
+}
+
+static inline void
+kedr_eh_on_unlock_post(unsigned long tid, unsigned long pc, 
+	unsigned long lock_id, enum kedr_lock_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_unlock_post != NULL)
+		eh->on_unlock_post(eh, tid, pc, lock_id, type);
+}
+
+/* "unlock pre" + "unlock post" */
+static inline void
+kedr_eh_on_unlock(unsigned long tid, unsigned long pc, 
+	unsigned long lock_id, enum kedr_lock_type type)
+{
+	kedr_eh_on_unlock_pre(tid, pc, lock_id, type);
+	kedr_eh_on_unlock_post(tid, pc, lock_id, type);
+}
+
+static inline void
+kedr_eh_on_signal_pre(unsigned long tid, unsigned long pc, 
+	unsigned long obj_id, enum kedr_sw_object_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_signal_pre != NULL)
+		eh->on_signal_pre(eh, tid, pc, obj_id, type);
+}
+
+static inline void
+kedr_eh_on_signal_post(unsigned long tid, unsigned long pc, 
+	unsigned long obj_id, enum kedr_sw_object_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_signal_post != NULL)
+		eh->on_signal_post(eh, tid, pc, obj_id, type);
+}
+
+/* "signal pre" + "signal post" */
+static inline void
+kedr_eh_on_signal(unsigned long tid, unsigned long pc, 
+	unsigned long obj_id, enum kedr_sw_object_type type)
+{
+	kedr_eh_on_signal_pre(tid, pc, obj_id, type);
+	kedr_eh_on_signal_post(tid, pc, obj_id, type);
+}
+
+static inline void
+kedr_eh_on_wait_pre(unsigned long tid, unsigned long pc, 
+	unsigned long obj_id, enum kedr_sw_object_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_wait_pre != NULL)
+		eh->on_wait_pre(eh, tid, pc, obj_id, type);
+}
+
+static inline void
+kedr_eh_on_wait_post(unsigned long tid, unsigned long pc, 
+	unsigned long obj_id, enum kedr_sw_object_type type)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_wait_post != NULL)
+		eh->on_wait_post(eh, tid, pc, obj_id, type);
+}
+
+/* "wait pre" + "wait post" */
+static inline void
+kedr_eh_on_wait(unsigned long tid, unsigned long pc, unsigned long obj_id, 
+	enum kedr_sw_object_type type)
+{
+	kedr_eh_on_wait_pre(tid, pc, obj_id, type);
+	kedr_eh_on_wait_post(tid, pc, obj_id, type);
+}
+
+static inline void
+kedr_eh_on_thread_create_pre(unsigned long tid, unsigned long pc)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_create_pre != NULL)
+		eh->on_thread_create_pre(eh, tid, pc);
+}
+
+static inline void
+kedr_eh_on_thread_create_post(unsigned long tid, unsigned long pc, 
+	unsigned long child_tid)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_create_post != NULL)
+		eh->on_thread_create_post(eh, tid, pc, child_tid);
+}
+
+/* "thread create pre" + "thread create post" */
+static inline void
+kedr_eh_on_thread_create(unsigned long tid, unsigned long pc, 
+	unsigned long child_tid)
+{
+	kedr_eh_on_thread_create_pre(tid, pc);
+	kedr_eh_on_thread_create_post(tid, pc, child_tid);
+}
+
+static inline void
+kedr_eh_on_thread_join_pre(unsigned long tid, unsigned long pc, 
+	unsigned long child_tid)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_join_pre != NULL)
+		eh->on_thread_join_pre(eh, tid, pc, child_tid);
+}
+
+static inline void
+kedr_eh_on_thread_join_post(unsigned long tid, unsigned long pc, 
+	unsigned long child_tid)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_join_post != NULL)
+		eh->on_thread_join_post(eh, tid, pc, child_tid);
+}
+
+/* "thread join pre" + "thread join post" */
+static inline void
+kedr_eh_on_thread_join(unsigned long tid, unsigned long pc, 
+	unsigned long child_tid)
+{
+	kedr_eh_on_thread_join_pre(tid, pc, child_tid);
+	kedr_eh_on_thread_join_post(tid, pc, child_tid);
+}
 /* ====================================================================== */
 
 /* Creates an identifier which is guaranteed to be unique during a session
