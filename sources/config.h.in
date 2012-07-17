@@ -13,5 +13,5 @@
 #define KEDR_PACKAGE_NAME "@KEDR_PACKAGE_NAME@"
 #define KEDR_PACKAGE_VERSION "@KEDR_PACKAGE_VERSION@"
 
-/* Path to the trace receiever program */
+/* Path to the trace receiver program */
 #define KEDR_TRACE_RECEIVER_PATH "@KEDR_TRACE_RECEIVER_PATH@"

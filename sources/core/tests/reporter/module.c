@@ -689,7 +689,7 @@ lock_type_to_string(enum kedr_lock_type t)
 }
 
 static const char *
-sw_type_to_string(enum kedr_lock_type t)
+sw_type_to_string(enum kedr_sw_object_type t)
 {
 	switch (t) {
 	case KEDR_SWT_COMMON: 

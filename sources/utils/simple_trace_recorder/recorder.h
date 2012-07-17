@@ -1,5 +1,8 @@
 /* recorder.h - common definitions for both the kernel part and the user 
- * part of the simple trace recorder. */
+ * part of the simple trace recorder. 
+ *
+ * Note that "thread create" and "thread join" pre/post events (see 
+ * kedr/kedr_mem/core_api.h) are ignored by this output system */
 
 #ifndef RECORDER_H_1045_INCLUDED
 #define RECORDER_H_1045_INCLUDED

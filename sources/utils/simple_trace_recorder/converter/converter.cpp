@@ -3,7 +3,7 @@
  * "simple_trace_recorder". The resulting trace will be output to stdout.
  *
  * Usage:
- *	convert_trace_to_tsan <input_trace_file>
+ *	kedr_convert_trace_to_tsan <input_trace_file>
  */
 
 /* ========================================================================
@@ -58,7 +58,8 @@ code_address_from_raw(__u32 raw)
 static void 
 usage()
 {
-	cerr << "Usage:\n\tconvert_trace_to_tsan <input_trace_file>" << endl;
+	cerr << "Usage:\n\tkedr_convert_trace_to_tsan <input_trace_file>" 
+		<< endl;
 }
 /* ====================================================================== */
 

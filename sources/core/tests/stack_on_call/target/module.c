@@ -183,6 +183,7 @@ test_init_module(void)
 		ret = -ENOMEM;
 		goto out_rmdir;
 	}
+	return 0;
 
 out_rmdir:
 	debugfs_remove(debugfs_dir_dentry);
