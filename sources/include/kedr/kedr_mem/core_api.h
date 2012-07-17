@@ -128,7 +128,16 @@ struct kedr_event_handlers
 		unsigned long tid, unsigned long pc, 
 		enum kedr_barrier_type type);
 	
-	/* Alloc/free events */
+	/* Alloc/free events
+	 *
+	 * [NB] If an allocation fails, on_alloc_post() will not be called
+	 * for it. on_alloc_pre() is called anyway (if set), before the
+	 * allocation. 
+	 * The similar rules hold for on_lock_* and on_wait_*. That is,
+	 * the pre handlers are called anyway, the post handlers - only if
+	 * the relevant operation completes successfully. For example, if
+	 * spin_trylock() fails, on_lock_post() should not be called for it.
+	 * Same if something mutex_lock_interruptible() is interrupted. */
 	void (*on_alloc_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc, 
 		unsigned long size);
@@ -172,7 +181,9 @@ struct kedr_event_handlers
 		unsigned long tid, unsigned long pc, 
 		unsigned long obj_id, enum kedr_sw_object_type type);
 	
-	/* Thread create / thread join events */
+	/* Thread create / thread join events
+	 * [NB] If thread creation has failed, on_thread_create_post() must
+	 * be called with 0 as 'child_tid'. */
 	void (*on_thread_create_pre)(struct kedr_event_handlers *eh, 
 		unsigned long tid, unsigned long pc);
 	void (*on_thread_create_post)(struct kedr_event_handlers *eh, 
