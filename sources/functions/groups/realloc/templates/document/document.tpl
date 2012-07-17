@@ -25,8 +25,6 @@ func_drd___krealloc_pre(struct kedr_local_storage *ls)
 	unsigned long size;
 		
 	eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
 	
 	/* Even if no memory allocation actually happens, report 
 	 * "alloc pre" event anyway. */
@@ -69,8 +67,7 @@ func_drd___krealloc_post(struct kedr_local_storage *ls)
 				addr);
 	}
 out:	
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, ls->tid, info->pc, info->target);
+	return;
 }
 /* ====================================================================== */
 
@@ -92,8 +89,6 @@ func_drd_krealloc_pre(struct kedr_local_storage *ls)
 	unsigned long size;
 		
 	eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
 	
 	p = KEDR_LS_ARG1(ls);
 	size = KEDR_LS_ARG2(ls);
@@ -164,8 +159,5 @@ func_drd_krealloc_post(struct kedr_local_storage *ls)
 				(addr != 0 ? addr : p));
 		}
 	}
-
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, ls->tid, info->pc, info->target);
 }
 /* ====================================================================== */

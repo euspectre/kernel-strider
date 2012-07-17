@@ -10,8 +10,7 @@
 	# A convenience function. 
 	header_aux =>>
 static void
-report_events_strsep(struct kedr_local_storage *ls, 
-	struct kedr_event_handlers *eh)
+report_events_strsep(struct kedr_local_storage *ls)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	void *data = NULL;
@@ -21,6 +20,9 @@ report_events_strsep(struct kedr_local_storage *ls,
 	char *end = NULL;
 	unsigned long size;
 	unsigned long sep_len;
+	struct kedr_event_handlers *eh;
+	
+	eh = kedr_get_event_handlers();
 	
 	/* First, strsep() reads the pointer the first argument
 	 * points to. */
@@ -119,6 +121,6 @@ out:
 	# pre-handler here. The code is based on the implementation
 	# of strsep() from lib/strings.c in the kernel sources. */
 	code.pre =>>
-		report_events_strsep(ls, eh);
+		report_events_strsep(ls);
 	<<
 #######################################################################

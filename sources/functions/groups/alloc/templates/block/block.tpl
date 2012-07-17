@@ -6,9 +6,6 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 	unsigned long size;
 	
 	eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
-	
 	if (eh->on_alloc_pre != NULL) {
 <$prepare_args.pre$>
 		if (size != 0)
@@ -30,7 +27,4 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 		if (size != 0 && addr != 0)
 			eh->on_alloc_post(eh, ls->tid, info->pc, size, addr);
 	}
-	
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, ls->tid, info->pc, info->target);
 }

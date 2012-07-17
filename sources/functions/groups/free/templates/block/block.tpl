@@ -6,9 +6,6 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 	unsigned long addr;
 	
 	eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
-	
 	if (eh->on_free_pre != NULL) {
 <$prepare_args.pre$>
 		if (!ZERO_OR_NULL_PTR((void *)addr))
@@ -29,7 +26,4 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 		if (!ZERO_OR_NULL_PTR((void *)addr))
 			eh->on_free_post(eh, ls->tid, info->pc, addr);
 	}
-	
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, ls->tid, info->pc, info->target);
 }

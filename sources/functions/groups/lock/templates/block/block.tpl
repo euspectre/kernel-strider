@@ -7,9 +7,6 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 	enum kedr_lock_type lock_type;
 	
 	eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, ls->tid, info->pc, info->target);
-	
 	/* Additional operations */ {
 <$aux_code.pre$>
 	}
@@ -39,7 +36,4 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 			eh->on_lock_post(eh, ls->tid, info->pc, lock_id,
 				lock_type);
 	}
-	
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, ls->tid, info->pc, info->target);
 }
