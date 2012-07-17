@@ -38,7 +38,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-#include "../recorder.h"
+#include <simple_trace_recorder/recorder.h>
+#include <kedr_st_rec_config.h>
 /* ====================================================================== */
 
 /* Memory barriers. */
@@ -55,12 +56,12 @@
 
 static const char *out_file = NULL;
 static const char *in_file = 
-	"/sys/kernel/debug/kedr_simple_trace_recorder/buffer";
+	KEDR_ST_REC_DEBUGFS_DIR "/" KEDR_ST_REC_KMODULE_NAME "/buffer";
 
 /* The file containing the value of 'nr_data_pages' parameter of the kernel
  * module. */
 static const char *param_file = 
-	"/sys/module/kedr_simple_trace_recorder/parameters/nr_data_pages";
+	"/sys/module/" KEDR_ST_REC_KMODULE_NAME "/parameters/nr_data_pages";
 
 static unsigned int nr_data_pages = 0;
 static unsigned long page_size = 0;

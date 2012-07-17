@@ -1,0 +1,233 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that the simple trace recorder subsystem records the
+# events correctly. The events are produced by the event generator module.
+# 
+# The expected trace (in text format) should be in expected(32|64).txt
+# in the same source directory as this file.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${EVENT_GEN_MODULE}"; then
+		printf "Module is missing: ${EVENT_GEN_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${OUTPUT_MODULE}"; then
+		printf "Module is missing: ${OUTPUT_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${OUTPUT_RECORDER}"; then
+		printf "The user-space part of the output system is missing: "
+		printf "${OUTPUT_RECORDER}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${EXPECTED_TRACE_FILE}"; then
+		printf "The file containing the expected event trace is missing: "
+		printf "${EXPECTED_TRACE_FILE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# is_process_running pid
+# True if the given process started from the same shell as this script
+# is currently running, false otherwise.
+########################################################################
+isProcessRunning()
+{
+    nlines=$(ps -p "$1" | wc -l)
+    test "$nlines" -eq 2
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	if isProcessRunning ${RECORDER_PID}; then
+		kill ${RECORDER_PID}
+		
+		# Give the user-space application some time to finish
+		sleep 1
+		
+		# If it is still running, force it to stop
+		if isProcessRunning ${RECORDER_PID}; then
+			kill -9 ${RECORDER_PID}
+		fi
+	fi
+	
+	lsmod | grep "${OUTPUT_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${OUTPUT_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${EVENT_GEN_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${EVENT_GEN_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${EVENT_GEN_MODULE}" || exit 1
+
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/insmod "${OUTPUT_MODULE}" nr_data_pages=2		
+	if test $? -ne 0; then
+		printf "Failed to load the kernel-space part of the output system.\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	"${OUTPUT_RECORDER}" "${TEST_TRACE_RAW_FILE}" &
+	RECORDER_PID=$!
+	
+	if ! isProcessRunning ${RECORDER_PID}; then
+		printf "Failed to load the user-space part of the output system.\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	# Trigger the generation of the events.
+	echo "go!" > "${TEST_DEBUGFS_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to trigger the generation of the events.\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	if isProcessRunning ${RECORDER_PID}; then
+		# Give the output system some time.
+		sleep 1
+		
+		if isProcessRunning ${RECORDER_PID}; then
+			printf "Something wrong happened: "
+			printf "the user-space part of the output system is still running.\n"
+			cleanupAll
+			umount "${TEST_DEBUGFS_DIR}"
+			exit 1
+		fi
+	fi
+	
+	EVENTS_LOST=$(cat "${EVENTS_LOST_FILE}")
+	if test -z "${EVENTS_LOST}"; then
+		printf "Failed to read lost event count from ${EVENTS_LOST_FILE}.\n"
+		cleanupAll
+		umount "${TEST_DEBUGFS_DIR}"
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	if test "t${EVENTS_LOST}" != "t0"; then
+		printf "The output system lost ${EVENTS_LOST} event(s), test failed.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Convert the trace to text format
+	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" > "${TEST_TRACE_TEXT_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to convert the trace to text format.\n"
+		cleanupAll
+		exit 1
+	fi	
+	
+	# Unload the modules, they are no longer needed
+	/sbin/rmmod "${OUTPUT_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload module: ${OUTPUT_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	/sbin/rmmod "${EVENT_GEN_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload module: ${EVENT_GEN_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Compare the obtained and the expected data
+	sh "${COMPARE_SCRIPT}" "${EXPECTED_TRACE_FILE}" "${TEST_TRACE_TEXT_FILE}"
+	if test $? -eq 0; then
+		printf "The obtained event trace matches the expected one.\n"
+	else
+		printf "Error occurred during the comparison "
+		printf "of the obtained event trace and the expected one.\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+MAIN_TEST_DIR="@CMAKE_BINARY_DIR@/utils/simple_trace_recorder/tests"
+EVENT_GEN_MODULE_NAME="@EVENT_GEN_NAME@"
+EVENT_GEN_MODULE="${MAIN_TEST_DIR}/event_gen/${EVENT_GEN_MODULE_NAME}.ko"
+OUTPUT_MODULE_NAME="@KEDR_ST_REC_KMODULE_NAME@"
+OUTPUT_MODULE="${MAIN_TEST_DIR}/output_kernel/${OUTPUT_MODULE_NAME}.ko"
+OUTPUT_RECORDER="${MAIN_TEST_DIR}/output_user/@RECORDER_TEST_NAME@"
+TRACE_TO_TEXT="${MAIN_TEST_DIR}/trace_to_text/test_trace_to_text"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/@EVENT_GEN_NAME@/start"
+EVENTS_LOST_FILE="${TEST_DEBUGFS_DIR}/${OUTPUT_MODULE_NAME}/events_lost"
+
+TEST_TRACE_RAW_FILE="${TEST_TMP_DIR}/trace.dat"
+TEST_TRACE_TEXT_FILE="${TEST_TMP_DIR}/trace.txt"
+EXPECTED_TRACE_FILE="@KEDR_TEST_EXPECTED_TRACE@"
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+RECORDER_PID="ERR"
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

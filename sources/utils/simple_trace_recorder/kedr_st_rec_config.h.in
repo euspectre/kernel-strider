@@ -1,0 +1,5 @@
+/* Name of the kernel part of the simple trace recorder system */
+#define KEDR_ST_REC_KMODULE_NAME "@KEDR_ST_REC_KMODULE_NAME@"
+
+/* The base directory of debugfs */
+#define KEDR_ST_REC_DEBUGFS_DIR "@KEDR_ST_REC_DEBUGFS_DIR@"

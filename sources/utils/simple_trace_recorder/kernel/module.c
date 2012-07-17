@@ -50,10 +50,11 @@
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/object_types.h>
 
-#include "../recorder.h"
+#include <simple_trace_recorder/recorder.h>
+#include <kedr_st_rec_config.h>
 /* ====================================================================== */
 
-#define KEDR_MSG_PREFIX "[kedr_simple_trace_recorder] "
+#define KEDR_MSG_PREFIX "[" KEDR_ST_REC_KMODULE_NAME "] "
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
@@ -91,7 +92,7 @@ module_param(no_call_events, int, S_IRUGO);
 /* A directory for the module in debugfs and the file needed to access the
  * buffer. */
 static struct dentry *debugfs_dir_dentry = NULL;
-static const char *debugfs_dir_name = "kedr_simple_trace_recorder";
+static const char *debugfs_dir_name = KEDR_ST_REC_KMODULE_NAME;
 
 static struct dentry *buffer_file = NULL;
 static const char *buffer_file_name = "buffer";
