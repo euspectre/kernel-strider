@@ -5,7 +5,6 @@
 	code.post =>>
 		long ret = (long)KEDR_LS_RET_VAL(ls);
 		long n = (long)KEDR_LS_ARG3(ls);
-		void *data = NULL;
 		unsigned long to = KEDR_LS_ARG1(ls);
 
 		/* [NB] For now, do not register the access to the 
@@ -13,18 +12,8 @@
 		 * positives. */
 		n -= ret;
 		if (n > 0) { /* copied n bytes */
-			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 1,
-					&data);
-			
-			if (eh->on_memory_event != NULL) {
-				eh->on_memory_event(eh, ls->tid, info->pc, 
-					to, (unsigned long)n, 
-					KEDR_ET_MWRITE, data);
-			}
-
-			if (eh->end_memory_events != NULL)
-				eh->end_memory_events(eh, ls->tid, data);
+			kedr_eh_on_single_memory_event(ls->tid, info->pc,
+				to, (unsigned long)n, KEDR_ET_MWRITE);
 		}
 	<<
 #######################################################################

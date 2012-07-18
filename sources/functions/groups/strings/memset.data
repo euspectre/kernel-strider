@@ -8,22 +8,12 @@
 	function.lookup = yes
 	
 	code.post =>>
-		void *data = NULL;
 		unsigned long to = KEDR_LS_ARG1(ls);
 		unsigned long size = KEDR_LS_ARG3(ls);
 
 		if (size != 0) { 
-			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 1,
-					&data);
-			
-			if (eh->on_memory_event != NULL) {
-				eh->on_memory_event(eh, ls->tid, info->pc, 
-					to, size, KEDR_ET_MWRITE, data);
-			}
-
-			if (eh->end_memory_events != NULL)
-				eh->end_memory_events(eh, ls->tid, data);
+			kedr_eh_on_single_memory_event(ls->tid, info->pc,
+				to, size, KEDR_ET_MWRITE);
 		}
 	<<
 #######################################################################

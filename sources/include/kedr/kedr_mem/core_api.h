@@ -308,14 +308,33 @@ kedr_eh_end_memory_events(unsigned long tid, void *data)
 }
 
 static inline void
-kedr_eh_on_memory_event(unsigned long tid, 
-	unsigned long pc, unsigned long addr, unsigned long size, 
+kedr_eh_on_memory_event(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
 	enum kedr_memory_event_type type,
 	void *data)
 {
 	struct kedr_event_handlers *eh = kedr_get_event_handlers();
 	if (eh->on_memory_event != NULL)
 		eh->on_memory_event(eh, tid, pc, addr, size, type, data);
+}
+
+/* A convenience function to report a single memory event. */
+static inline void
+kedr_eh_on_single_memory_event(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type)
+{
+	void *data = NULL;
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	
+	if (eh->begin_memory_events != NULL)
+		eh->begin_memory_events(eh, tid, 1, &data);
+	
+	if (eh->on_memory_event != NULL)
+		eh->on_memory_event(eh, tid, pc, addr, size, type, data);
+	
+	if (eh->end_memory_events != NULL)
+		eh->end_memory_events(eh, tid, data);
 }
 
 static inline void
@@ -561,15 +580,6 @@ kedr_eh_on_thread_create_post(unsigned long tid, unsigned long pc,
 		eh->on_thread_create_post(eh, tid, pc, child_tid);
 }
 
-/* "thread create pre" + "thread create post" */
-static inline void
-kedr_eh_on_thread_create(unsigned long tid, unsigned long pc, 
-	unsigned long child_tid)
-{
-	kedr_eh_on_thread_create_pre(tid, pc);
-	kedr_eh_on_thread_create_post(tid, pc, child_tid);
-}
-
 static inline void
 kedr_eh_on_thread_join_pre(unsigned long tid, unsigned long pc, 
 	unsigned long child_tid)
@@ -605,14 +615,25 @@ kedr_eh_on_thread_join(unsigned long tid, unsigned long pc,
  * The function returns a non-zero value on success, 0 if the ID cannot be
  * obtained.
  * 
- * Normally, one would call this function when handling "module loaded" 
- * notification. 
- * 
  * Note that if the target is unloaded and then loaded again, the IDs 
  * should be requested again too. The ones obtained before (during the
  * previous session with the target) can no longer be used. 
  *
- * The function cannot be called from atomic context. */
+ * The ID is an address of a dynamcally allocated object that is only 
+ * deallocated when the target module has been unloaded. The ID is therefore 
+ * guaranteed to differ from the addresses of other dynamically allocated 
+ * objects. This can be helpful if one obtains some of the IDs using this
+ * function and besides that uses the addresses of some objects (e.g. struct
+ * file, struct device, etc.) as IDs too. The former group of IDs will never
+ * collide with the latter.
+ *
+ * There is another consequence of the IDs being the addresses. The objects
+ * they refer to are guaranteed to be at least sizeof(unsigned long) bytes
+ * each. So kedr_get_unique_id() actually allows to obtain a group of IDs:
+ * id, id + 1, ... id + sizeof(unsigned long) - 1, where 'id' is the return
+ * value of the function.
+ *
+ * [NB] The function cannot be called from atomic context. */
 unsigned long
 kedr_get_unique_id(void);
 /* ====================================================================== */
