@@ -1,10 +1,7 @@
 void 
 func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
-{
-	struct kedr_event_handlers *eh;
-	eh = kedr_get_event_handlers();
-	
-<$if code.pre$>/* Prepare additional data for the post-handler if needed */ {
+{<$if code.pre$>
+/* Prepare additional data for the post-handler if needed */ {
 <$code.pre$>
 	}<$endif$>
 }

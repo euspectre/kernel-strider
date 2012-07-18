@@ -50,7 +50,7 @@ func_drd___krealloc_post(struct kedr_local_storage *ls)
 	addr = KEDR_LS_RET_VAL(ls);
 	
 	if (size == 0)
-		goto out;
+		return;
 	
 	if (p == 0) { 
 		/* same as kmalloc */
@@ -66,8 +66,6 @@ func_drd___krealloc_post(struct kedr_local_storage *ls)
 			eh->on_alloc_post(eh, ls->tid, info->pc, size, 
 				addr);
 	}
-out:	
-	return;
 }
 /* ====================================================================== */
 
