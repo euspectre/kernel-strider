@@ -14,6 +14,9 @@
 		unsigned long count = KEDR_LS_ARG3(ls);
 		unsigned long len1;
 		unsigned long len2;
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 		
 		/* We assume strnstr() always reads the whole 's2'.
 		 * For a non-empty 's2', the function reads the whole 's1'

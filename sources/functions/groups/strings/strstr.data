@@ -13,6 +13,9 @@
 		unsigned long s2 = KEDR_LS_ARG2(ls);
 		unsigned long len1;
 		unsigned long len2;
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 		
 		/* We assume strstr() always reads the whole 's2'
 		 * and if 's2' is not empty, reads the whole 's1'. */

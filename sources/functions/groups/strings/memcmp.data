@@ -12,6 +12,9 @@
 		unsigned long to = KEDR_LS_ARG1(ls);
 		unsigned long from = KEDR_LS_ARG2(ls);
 		unsigned long size = KEDR_LS_ARG3(ls);
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 
 		if (size != 0) { 
 			/* currently, memcmp is modelled as two reads */

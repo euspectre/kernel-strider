@@ -13,7 +13,9 @@
 		unsigned long accept = KEDR_LS_ARG2(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
+		struct kedr_event_handlers *eh;
 		
+		eh = kedr_get_event_handlers();
 		len = (unsigned long)strlen((const char *)accept) + 1;
 		
 		/* strspn() reads the whole 'accept' string and the first

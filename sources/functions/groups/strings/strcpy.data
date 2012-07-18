@@ -12,7 +12,9 @@
 		unsigned long to = KEDR_LS_ARG1(ls);
 		unsigned long from = KEDR_LS_ARG2(ls);
 		unsigned long size;
+		struct kedr_event_handlers *eh;
 		
+		eh = kedr_get_event_handlers();
 		size = strlen((const char *)from) + 1;
 
 		if (eh->begin_memory_events != NULL)

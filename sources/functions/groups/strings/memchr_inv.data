@@ -3,7 +3,6 @@
 	function.name = memchr_inv
 	
 	code.post =>>
-		void *data = NULL;
 		unsigned long addr = KEDR_LS_ARG1(ls);
 		unsigned long max_size = KEDR_LS_ARG3(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
@@ -13,17 +12,8 @@
 			len = max_size;
 		else 
 			len = ret + 1 - addr;
-
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 1,
-				&data);
 		
-		if (eh->on_memory_event != NULL) {
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				addr, len, KEDR_ET_MREAD, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_on_single_memory_event(ls->tid, info->pc,
+			addr, len, KEDR_ET_MREAD);
 	<<
 #######################################################################

@@ -13,6 +13,9 @@
 		unsigned long from = KEDR_LS_ARG2(ls);
 		unsigned long count = KEDR_LS_ARG3(ls);
 		unsigned long size = 0;
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 		
 		size = strnlen((const char *)from, count) + 1;
 		if (size > count)

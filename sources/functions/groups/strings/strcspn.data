@@ -13,7 +13,9 @@
 		unsigned long reject = KEDR_LS_ARG2(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
+		struct kedr_event_handlers *eh;
 		
+		eh = kedr_get_event_handlers();
 		len = (unsigned long)strlen((const char *)reject) + 1;
 		
 		/* strcspn() reads the whole 'reject' string and the first

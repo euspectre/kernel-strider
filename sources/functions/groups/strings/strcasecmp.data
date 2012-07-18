@@ -14,6 +14,9 @@
 		unsigned long size = 0;
 		const char *cs;
 		const char *ct;
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 				
 		/* This part is based on the implementation of strnicmp
 		 * function in lib/string.c in the kernel sources. */

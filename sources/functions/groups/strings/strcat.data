@@ -13,6 +13,9 @@
 		unsigned long src = KEDR_LS_ARG2(ls);
 		unsigned long src_len;
 		unsigned long dest_len;
+		struct kedr_event_handlers *eh;
+		
+		eh = kedr_get_event_handlers();
 		
 		src_len = (unsigned long)strlen((const char *)src);
 		dest_len = (unsigned long)strlen((const char *)dest) - 

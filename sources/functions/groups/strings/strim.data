@@ -14,7 +14,9 @@
 		unsigned long str = KEDR_LS_ARG1(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
+		struct kedr_event_handlers *eh;
 		
+		eh = kedr_get_event_handlers();
 		len = ls->data;
 		
 		/* strim() reads the whole string at least once

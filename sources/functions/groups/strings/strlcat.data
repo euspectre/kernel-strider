@@ -22,7 +22,9 @@
 		unsigned long src_len;
 		unsigned long dest_len;
 		unsigned long to_append;
+		struct kedr_event_handlers *eh;
 		
+		eh = kedr_get_event_handlers();
 		src_len = (unsigned long)strnlen((const char *)src, 
 			(size_t)count);
 		dest_len = ls->data;
