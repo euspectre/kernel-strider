@@ -1,0 +1,32 @@
+#!/bin/sh
+script_dir=$(dirname "$0")
+
+print_usage()
+{
+cat > 2 << EOF
+	tsan_report_addr2line <module_file> <sections_file>
+
+	Replace program counters in Thread Sanitizer report to form
+			<function_name> <source_filename>:<line>
+
+	Initial Thread Sanitizer report is taken from STDIN, converted
+	variant is output to STDOUT.
+	
+	<module_file> should be module for which report is created.
+	Each non-empty line of <sections_file> should contain address to which
+	ELF section is loaded in form
+			<address> <section_name>
+EOF
+}
+
+
+if test $# -ne "2"; then
+	print_usage
+	exit 1
+fi
+
+module_file=$1
+sections_file=$2
+
+${script_dir}/tsan_report_processor "${script_dir}/resolver_addr2line" \
+	"${sections_file}" "${module_file}"
