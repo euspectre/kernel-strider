@@ -41,4 +41,4 @@ kedr_module_alloc(unsigned long size);
 void 
 kedr_module_free(void *buf);
 
-#endif // MODULE_MS_ALLOC_H_1209_INCLUDED
+#endif /* MODULE_MS_ALLOC_H_1209_INCLUDED */

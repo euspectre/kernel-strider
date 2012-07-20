@@ -131,4 +131,4 @@ kedr_is_init_address(unsigned long addr, struct module *mod);
 int
 kedr_is_core_address(unsigned long addr, struct module *mod);
 /* ====================================================================== */
-#endif // UTIL_H_1633_INCLUDED
+#endif /* UTIL_H_1633_INCLUDED */

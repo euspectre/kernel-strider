@@ -128,4 +128,4 @@ kedr_handle_type_xy(struct kedr_ir_node *ref_node,
 	unsigned int num, unsigned int nval);
 /* ====================================================================== */
 
-#endif // TRANSFORM_H_1609_INCLUDED
+#endif /* TRANSFORM_H_1609_INCLUDED */

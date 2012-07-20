@@ -308,4 +308,4 @@ kedr_mk_sub_value8_from_reg(u8 value8, u8 reg, struct list_head *item,
 struct list_head *
 kedr_mk_neg_reg(u8 reg, struct list_head *item, int in_place, int *err);
 
-#endif // INSN_GEN_H_1759_INCLUDED
+#endif /* INSN_GEN_H_1759_INCLUDED */

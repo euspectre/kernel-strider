@@ -193,4 +193,4 @@ kedr_get_functions(struct kedr_i13n *i13n);
 void
 kedr_release_functions(struct kedr_i13n *i13n);
 
-#endif // IFUNC_H_1626_INCLUDED
+#endif /* IFUNC_H_1626_INCLUDED */

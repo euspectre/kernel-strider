@@ -16,17 +16,18 @@ endif ()
 
 #######################################################################
 # Names and versions
-set(KEDR_PACKAGE_NAME "KernelStrider")
+set(KEDR_PACKAGE_NAME "kedr")
+set(KEDR_KS_PACKAGE_NAME "KernelStrider")
 
-set(KEDR_VERSION_MAJOR 0)
-set(KEDR_VERSION_MINOR 1)
-set(KEDR_VERSION_MICRO 0)
-set(KEDR_VERSION_SUFFIX "-devel" CACHE STRING
+set(KEDR_KS_VERSION_MAJOR 0)
+set(KEDR_KS_VERSION_MINOR 1)
+set(KEDR_KS_VERSION_MICRO 0)
+set(KEDR_KS_VERSION_SUFFIX "-devel" CACHE STRING
 #set(KEDR_VERSION_SUFFIX "" CACHE STRING
 	"Version suffix, a string that should be appended to the version"
 )
-set(KEDR_PACKAGE_VERSION 
-"${KEDR_VERSION_MAJOR}.${KEDR_VERSION_MINOR}.${KEDR_VERSION_MICRO}${KEDR_VERSION_SUFFIX}"
+set(KEDR_KS_PACKAGE_VERSION 
+"${KEDR_KS_VERSION_MAJOR}.${KEDR_KS_VERSION_MINOR}.${KEDR_KS_VERSION_MICRO}${KEDR_KS_VERSION_SUFFIX}"
 )
 
 #######################################################################
@@ -357,5 +358,5 @@ message(STATUS "Creating config.h - done")
 #######################################################################
 
 message(STATUS 
-	"Configured ${KEDR_PACKAGE_NAME} version ${KEDR_PACKAGE_VERSION}")
+	"Configured ${KEDR_KS_PACKAGE_NAME} version ${KEDR_KS_PACKAGE_VERSION}")
 #######################################################################

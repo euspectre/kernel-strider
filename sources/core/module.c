@@ -864,8 +864,8 @@ core_init_module(void)
 	int ret = 0;
 	
 	pr_info(KEDR_MSG_PREFIX 
-	"Initializing (" KEDR_PACKAGE_NAME " version " KEDR_PACKAGE_VERSION 
-	")\n");
+		"Initializing (" KEDR_KS_PACKAGE_NAME " version " 
+		KEDR_KS_PACKAGE_VERSION ")\n");
 	
 	if (target_name[0] == '\0') {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -1005,7 +1005,7 @@ out_free_eh:
 static void __exit
 core_exit_module(void)
 {
-	pr_info(KEDR_MSG_PREFIX "Cleaning up\n");
+	/*pr_info(KEDR_MSG_PREFIX "Cleaning up\n");*/
 	
 	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);

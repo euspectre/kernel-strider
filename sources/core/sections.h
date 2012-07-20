@@ -66,4 +66,4 @@ kedr_get_sections(struct module *mod, struct list_head *sections);
 void
 kedr_release_sections(struct list_head *sections);
 
-#endif // SECTIONS_H_1141_INCLUDED
+#endif /* SECTIONS_H_1141_INCLUDED */

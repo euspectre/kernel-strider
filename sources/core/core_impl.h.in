@@ -71,4 +71,4 @@ extern size_t blocks_skipped;
  * by the address of an original function. */
 extern int lookup_func_info;
 
-#endif // CORE_IMPL_H_1628_INCLUDED
+#endif /* CORE_IMPL_H_1628_INCLUDED */

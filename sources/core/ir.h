@@ -328,4 +328,4 @@ void
 kedr_ir_node_destroy(struct kedr_ir_node *node);
 
 
-#endif // IR_H_1801_INCLUDED
+#endif /* IR_H_1801_INCLUDED */

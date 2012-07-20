@@ -46,17 +46,18 @@ function(add_tests_for_group group_name functions_to_test)
 	set(functions_triggers)
 	set(test_module "test_func_drd_${group_name}")
 	set(template_dir "${CMAKE_SOURCE_DIR}/functions/groups/tests/templates")
-
+	
+	configure_file (
+		"${CMAKE_SOURCE_DIR}/functions/groups/tests/test.sh.in"
+		"${CMAKE_CURRENT_BINARY_DIR}/test.sh"
+		@ONLY
+	)
+	
 	foreach(func ${functions_to_test} ${ARGN})
 		list(FIND functions ${func} func_index)
 		if (NOT (func_index EQUAL -1))
 			list(APPEND functions_triggers "${func}.trigger")
 			
-			configure_file (
-				"${CMAKE_SOURCE_DIR}/functions/groups/tests/test.sh.in"
-				"${CMAKE_CURRENT_BINARY_DIR}/test.sh"
-				@ONLY
-			)
 			kedr_test_add_script (functions.handle.${func}.01
 			    "test.sh" ${func}
 			)

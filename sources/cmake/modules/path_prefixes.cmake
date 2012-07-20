@@ -13,7 +13,7 @@ set (KEDR_ALL_PATH_SUFFIXES EXEC READONLY GLOBAL_CONF LIB INCLUDE
 string(REGEX MATCH "(^/opt|^/usr|^/$)" IS_GLOBAL_INSTALL ${CMAKE_INSTALL_PREFIX})
 if(IS_GLOBAL_INSTALL)
 	set(KEDR_INSTALL_TYPE "global")
-    set(KEDR_INSTALL_PREFIX_VAR "/var/opt/kedr")
+    set(KEDR_INSTALL_PREFIX_VAR "/var/opt/${KEDR_PACKAGE_NAME}")
 	if(CMAKE_MATCH_1 STREQUAL "/opt")
 		message("Global installation into /opt")
 		set(KEDR_INSTALL_GLOBAL_IS_OPT "opt")
@@ -134,7 +134,7 @@ set(KEDR_DEFAULT_CONFIG_DIR "${KEDR_INSTALL_PREFIX_VAR}/configs")
 ########################################################################
 # Path prefixes for tests
 
-set(KEDR_TEST_COMMON_PREFIX "/var/tmp/kedr/test")
+set(KEDR_TEST_COMMON_PREFIX "/var/tmp/${KEDR_PACKAGE_NAME}/test")
 
 foreach(var_suffix ${KEDR_ALL_PATH_SUFFIXES})
     set(KEDR_TEST_PREFIX_${var_suffix} "${KEDR_TEST_COMMON_PREFIX}${KEDR_INSTALL_PREFIX_${var_suffix}}")

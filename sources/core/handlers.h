@@ -228,4 +228,4 @@ KEDR_DECLARE_WRAPPER(kedr_on_barrier_pre);
 KEDR_DECLARE_WRAPPER(kedr_on_barrier_post);
 /* ====================================================================== */
 
-#endif // HANDLERS_H_1810_INCLUDED
+#endif /* HANDLERS_H_1810_INCLUDED */
