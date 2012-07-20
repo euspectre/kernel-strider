@@ -60,14 +60,10 @@ static DEFINE_MUTEX(target_mutex);
 /* ====================================================================== */
 
 /* ID of the happens-before arc from the end of the init function to the 
- * beginning of the exit function of the target. */
-// Really, target module structure may be used for that purpose.
-// This fact reflects Linux kernel internals and may be used by others
-// for set happens-before arc before exit function.
-//TODO: If someone want to access module structure's fields,
-// field '*refptr' of module structure may be used as id. But it is per-cpu.
-#define id_init_hb_exit ((unsigned long)target_module)
-//static unsigned long id_init_hb_exit = 0;
+ * beginning of the exit function of the target. 
+ * [NB] It seems reasonable to separate this arc from other happens-before
+ * arcs involving init and/or exit function, to avoid confusion. */
+static unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 <$if concat(header.main)$>
 <$header.main: join(\n)$>
@@ -497,6 +493,15 @@ on_load(struct kedr_function_handlers *fh, struct module *mod)
 	
 	/* The target module has just been loaded into memory.
 	 * [NB] Perform session-specific initialization here if needed. */
+	id_init_hb_exit = kedr_get_unique_id();
+	if (id_init_hb_exit == 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"on_load(): failed to obtain the ID.\n");
+		/* Go on after issuing this warning. The IDs of signal-wait
+		 * pairs can be unreliable as a result but it is not fatal.
+		 */
+	}
+	
 	target_module = mod;
 	target_init_func = target_module->init;
 	if (target_init_func != NULL)
