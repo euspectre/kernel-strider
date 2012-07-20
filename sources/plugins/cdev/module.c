@@ -29,109 +29,30 @@
 #include "cdev_file_operations_interceptor.h"
 
 #include "file_operations_model.h"
+
+#include "module_ref_model.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Andrey Tsyvarev");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
-/* 
- * Helpers for generate events.
- * 
- * (Really, them should be defined by the core).
- */
-
-/* Pattern for handlers wrappers */
-#define GENERATE_HANDLER_CALL(handler_name, ...) do {               \
-    struct kedr_event_handlers *eh = kedr_get_event_handlers();     \
-    if(eh && eh->handler_name) eh->handler_name(eh, ##__VA_ARGS__); \
-}while(0)
-
-static inline void generate_signal_pre(unsigned long tid, unsigned long pc,
-    unsigned long obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_signal_pre, tid, pc, obj_id, type);
-}
-
-static inline void generate_signal_post(unsigned long tid, unsigned long pc,
-    unsigned long obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_signal_post, tid, pc, obj_id, type);
-}
-
-static inline void generate_wait_pre(unsigned long tid, unsigned long pc,
-    unsigned long obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_wait_pre, tid, pc, obj_id, type);
-}
-
-static inline void generate_wait_post(unsigned long tid, unsigned long pc,
-    unsigned long obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_wait_post, tid, pc, obj_id, type);
-}
-
-static inline void generate_alloc_pre(unsigned long tid, unsigned long pc,
-    unsigned long size)
-{
-    GENERATE_HANDLER_CALL(on_alloc_pre, tid, pc, size);
-}
-
-static inline void generate_alloc_post(unsigned long tid, unsigned long pc,
-    unsigned long size, void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_alloc_post, tid, pc, size, (unsigned long)pointer);
-}
-
-static inline void generate_free_pre(unsigned long tid, unsigned long pc,
-    void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_free_pre, tid, pc, (unsigned long)pointer);
-}
-
-static inline void generate_free_post(unsigned long tid, unsigned long pc,
-    void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_free_post, tid, pc, (unsigned long)pointer);
-}
-
-/* Derived events generation and identificators */
 
 /* 
- * Model for refcount-like mechanizm.
- * Useful for implement "after all" relation.
- * 
- * 'ref_get' acquires reference on some object(reference address).
- * 'ref_put' releases reference,
- * 'ref_last' is executed after all other references are released.
+ * Signal-wait id for character device object.
+ *
+ * NOTE: Only 'PRE' id is exist. 'POST' id has no sence because no one
+ * signal it (file operations may be executed after device unregistered).
  */
-static inline void generate_ref_get(unsigned long tid,
-    unsigned long pc, unsigned long ref_addr)
+
+static inline unsigned long CDEV_MODEL_STATE_PRE_INITIALIZED(
+	struct cdev* dev)
 {
-    (void)tid;
-    (void)pc;
-    (void)ref_addr;
-    /* do nothing */
+	//TODO: field of the cdev structure should be used.
+	return (unsigned long)dev;
 }
-
-static inline void generate_ref_put(unsigned long tid,
-    unsigned long pc, unsigned long ref_addr)
-{
-    generate_signal_pre(tid, pc, ref_addr, KEDR_SWT_COMMON);
-    generate_signal_post(tid, pc, ref_addr, KEDR_SWT_COMMON);
-}
-
-static inline void generate_ref_last(unsigned long tid,
-    unsigned long pc, unsigned long ref_addr)
-{
-    generate_wait_post(tid, pc, ref_addr, KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, ref_addr, KEDR_SWT_COMMON);
-}
-
-/* cdev_add should be called before devices may be opened */
-static inline unsigned long cdev_added(struct cdev* dev) {return (unsigned long)&dev->ops;}
-
 
 /* ====================================================================== */
+
 /* Interception of file callbacks which determine lifetime of object. */
 static void 
 fop_open_post(struct inode* inode, struct file* filp, int ret_val,
@@ -165,8 +86,8 @@ fop_open_pre(struct inode* inode, struct file* filp,
 	unsigned long tid = kedr_get_thread_id();
 
     /* File may be opened only if corresponded device is added.*/
-    generate_wait_pre(tid, pc, cdev_added(inode->i_cdev), KEDR_SWT_COMMON);
-    generate_wait_post(tid, pc, cdev_added(inode->i_cdev), KEDR_SWT_COMMON);
+	kedr_eh_on_wait(tid, pc,
+		CDEV_MODEL_STATE_PRE_INITIALIZED(inode->i_cdev), KEDR_SWT_COMMON);
 }
 
 
@@ -244,7 +165,11 @@ repl_cdev_add(struct cdev *p, dev_t dev, unsigned int count)
 {
 	int ret;
 	
-	unsigned long pc = (unsigned long)&cdev_add;
+	/* 
+	 * PC should be converted into call address when trace will
+	 * be processed.
+	 */
+	unsigned long pc = 0;
 	unsigned long tid = kedr_get_thread_id();
 	
 	cdev_file_operations_interceptor_watch(p);
@@ -253,13 +178,20 @@ repl_cdev_add(struct cdev *p, dev_t dev, unsigned int count)
      * Relation: Files for device(es) may be opened only after device(es)
      * registration.
      */
-	generate_signal_pre(tid, pc, cdev_added(p), KEDR_SWT_COMMON);
+	kedr_eh_on_signal_pre(tid, pc,
+		CDEV_MODEL_STATE_PRE_INITIALIZED(p), KEDR_SWT_COMMON);
     /* Call the target function itself. */
 	ret = cdev_add(p, dev, count);
     
-    generate_signal_post(tid, pc, cdev_added(p), KEDR_SWT_COMMON);	
+    kedr_eh_on_signal_post(tid, pc,
+		CDEV_MODEL_STATE_PRE_INITIALIZED(p), KEDR_SWT_COMMON);	
 	
-	/* If cdev_add() has failed, no need to watch the object. */
+	/* 
+	 * If cdev_add() has failed, no need to watch the object.
+	 * 
+	 * Signal sending cannot be reverted, but this is not needed - no one
+	 * can wait this signal.
+	 */
 	if (ret != 0)
 		cdev_file_operations_interceptor_forget(p);
 		
@@ -293,12 +225,23 @@ on_unload(struct module *mod)
 	file_operations_interceptor_stop();
 }
 
+static void on_before_exit(struct module* m)
+{
+	/* Relation: all module_put(m) calls should be happened before exit() */
+	unsigned long tid = kedr_get_thread_id();
+	unsigned long pc = (unsigned long)m->exit;
+
+	kedr_eh_on_wait(tid, pc, MODULE_MODEL_STATE_POST_INITIALIZED(m),
+		KEDR_SWT_COMMON);
+}
+
 /* ====================================================================== */
 
 struct kedr_fh_plugin fh_plugin = {
 	.owner = THIS_MODULE,
 	.on_target_loaded = on_load,
     .on_target_about_to_unload = on_unload,
+	.on_before_exit_call = on_before_exit,
 	.repl_pairs = rp
 };
 /* ====================================================================== */

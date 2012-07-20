@@ -27,6 +27,8 @@ struct Addr<uint32_t>
     
     bool operator<(const Addr<uint32_t>& addr) const {return this->addr < addr.addr;}
     
+    operator uint32_t(void) const {return addr;}
+    
     uint32_t addr;
 };
 
@@ -44,6 +46,8 @@ struct Addr<uint64_t>
             throw std::logic_error("Read unexistent variable.\n");
         }
     }
+    
+    operator uint64_t(void) const {return addr;}
     
     uint64_t addr;
 };
@@ -115,8 +119,7 @@ struct Tid
     Tid& operator=(const Tid& tid) {this->tid = tid.tid; return *this;}
     Tid& operator=(int tid) {this->tid = tid; return *this;}
     
-    bool operator==(int tid) {return this->tid == tid;}
-    bool operator!=(int tid) {return this->tid != tid;}
+    operator int(void) const {return tid;}
     
     int tid;
 };
@@ -199,8 +202,10 @@ public:
     void build(std::ostream& os);
 
     /* Helpers for use in event builders */
-    void registerThreadStart(Tid tid) const
-        {*os << "THR_START " << tid << " 0 0 0\n";}
+    void registerThreadStart(Tid tid, Tid parentTid = 0) const
+        {*os << "THR_START " << tid << " 0 0 " << parentTid << "\n";}
+    void registerThreadEnd(Tid tid) const
+        {*os << "THR_END " << tid << " 0 0 0\n";}
     void registerRead(Tid tid, Addr<T> pc, Addr<T> addr, Size<T> size) const
         {*os << "READ " << tid << " " << pc << " " << addr << " " << size << "\n";}
     void registerWrite(Tid tid, Addr<T> pc, Addr<T> addr, Size<T> size) const
@@ -223,19 +228,18 @@ public:
         {*os << "MALLOC " << tid << " " << pc << " " << pointer << " " << size << "\n";}
     void registerFree(Tid tid, Addr<T> pc, Addr<T> pointer) const
         {*os << "FREE " << tid << " " << pc << " " << pointer << " 0\n";}
+    void registerThreadCreateBefore(Tid tid, Addr<T> pc) const
+        {*os << "THR_CREATE_BEFORE " << tid << " " << pc << " 0 0\n";}
+    void registerThreadCreateAfter(Tid tid, Addr<T> pc, Tid childTid) const
+        {(void)pc; *os << "THR_CREATE_AFTER " << tid << " 0 " << childTid << " 0\n";}
+    void registerThreadJoin(Tid tid, Addr<T> pc, Tid childTid) const
+        {*os << "THR_JOIN_AFTER " << tid << " " << pc << " " << childTid << " 0\n";}
     void registerBlock(Tid tid, Addr<T> pc) const
         {*os << "SBLOCK_ENTER " << tid << " " << pc << " 0 0\n";}
 
     const KEDRTraceReader& getTraceReader(void) const
         {return traceReader;}
-private:
-    const KEDRTraceReader& traceReader;
-    /* Builder for each index of event type enumeration. */
-    std::vector<TsanEventBuilder*> eventBuilders;
-    /* Map of registered threads */
-    std::map<Addr<T>, int> threads;
-    /* first unused identificator for tid*/
-    int firstUnusedTid;
+
     /* 
      * Return integer identificator of thread for given address.
      * If thread is not registered, return -1.
@@ -244,7 +248,25 @@ private:
     /*
      * Register new integer identificator to thread of given address.
      */
-    Tid newTid(Addr<T> taddr);
+    Tid newTid(Addr<T> taddr) const;
+    /*
+     * Unregister integer identificator to thread of given address.
+     * 
+     * May be called when it is known that thread is terminated.
+     * 
+     * NOTE: Same address may be encountered in the future. In that case
+     * new index will be assigned for it. It is normal situation.
+     */
+    void deleteTid(Addr<T> taddr) const;
+
+private:
+    const KEDRTraceReader& traceReader;
+    /* Builder for each index of event type enumeration. */
+    std::vector<TsanEventBuilder*> eventBuilders;
+    /* Map of registered threads */
+    mutable std::map<Addr<T>, int> threads;
+    /* first unused identificator for tid*/
+    mutable int firstUnusedTid;
     
     void setupEventBuilders(void);
     
@@ -272,7 +294,7 @@ class TsanEventBuilder
 public:
     virtual ~TsanEventBuilder() {}
     
-    virtual void build(CTFReader::Event& event, Tid tid) = 0;
+    virtual void build(const KEDRTraceReader::EventIterator& iter, Tid tid) = 0;
 };
 
 template<class T>
@@ -303,7 +325,7 @@ void TsanTraceBuilder<T>::build(std::ostream& os)
         }
        
         int index = eventTypeVar.getValue(*iter);
-        eventBuilders[index]->build(*iter, tid);
+        eventBuilders[index]->build(iter, tid);
     }
     
     threads.clear();
@@ -318,7 +340,14 @@ Tid TsanTraceBuilder<T>::getTid(Addr<T> addr) const
 }
 
 template<class T>
-Tid TsanTraceBuilder<T>::newTid(Addr<T> addr)
+void TsanTraceBuilder<T>::deleteTid(Addr<T> addr) const
+{
+    threads.erase(addr);
+}
+
+
+template<class T>
+Tid TsanTraceBuilder<T>::newTid(Addr<T> addr) const
 {
     threads.insert(std::make_pair(addr, firstUnusedTid));
     return firstUnusedTid++;
@@ -330,7 +359,7 @@ Tid TsanTraceBuilder<T>::newTid(Addr<T> addr)
 class TsanEventBuilderIgnore: public TsanEventBuilder
 {
 public:
-    void build(CTFReader::Event&, Tid) {}
+    void build(const KEDRTraceReader::EventIterator&, Tid) {}
 };
 
 
@@ -343,9 +372,9 @@ public:
         eventTypeVar(findEnum(eventBuilder.getTraceReader(),
             "stream.event.header.type")) {}
     
-    void build(CTFReader::Event& event, Tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid)
     {
-        std::string typeStr = eventTypeVar.getEnum(event);
+        std::string typeStr = eventTypeVar.getEnum(*iter);
         if(typeStr == "") typeStr = "(undefined)";
         
         std::cerr << "Unknown event type: '" << typeStr << "'\n";
@@ -369,10 +398,10 @@ public:
             "event.fields.fcpre.func"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
         traceBuilder.registerFunctionCall(tid,
-            Addr<T>(pcVar, event), Addr<T>(funcAddrVar, event));
+            Addr<T>(pcVar, *iter), Addr<T>(funcAddrVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -393,10 +422,10 @@ public:
             "event.fields.fcpost.func"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
         traceBuilder.registerFunctionExit(tid,
-            Addr<T>(pcVar, event), Addr<T>(funcAddrVar, event));
+            Addr<T>(pcVar, *iter), Addr<T>(funcAddrVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -418,19 +447,19 @@ public:
         accessTypeVar(findInt(traceBuilder.getTraceReader(), "event.fields.ma[].access_type"))
         {}
     
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
         bool isFirst = true;
-        for(CTFVarArray::ElemIterator iter(accessesVar, event);
-            iter;
-            ++iter)
+        for(CTFVarArray::ElemIterator elemIter(accessesVar, *iter);
+            elemIter;
+            ++elemIter)
         {
             if(isFirst)
             {
-                traceBuilder.registerBlock(tid, Addr<T>(pcVar, *iter));
+                traceBuilder.registerBlock(tid, Addr<T>(pcVar, *elemIter));
                 isFirst = false;
             }
-            buildOne(*iter, tid);
+            buildOne(*elemIter, tid);
         }
     }
 private:
@@ -483,12 +512,12 @@ public:
             "event.fields.ioma.access_type"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        int accessType = accessTypeVar.getUInt32(event);
-        Addr<T> pc(pcVar, event);
-        Addr<T> addr(addrVar, event);
-        Size<T> size(sizeVar, event);
+        int accessType = accessTypeVar.getUInt32(*iter);
+        Addr<T> pc(pcVar, *iter);
+        Addr<T> addr(addrVar, *iter);
+        Size<T> size(sizeVar, *iter);
         
         switch((enum kedr_memory_event_type)accessType)
         {
@@ -528,11 +557,11 @@ public:
             "event.fields.alloc.size"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        Addr<T> pc(pcVar, event);
-        Addr<T> pointer(pointerVar, event);
-        Size<T> size(sizeVar, event);
+        Addr<T> pc(pcVar, *iter);
+        Addr<T> pointer(pointerVar, *iter);
+        Size<T> size(sizeVar, *iter);
         
         traceBuilder.registerAlloc(tid, pc, pointer, size);
     }
@@ -557,10 +586,10 @@ public:
             "event.fields.free.pointer"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        Addr<T> pc(pcVar, event);
-        Addr<T> pointer(pointerVar, event);
+        Addr<T> pc(pcVar, *iter);
+        Addr<T> pointer(pointerVar, *iter);
         
         traceBuilder.registerFree(tid, pc, pointer);
     }
@@ -583,10 +612,10 @@ public:
             "event.fields.lock.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerLock(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerLock(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -607,10 +636,10 @@ public:
             "event.fields.unlock.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerUnlock(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerUnlock(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -632,10 +661,10 @@ public:
             "event.fields.rlock.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerRLock(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerRLock(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -656,10 +685,10 @@ public:
             "event.fields.runlock.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerUnlock(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerUnlock(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -680,10 +709,10 @@ public:
             "event.fields.signal.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerSignal(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerSignal(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -704,10 +733,10 @@ public:
             "event.fields.wait.object"))
         {}
 
-    void build(CTFReader::Event& event, Tid tid)
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
     {
-        traceBuilder.registerWait(tid, Addr<T>(pcVar, event),
-            Addr<T>(objectVar, event));
+        traceBuilder.registerWait(tid, Addr<T>(pcVar, *iter),
+            Addr<T>(objectVar, *iter));
     }
 private:
     const TsanTraceBuilder<T>& traceBuilder;
@@ -716,7 +745,187 @@ private:
 };
 
 
-/* Thread create/join are ignored */
+/* Thread create before */
+template<class T>
+class TsanEventBuilderTCreateBefore: public TsanEventBuilder
+{
+public:
+    TsanEventBuilderTCreateBefore(const TsanTraceBuilder<T>& traceBuilder):
+        traceBuilder(traceBuilder),
+        pcVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tcreate_before.pc")),
+        eventTypeVar(findEnum(traceBuilder.getTraceReader(),
+            "stream.event.header.type")),
+        tidVar(findInt(traceBuilder.getTraceReader(),
+            "stream.event.context.tid")),
+        childTidVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tcreate_after.child_tid"))
+    {
+        /* 
+         * Determine index of event type enumeration corresponded to
+         * 'tcreate_after'.
+         */
+        const CTFTypeEnum& eventTypeType = *eventTypeVar.getType();
+        int nEventTypes = eventTypeType.getNValues();
+        for(int i = 1; i < nEventTypes; i++)
+        {
+            if(eventTypeType.valueToStr(i) == "tcreate_after")
+            {
+                tcreateAfterValue = i;
+                return;
+            }
+        }
+        throw std::logic_error("Cannot find event type 'tcreate_after'");
+    }
+
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
+    {
+        Addr<T> tidReal(tidVar, *iter);
+        /* Search nearest "tcreate_after" event in same thread */
+        KEDRTraceReader::EventIterator iterAfter = iter.clone();
+        for(++iterAfter; iterAfter; ++iterAfter)
+        {
+            if(Addr<T>(tidVar, *iterAfter) != tidReal)
+                continue; /* Not our tid */
+            if(eventTypeVar.getValue(*iterAfter) != tcreateAfterValue)
+                continue; /* Not a 'tcreate_after' */
+            break;
+        }
+        if(!iterAfter)
+        {
+            throw std::logic_error("'tcreate_before' event without 'tcreate_after'");
+        }
+        
+        Addr<T> childTidReal(childTidVar, *iterAfter);
+        if(childTidReal == 0) return;/* Thread creation canceled. */
+        
+        Tid childTid = traceBuilder.getTid(childTidReal);
+        if(childTid == -1)
+        {
+            /* 
+             * Thread with given address is created first time.
+             * 
+             * This situation is normal.
+             */
+            childTid = traceBuilder.newTid(childTidReal);
+        }
+        else
+        {
+            /*
+             * Thread id is reused.
+             * 
+             * Explicitely terminate previous thread and assign another
+             * id for new one(Thread Sanitizer cannot reuse id).
+             */
+            traceBuilder.registerThreadEnd(childTid);
+            traceBuilder.deleteTid(childTidReal);
+            childTid = traceBuilder.newTid(childTidReal);
+        }
+        /* Register event */
+        traceBuilder.registerThreadCreateBefore(tid,
+            Addr<T>(pcVar, *iter));
+        /* Explicitely start child thread, 'as if' it is started now. */
+        traceBuilder.registerThreadStart(childTid, tid);
+    }
+private:
+    const TsanTraceBuilder<T>& traceBuilder;
+    const CTFVarInt& pcVar;
+    /* For search event of particular type */
+    const CTFVarEnum& eventTypeVar;
+    /* Event type value corresponded to 'tcreate_after'*/
+    int tcreateAfterValue;
+    
+    /* Extract own tid and compare it with others */
+    const CTFVarInt& tidVar;
+
+    const CTFVarInt& childTidVar;
+};
+
+
+/* Thread create after */
+template<class T>
+class TsanEventBuilderTCreateAfter: public TsanEventBuilder
+{
+public:
+    TsanEventBuilderTCreateAfter(const TsanTraceBuilder<T>& traceBuilder):
+        traceBuilder(traceBuilder),
+        pcVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tcreate_after.pc")),
+        childTidVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tcreate_after.child_tid"))
+        {}
+
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
+    {
+        /* 
+         * Really, this event itself doesn't produce sync relation,
+         * but Thread Sanitizer needs it.
+         * 
+         * Information from this event is already used in 'tcreate_before'.
+         */
+        
+        Addr<T> childTidReal(childTidVar, *iter);
+        if(childTidReal == 0)
+            return;/* Event is really report about error in thread starting. */
+
+        Tid childTid = traceBuilder.getTid(childTidReal);
+        if(childTid == -1)
+        {
+            std::cerr << "WARNING: Child thread id isn't registered "
+                << "before tcreate_after event. It is error for given converter.";
+            /* Do not terminate conversion. */
+            childTid = traceBuilder.newTid(childTidReal);
+        }
+        
+        traceBuilder.registerThreadCreateAfter(tid, Addr<T>(pcVar, *iter),
+            childTid);
+    }
+private:
+    const TsanTraceBuilder<T>& traceBuilder;
+    const CTFVarInt& pcVar;
+    const CTFVarInt& childTidVar;
+};
+
+/* Thread join */
+template<class T>
+class TsanEventBuilderTJoin: public TsanEventBuilder
+{
+public:
+    TsanEventBuilderTJoin(const TsanTraceBuilder<T>& traceBuilder):
+        traceBuilder(traceBuilder),
+        pcVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tjoin.pc")),
+        childTidVar(findInt(traceBuilder.getTraceReader(),
+            "event.fields.tjoin.child_tid"))
+        {}
+
+    void build(const KEDRTraceReader::EventIterator& iter, Tid tid)
+    {
+        Addr<T> childTidReal(childTidVar, *iter);
+        Tid childTid = traceBuilder.getTid(childTidReal);
+        if(childTid == -1)
+        {
+            /* 
+             * It is not an error for Linux kernel to join for the
+             * thread which is not started.
+             * 
+             * Ignore event in that case.
+             */
+            return;
+        }
+        /* Stop thread explicitely */
+        traceBuilder.registerThreadEnd(childTid);
+        traceBuilder.registerThreadJoin(tid, Addr<T>(pcVar, *iter),
+            childTid);
+        /* Inform traceBuild that childTid thread is no longer valid. */
+        traceBuilder.deleteTid(childTidReal);
+    }
+private:
+    const TsanTraceBuilder<T>& traceBuilder;
+    const CTFVarInt& pcVar;
+    const CTFVarInt& childTidVar;
+};
+
 
 template<class T>
 void TsanTraceBuilder<T>::setupEventBuilders(void)
@@ -771,10 +980,12 @@ void TsanTraceBuilder<T>::setupEventBuilders(void)
             eventBuilder = new TsanEventBuilderSignal<T>(*this);
         else if(eventType == "wait")
             eventBuilder = new TsanEventBuilderWait<T>(*this);
-        else if(eventType == "tcreate")
-            eventBuilder = new TsanEventBuilderIgnore();
+        else if(eventType == "tcreate_before")
+            eventBuilder = new TsanEventBuilderTCreateBefore<T>(*this);
+        else if(eventType == "tcreate_after")
+            eventBuilder = new TsanEventBuilderTCreateAfter<T>(*this);
         else if(eventType == "tjoin")
-            eventBuilder = new TsanEventBuilderIgnore();
+            eventBuilder = new TsanEventBuilderTJoin<T>(*this);
         else
             eventBuilder = new TsanEventBuilderUnknown<T>(*this);
         

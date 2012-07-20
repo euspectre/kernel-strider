@@ -212,7 +212,7 @@ private:
 
     const CTFReader::RootVar* rootVar;
     
-    Packet& packet;
+    Packet* packet;
     
     void beginPacket(void);
     /* 

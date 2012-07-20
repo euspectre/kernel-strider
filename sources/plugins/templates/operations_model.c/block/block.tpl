@@ -3,9 +3,12 @@
 model_<$operation.name$>_pre_internal(<$args$>,
 	struct kedr_coi_operation_call_info* call_info)
 {
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-<$pre_internal$>}
+#define pc ((unsigned long)call_info->op_orig)
+#define tid (kedr_get_thread_id())
+<$pre_internal$>
+#undef pc
+#undef tid
+}
 
 #define model_<$operation.name$>_pre_handler_internal \
 { \
@@ -22,9 +25,12 @@ model_<$operation.name$>_pre_internal(<$args$>,
 model_<$operation.name$>_pre_external(<$args$>,
 	struct kedr_coi_operation_call_info* call_info)
 {
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-<$pre_external$>}
+#define pc ((unsigned long)call_info->op_orig)
+#define tid (kedr_get_thread_id())
+<$pre_external$>
+#undef pc
+#undef tid
+}
 
 #define model_<$operation.name$>_pre_handler_external \
 { \
@@ -43,9 +49,12 @@ model_<$operation.name$>_post_internal(<$args$>,
     <$if operation.returnType$><$operation.returnType$> returnValue,
     <$endif$>struct kedr_coi_operation_call_info* call_info)
 {
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-<$post_internal$>}
+#define pc ((unsigned long)call_info->op_orig)
+#define tid (kedr_get_thread_id())
+<$post_internal$>
+#undef pc
+#undef tid
+}
 
 #define model_<$operation.name$>_post_handler_internal \
 { \
@@ -63,9 +72,12 @@ model_<$operation.name$>_post_external(<$args$>,
     <$if operation.returnType$><$operation.returnType$> returnValue,
     <$endif$>struct kedr_coi_operation_call_info* call_info)
 {
-	unsigned long pc = (unsigned long)call_info->op_orig;
-	unsigned long tid = kedr_get_thread_id();
-<$post_external$>}
+#define pc ((unsigned long)call_info->op_orig)
+#define tid (kedr_get_thread_id())
+<$post_external$>
+#undef pc
+#undef tid
+}
 
 #define model_<$operation.name$>_post_handler_external \
 { \

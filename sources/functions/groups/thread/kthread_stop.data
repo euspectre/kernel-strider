@@ -1,0 +1,13 @@
+[group]
+function.name = kthread_stop
+returnType = int
+
+arg.type = struct task_struct*
+arg.name = p
+
+pre =>>
+	generate_tjoin_pre(tid, pc, (unsigned long)p);
+<<
+post =>>
+	generate_tjoin_post(tid, pc, (unsigned long)p);
+<<

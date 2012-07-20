@@ -65,8 +65,12 @@ static int test(void)
 #define generate_message_wait(tid, pc, obj_id, type) \
     record_wait(tid, pc, obj_id, type)
 
-#define generate_message_thread_create(tid, pc, child_tid) \
-    record_thread_create(tid, pc, child_tid)
+#define generate_message_thread_create_before(tid, pc) \
+    record_thread_create_before(tid, pc)
+
+#define generate_message_thread_create_after(tid, pc, child_tid) \
+    record_thread_create_after(tid, pc, child_tid)
+
 
 #define generate_message_thread_join(tid, pc, child_tid) \
     record_thread_join(tid, pc, child_tid)

@@ -6,12 +6,12 @@
      */
     if(<$operation.state.transition.condition$>)
     {
-        generate_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
+        kedr_eh_on_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
             KEDR_SWT_COMMON);
     }
     else
     {
-        generate_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.pre_value$>)(<$operation.object$>),
+        kedr_eh_on_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.pre_value$>)(<$operation.object$>),
             KEDR_SWT_COMMON);
     }
 <$else$>
@@ -21,7 +21,7 @@
      */
     if(<$operation.state.transition.condition$>)
     {
-        generate_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
+        kedr_eh_on_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
             KEDR_SWT_COMMON);
     }
 <$endif$><$else$>
@@ -29,7 +29,7 @@
      * Restriction: After <$callback_name$>() state should be changed
      * into '<$operation.state.transition.post_value$>'.
      */
-    generate_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
+    kedr_eh_on_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.post_value$>)(<$operation.object$>),
         KEDR_SWT_COMMON);
 <$endif$><$else$><$if operation.state.transition.condition$><$if operation.state.transition.pre_value$>
 	/* 
@@ -38,7 +38,7 @@
      */
     if(!(<$operation.state.transition.condition$>))
     {
-        generate_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.pre_value$>)(<$operation.object$>),
+        kedr_eh_on_signal(tid, pc, SELF_STATE(PRE_<$operation.state.transition.pre_value$>)(<$operation.object$>),
             KEDR_SWT_COMMON);
     }
 <$endif$><$endif$><$endif$>

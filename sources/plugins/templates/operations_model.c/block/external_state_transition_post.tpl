@@ -7,12 +7,12 @@
      */
     if(<$operation.external.state.transition.condition$>)
     {
-        generate_signal(tid, pc,    <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.object$>),
+        kedr_eh_on_signal(tid, pc,    <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.object$>),
             KEDR_SWT_COMMON);
     }
     else
     {
-        generate_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.pre_value$>(<$operation.external.state.transition.object$>),
+        kedr_eh_on_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.pre_value$>(<$operation.external.state.transition.object$>),
             KEDR_SWT_COMMON);
     }
 <$else$>
@@ -23,7 +23,7 @@
      */
     if(<$operation.external.state.transition.condition$>)
     {
-        generate_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
+        kedr_eh_on_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
             KEDR_SWT_COMMON);
     }
 <$endif$><$else$>
@@ -32,7 +32,7 @@
      * <$operation.external.state.transition.object$>' should be changed
      * into '<$operation.external.state.transition.post_value$>'.
      */
-    generate_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
+    kedr_eh_on_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
         KEDR_SWT_COMMON);
 <$endif$><$else$><$if operation.external.state.transition.condition$><$if operation.external.state.transition.pre_value$>
 	/* 
@@ -42,7 +42,7 @@
      */
     if(!(<$operation.external.state.transition.condition$>))
     {
-        generate_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.pre_value$>(<$operation.external.state.transition.object$>),
+        kedr_eh_on_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.pre_value$>(<$operation.external.state.transition.object$>),
             KEDR_SWT_COMMON);
     }
 <$endif$><$endif$><$endif$>

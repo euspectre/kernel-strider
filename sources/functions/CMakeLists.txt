@@ -16,6 +16,7 @@ set(FUNCTION_GROUPS
 	"uaccess"
 	"dup"
 	"strings"
+	"thread"
 )
 
 if(NOT KEDR_COI_INSTALL_DIR)

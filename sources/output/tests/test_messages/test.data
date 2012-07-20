@@ -121,7 +121,10 @@ constant.value = 0x8000
 
 # Thread creation and joining
 [group]
-	message.type = thread_create
+	message.type = thread_create_before
+	message.args = tid1, 0x456
+[group]
+	message.type = thread_create_after
 	message.args = tid1, 0x456, tid2
 [group]
 	message.type = thread_join

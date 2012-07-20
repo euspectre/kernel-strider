@@ -32,100 +32,12 @@
 #include "file_system_type_model.h"
 
 #include "fs_interception.h"
+
+#include "module_ref_model.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Andrey Tsyvarev");
 MODULE_LICENSE("GPL");
-/* ====================================================================== */
-/* 
- * Helpers for generate events.
- * 
- * (Really, them should be defined by the core).
- */
-
-/* Pattern for handlers wrappers */
-#define GENERATE_HANDLER_CALL(handler_name, ...) do {               \
-    struct kedr_event_handlers *eh = kedr_get_event_handlers();     \
-    if(eh && eh->handler_name) eh->handler_name(eh, ##__VA_ARGS__); \
-}while(0)
-
-static inline void generate_signal_pre(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_signal_pre, tid, pc, (unsigned long)obj_id, type);
-}
-
-static inline void generate_signal_post(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_signal_post, tid, pc, (unsigned long)obj_id, type);
-}
-
-static inline void generate_signal(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    generate_signal_pre(tid, pc, obj_id, type);
-    generate_signal_post(tid, pc, obj_id, type);
-}
-
-static inline void generate_wait_pre(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_wait_pre, tid, pc, (unsigned long)obj_id, type);
-}
-
-static inline void generate_wait_post(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    GENERATE_HANDLER_CALL(on_wait_post, tid, pc, (unsigned long)obj_id, type);
-}
-
-static inline void generate_wait(unsigned long tid, unsigned long pc,
-    void* obj_id, enum kedr_sw_object_type type)
-{
-    generate_wait_pre(tid, pc, obj_id, type);
-    generate_wait_post(tid, pc, obj_id, type);
-}
-
-
-static inline void generate_alloc_pre(unsigned long tid, unsigned long pc,
-    unsigned long size)
-{
-    GENERATE_HANDLER_CALL(on_alloc_pre, tid, pc, size);
-}
-
-static inline void generate_alloc_post(unsigned long tid, unsigned long pc,
-    unsigned long size, void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_alloc_post, tid, pc, size, (unsigned long)pointer);
-}
-
-static inline void generate_alloc(unsigned long tid, unsigned long pc,
-    unsigned long size, void* pointer)
-{
-    generate_alloc_pre(tid, pc, size);
-    generate_alloc_post(tid, pc, size, pointer);
-}
-
-
-static inline void generate_free_pre(unsigned long tid, unsigned long pc,
-    void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_free_pre, tid, pc, (unsigned long)pointer);
-}
-
-static inline void generate_free_post(unsigned long tid, unsigned long pc,
-    void* pointer)
-{
-    GENERATE_HANDLER_CALL(on_free_post, tid, pc, (unsigned long)pointer);
-}
-
-static inline void generate_free(unsigned long tid, unsigned long pc,
-    void* pointer)
-{
-    generate_free_pre(tid, pc, pointer);
-    generate_free_post(tid, pc, pointer);
-}
 /* ====================================================================== */
 
 /* Initialization tasks needed to use KEDR-COI. */
@@ -190,11 +102,11 @@ static int register_filesystem_fst_lifetime(
 
 	file_system_type_interceptor_watch(fs);
 	
-	generate_signal_pre(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
+	kedr_eh_on_signal_pre(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
 	
 	returnValue = register_filesystem(fs);
 	
-	generate_signal_post(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
+	kedr_eh_on_signal_post(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
 	
 	if(returnValue)
 		file_system_type_interceptor_forget(fs);
@@ -232,12 +144,23 @@ static void on_target_unload(struct module* m)
     fs_interception_stop();
 }
 
+static void on_before_exit(struct module* m)
+{
+	/* Relation: all module_put(m) calls should be happened before exit() */
+	unsigned long tid = kedr_get_thread_id();
+	unsigned long pc = (unsigned long)m->exit;
+
+	kedr_eh_on_wait(tid, pc, MODULE_MODEL_STATE_POST_INITIALIZED(m),
+		KEDR_SWT_COMMON);
+}
+
 /* ====================================================================== */
 
 struct kedr_fh_plugin fh_plugin = {
 	.owner = THIS_MODULE,
 	.on_target_loaded = on_target_load,
     .on_target_about_to_unload = on_target_unload,
+	.on_before_exit_call = on_before_exit,
 	.repl_pairs = rp
 };
 /* ====================================================================== */

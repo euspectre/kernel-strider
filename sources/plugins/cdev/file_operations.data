@@ -27,17 +27,7 @@ implementation_header =>>
 /* Only need for define macros, which affects on operations existence */
 #include <kedr-coi/interceptors/file_operations_interceptor.h>
 
-/* In the future, this should be definition in <kedr/..> header. */
-
-#ifndef MODULE_MODEL_STATE_POST_INITIALIZED
-/* 
- * Signal-wait id for module object.
- *
- * NOTE: Only 'POST' id is exist. 'PRE' id has no sence because
- * module is initialized before first instruction is executed.
- */
-#define MODULE_MODEL_STATE_POST_INITIALIZED(mod) (mod)
-#endif
+#include "module_ref_model.h"
 <<
 
 object.type = struct file
@@ -242,17 +232,17 @@ operation.post_state.value = INITIALIZED
 operation.post_state.condition = (returnValue == 0)
 
 operation.code.pre.external =>>
-	generate_alloc(tid, pc, sizeof(struct file), filp);
+	kedr_eh_on_alloc(tid, pc, sizeof(struct file), (unsigned long)filp);
 <<
 
 operation.code.post =>>
 	if(returnValue != 0)
 	{
 		if(filp->f_op->owner)
-			generate_signal(tid, pc,
+			kedr_eh_on_signal(tid, pc,
 				MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
 				KEDR_SWT_COMMON);
-		generate_free(tid, pc, filp);
+		kedr_eh_on_free(tid, pc, (unsigned long)filp);
 	}
 <<
 
@@ -290,10 +280,10 @@ operation.code.post.external =>>
 	if(returnValue == 0)
 	{
 		if(filp->f_op->owner)
-			generate_signal(tid, pc,
+			kedr_eh_on_signal(tid, pc,
 				MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
 				KEDR_SWT_COMMON);
-		generate_free(tid, pc, filp);
+		kedr_eh_on_free(tid, pc, (unsigned long)filp);
 	}
 <<
 

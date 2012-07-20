@@ -525,17 +525,31 @@ static inline int check_event_thread_create(
 	const KEDRTraceReader& traceReader, uint64_t tid, uint64_t pc,
 	uint64_t child_tid)
 {
-	if(check_type(iter, traceReader, "tcreate")
+	/* 
+	 * Currently all events are serialized,
+	 * so '_after' event comes just after '_before'.
+	 */
+	if(check_type(iter, traceReader, "tcreate_before")
 		|| check_tid(*iter, traceReader, tid)
 		|| check_int_variable(*iter, traceReader,
-			"event.fields.tcreate.pc", pc, true)
-		|| check_int_variable(*iter, traceReader,
-			"event.fields.tcreate.child_tid", child_tid, true))
+			"event.fields.tcreate_before.pc", pc, true))
 	{
-		std::cerr << "Thread create event is incorrect.\n";
+		std::cerr << "Thread create event is incorrect('before' part).\n";
 		return -1;
 	}
 	++iter;
+	if(check_type(iter, traceReader, "tcreate_after")
+		|| check_tid(*iter, traceReader, tid)
+		|| check_int_variable(*iter, traceReader,
+			"event.fields.tcreate_after.pc", pc, true)
+		|| check_int_variable(*iter, traceReader,
+			"event.fields.tcreate_after.child_tid", child_tid, true))
+	{
+		std::cerr << "Thread create event is incorrect('after' part).\n";
+		return -1;
+	}
+	++iter;
+
 	return 0;
 
 }

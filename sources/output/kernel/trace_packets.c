@@ -678,23 +678,61 @@ kedr_ctf_stream_process_event_sw(struct msg_builder* builder,
 
 
 static ssize_t
-kedr_ctf_stream_process_event_tcj(struct msg_builder* builder,
-    const struct execution_message_tcj* message_tcj, size_t size)
+kedr_ctf_stream_process_event_tc_before(struct msg_builder* builder,
+    const struct execution_message_tc_before* message_tc_before, size_t size)
 {
     ssize_t result;
 
-    struct execution_event_fields_tcj* fields_tcj;
+    struct execution_event_fields_tc_before* fields_tc_before;
 
-    BUG_ON(size < sizeof(*message_tcj));
+    BUG_ON(size < sizeof(*message_tc_before));
 
-    result = msg_builder_append(builder, fields_tcj);
+    result = msg_builder_append(builder, fields_tc_before);
     if(result < 0) return result;
 
-    fields_tcj->pc = message_tcj->pc;
-    fields_tcj->child_tid = message_tcj->child_tid;
+    fields_tc_before->pc = message_tc_before->pc;
 
     return result;
 }
+
+static ssize_t
+kedr_ctf_stream_process_event_tc_after(struct msg_builder* builder,
+    const struct execution_message_tc_after* message_tc_after, size_t size)
+{
+    ssize_t result;
+
+    struct execution_event_fields_tc_after* fields_tc_after;
+
+    BUG_ON(size < sizeof(*message_tc_after));
+
+    result = msg_builder_append(builder, fields_tc_after);
+    if(result < 0) return result;
+
+    fields_tc_after->pc = message_tc_after->pc;
+    fields_tc_after->child_tid = message_tc_after->child_tid;
+
+    return result;
+}
+
+static ssize_t
+kedr_ctf_stream_process_event_tjoin(struct msg_builder* builder,
+    const struct execution_message_tjoin* message_tjoin, size_t size)
+{
+    ssize_t result;
+
+    struct execution_event_fields_tjoin* fields_tjoin;
+
+    BUG_ON(size < sizeof(*message_tjoin));
+
+    result = msg_builder_append(builder, fields_tjoin);
+    if(result < 0) return result;
+
+    fields_tjoin->pc = message_tjoin->pc;
+    fields_tjoin->child_tid = message_tjoin->child_tid;
+
+    return result;
+}
+
 
 static ssize_t
 kedr_ctf_stream_process_event_fee(struct msg_builder* builder,
@@ -843,14 +881,19 @@ ssize_t kedr_trace_add_event(struct kedr_trace* trace,
             (struct execution_message_sw*)message, size);
         event_header->type = execution_event_type_wait;
     break;
-    case execution_message_type_tcreate:
-        result = kedr_ctf_stream_process_event_tcj(builder,
-            (struct execution_message_tcj*)message, size);
-        event_header->type = execution_event_type_tcreate;
+    case execution_message_type_tc_before:
+        result = kedr_ctf_stream_process_event_tc_before(builder,
+            (struct execution_message_tc_before*)message, size);
+        event_header->type = execution_event_type_tc_before;
+    break;
+    case execution_message_type_tc_after:
+        result = kedr_ctf_stream_process_event_tc_after(builder,
+            (struct execution_message_tc_after*)message, size);
+        event_header->type = execution_event_type_tc_after;
     break;
     case execution_message_type_tjoin:
-        result = kedr_ctf_stream_process_event_tcj(builder,
-            (struct execution_message_tcj*)message, size);
+        result = kedr_ctf_stream_process_event_tjoin(builder,
+            (struct execution_message_tjoin*)message, size);
         event_header->type = execution_event_type_tjoin;
     break;
     case execution_message_type_fentry:

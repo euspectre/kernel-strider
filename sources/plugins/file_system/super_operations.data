@@ -57,7 +57,7 @@ operation.state.value = INITIALIZED
 operation.code.post.external =>>
 	if(!call_info->op_orig && returnValue)
 	{
-		generate_alloc(tid, pc, sizeof(*returnValue), returnValue);
+		kedr_eh_on_alloc(tid, pc, sizeof(*returnValue), (unsigned long)returnValue);
 	}
 <<
 
@@ -74,7 +74,7 @@ operation.state.value = INITIALIZED
 operation.code.post.external =>>
 	if(!call_info->op_orig)
 	{
-		generate_free(tid, pc, inode);
+		kedr_eh_on_free(tid, pc, (unsigned long)inode);
 	}
 <<
 

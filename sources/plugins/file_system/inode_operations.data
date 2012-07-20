@@ -194,6 +194,20 @@ operation.arg.name = dev
 operation.object = dir
 
 [group]
+operation.name = permission
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = int
+operation.arg.name = mask
+
+operation.object = inode
+
+operation.state.value = INITIALIZED
+
+[group]
 operation.name = rename
 operation.returnType = int
 

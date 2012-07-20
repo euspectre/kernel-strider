@@ -1,3 +1,5 @@
+kbuild_include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
+
 #Rule for generate files with kedr_gen
 function(rule_generate_file target_file data_file template)
     add_custom_command(OUTPUT ${target_file}

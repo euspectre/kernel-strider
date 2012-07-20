@@ -347,26 +347,37 @@ void execution_event_wait(
 }
 EXPORT_SYMBOL(execution_event_wait);
 
-void execution_event_thread_create(
+void execution_event_thread_create_before(
+    struct execution_event_collector* collector,
+    tid_t tid, addr_t pc)
+{
+    WRITE_CRITICAL_MESSAGE_BEGIN(tc_before, tc_before);
+    message_tc_before->pc = pc;
+    WRITE_CRITICAL_MESSAGE_END();
+}
+EXPORT_SYMBOL(execution_event_thread_create_before);
+
+void execution_event_thread_create_after(
     struct execution_event_collector* collector,
     tid_t tid, addr_t pc,
     tid_t child_tid)
 {
-    WRITE_CRITICAL_MESSAGE_BEGIN(tcj, tcreate);
-    message_tcj->pc = pc;
-    message_tcj->child_tid = child_tid;
+    WRITE_CRITICAL_MESSAGE_BEGIN(tc_after, tc_after);
+    message_tc_after->pc = pc;
+    message_tc_after->child_tid = child_tid;
     WRITE_CRITICAL_MESSAGE_END();
 }
-EXPORT_SYMBOL(execution_event_thread_create);
+EXPORT_SYMBOL(execution_event_thread_create_after);
+
 
 void execution_event_thread_join(
     struct execution_event_collector* collector,
     tid_t tid, addr_t pc,
     tid_t child_tid)
 {
-    WRITE_CRITICAL_MESSAGE_BEGIN(tcj, tjoin);
-    message_tcj->pc = pc;
-    message_tcj->child_tid = child_tid;
+    WRITE_CRITICAL_MESSAGE_BEGIN(tjoin, tjoin);
+    message_tjoin->pc = pc;
+    message_tjoin->child_tid = child_tid;
     WRITE_CRITICAL_MESSAGE_END();
 }
 EXPORT_SYMBOL(execution_event_thread_join);

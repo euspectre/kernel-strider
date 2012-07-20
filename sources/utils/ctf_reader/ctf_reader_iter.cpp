@@ -57,13 +57,20 @@ void readFromStreamAt(std::istream& s,
  */
 bool isStreamEnds(std::istream& s, off_t offset)
 {
+	/* 
+	 * Clear possible 'eof' flag from previous at-the-end checks.
+	 * 
+	 * Otherwise peek() will return eof event after seek().
+	 */
+	s.clear(s.rdstate() & ~std::istream::eofbit);
+
 	if(!s.seekg(offset, std::ios_base::beg))
 	{
 		std::cerr << "Failed to set position in the stream to "
             << offset << ".\n";
 		throw std::runtime_error("Failed to set position in the stream");
 	}
-	
+
 	return s.peek() == std::istream::traits_type::eof();
 }
 
@@ -82,7 +89,7 @@ bool isStreamEnds(std::istream& s, off_t offset)
 CTFReader::Event::Event(Packet& packet) :
     CTFContext(packet.rootVar->eventContextVar, &packet),
     refs(1), map(NULL), mapSize(0),
-    rootVar(packet.rootVar), packet(packet)
+    rootVar(packet.rootVar), packet(&packet)
 {
     beginPacket();
     packet.ref();
@@ -103,7 +110,7 @@ int CTFReader::Event::extendMapImpl(int newSize, const char** mapStart_p,
 CTFReader::Event::Event(const Event& event) :
     CTFContext(event.getContextVar(), event.getBaseContext()),
     refs(1), eventsEndOffset(event.eventsEndOffset),
-    rootVar(event.rootVar), packet(event.packet)
+    rootVar(event.rootVar), packet(new CTFReader::Packet(*event.packet))
 {
     /* 
      * Copied context is fully mapped.
@@ -129,12 +136,12 @@ CTFReader::Event::Event(const Event& event) :
     
     rootVar->eventStartVar->setEventStart(eventStartOffset, *this);
     
-    packet.ref();
+    //packet.ref();
 }
 
 CTFReader::Event::~Event(void)
 {
-    packet.unref();
+    packet->unref();
     free(map);
 }
 
@@ -191,7 +198,7 @@ CTFReader::Event* CTFReader::Event::next(void)
          * Last event in the packet. Advance packet,
          * then extract first event from it.
          */
-        if(packet.tryNext())
+        if(packet->tryNext())
         {
             beginPacket();
             return this;
@@ -207,10 +214,10 @@ CTFReader::Event* CTFReader::Event::next(void)
 
 void CTFReader::Event::beginPacket(void)
 {
-    int eventsStartOffset = rootVar->packetLastVar->getEndOffset(packet);
+    int eventsStartOffset = rootVar->packetLastVar->getEndOffset(*packet);
     assert(eventsStartOffset != -1);
     
-    eventsEndOffset = packet.contentSizeVar->getInt32(packet);
+    eventsEndOffset = packet->contentSizeVar->getInt32(*packet);
     if(eventsEndOffset <= eventsStartOffset)
         std::logic_error("Non-positive size of packet content.");
     
@@ -229,8 +236,8 @@ void CTFReader::Event::beginPacket(void)
         }
         mapSize = mapSizeNew;
     }
-    readFromStreamAt(packet.s, map, mapSizeNew,
-        packet.streamMapStart + mapStartOffset);
+    readFromStreamAt(packet->s, map, mapSizeNew,
+        packet->streamMapStart + mapStartOffset);
     
     moveMap(eventsEndOffset, map - mapStartOffset, 0);
     rootVar->eventStartVar->setEventStart(eventsStartOffset, *this);
@@ -309,7 +316,7 @@ CTFReader::Packet::Packet(const Packet& packet) :
     CTFContext(packet.getContextVar()), refs(1),
     s(packet.s), streamMapStart(packet.streamMapStart),
     mapSize(packet.mapSize),
-    rootVar(rootVar),
+    rootVar(packet.rootVar),
     reader(packet.reader),
     packetSizeVar(packet.packetSizeVar),
     contentSizeVar(packet.contentSizeVar)
@@ -320,6 +327,7 @@ CTFReader::Packet::Packet(const Packet& packet) :
         if(mapStart == NULL) throw std::bad_alloc();
         
         memcpy(mapStart, packet.mapStart, mapSize);
+		setMap(mapSize * 8, mapStart, 0);
     }
     else
     {

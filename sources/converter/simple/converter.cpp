@@ -817,47 +817,69 @@ protected:
     }
 };
 
-/* Thread create/join(common data - common base) */
+
+/* Thread create before */
 template<class T>
-class EventPrinterTCJ: public EventPrinterOneLine<T>
+class EventPrinterTCBefore: public EventPrinterOneLine<T>
 {
 public:
-    EventPrinterTCJ(const EventPrinter& eventPrinter,
-        const std::string& eventType, const std::string& what):
-        EventPrinterOneLine<T>(eventPrinter), what(what),
+    EventPrinterTCBefore(const EventPrinter& eventPrinter):
+        EventPrinterOneLine<T>(eventPrinter),
         pcVar(findInt(eventPrinter.getTraceReader(),
-            "event.fields." + eventType + ".pc")),
-        childTidVar(findInt(eventPrinter.getTraceReader(),
-            "event.fields." + eventType + ".child_tid"))
+            "event.fields.tcreate_before.pc"))
         {}
 protected:
     void printEventFields(CTFReader::Event& event, std::ostream& os)
     {
-        os << what << " " << Addr<T>(childTidVar, event)
-            << " at " << Addr<T>(pcVar, event);
+        os << "Begin create thread at " << Addr<T>(pcVar, event);
     }
 private:
-    const std::string what;
+    const CTFVarInt& pcVar;
+};
+
+/* Thread create after */
+template<class T>
+class EventPrinterTCAfter: public EventPrinterOneLine<T>
+{
+public:
+    EventPrinterTCAfter(const EventPrinter& eventPrinter):
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.tcreate_after.pc")),
+        childTidVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.tcreate_after.child_tid"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << "Thread " << Addr<T>(childTidVar, event)
+            << " created at " << Addr<T>(pcVar, event);
+    }
+private:
     const CTFVarInt& pcVar;
     const CTFVarInt& childTidVar;
 };
 
-/* Thread create */
 template<class T>
-class EventPrinterThreadCreate: public EventPrinterTCJ<T>
-{
-public:
-    EventPrinterThreadCreate(const EventPrinter& eventPrinter):
-        EventPrinterTCJ<T>(eventPrinter, "tcreate", "Create thread") {}
-};
-
-/* Thread join */
-template<class T>
-class EventPrinterThreadJoin: public EventPrinterTCJ<T>
+class EventPrinterThreadJoin: public EventPrinterOneLine<T>
 {
 public:
     EventPrinterThreadJoin(const EventPrinter& eventPrinter):
-        EventPrinterTCJ<T>(eventPrinter, "tjoin", "Join to thread") {}
+        EventPrinterOneLine<T>(eventPrinter),
+        pcVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.tjoin.pc")),
+        childTidVar(findInt(eventPrinter.getTraceReader(),
+            "event.fields.tjoin.child_tid"))
+        {}
+protected:
+    void printEventFields(CTFReader::Event& event, std::ostream& os)
+    {
+        os << "Join to thread " << Addr<T>(childTidVar, event)
+            << " at " << Addr<T>(pcVar, event);
+    }
+private:
+    const CTFVarInt& pcVar;
+    const CTFVarInt& childTidVar;
 };
 
 
@@ -923,8 +945,10 @@ void EventPrinter::setupTypePrinters(void)
             eventPrinterType = new EventPrinterSignal<T>(*this);
         else if(eventType == "wait")
             eventPrinterType = new EventPrinterWait<T>(*this);
-        else if(eventType == "tcreate")
-            eventPrinterType = new EventPrinterThreadCreate<T>(*this);
+        else if(eventType == "tcreate_before")
+            eventPrinterType = new EventPrinterTCBefore<T>(*this);
+        else if(eventType == "tcreate_after")
+            eventPrinterType = new EventPrinterTCAfter<T>(*this);
         else if(eventType == "tjoin")
             eventPrinterType = new EventPrinterThreadJoin<T>(*this);
         else

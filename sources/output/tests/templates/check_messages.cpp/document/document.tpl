@@ -456,23 +456,39 @@ static inline int check_message_wait(CTFReader::Event& event,
 	return 0;
 }
 
-static inline int check_message_thread_create(CTFReader::Event& event,
-	const KEDRTraceReader& traceReader, uint64_t tid, uint64_t pc,
-	uint64_t child_tid)
+static inline int check_message_thread_create_before(CTFReader::Event& event,
+	const KEDRTraceReader& traceReader, uint64_t tid, uint64_t pc)
 {
 	if(check_tid(event, traceReader, tid)
-		|| check_type(event, traceReader, "tcreate")
+		|| check_type(event, traceReader, "tcreate_before")
 		|| check_int_variable(event, traceReader,
-			"event.fields.tcreate.pc", pc, true)
-		|| check_int_variable(event, traceReader,
-			"event.fields.tcreate.child_tid", child_tid, true))
+			"event.fields.tcreate_before.pc", pc, true))
 	{
-		std::cerr << "Thread create event is incorrect.\n";
+		std::cerr << "Thread create before event is incorrect.\n";
 		return -1;
 	}
 	return 0;
 
 }
+
+static inline int check_message_thread_create_after(CTFReader::Event& event,
+	const KEDRTraceReader& traceReader, uint64_t tid, uint64_t pc,
+	uint64_t child_tid)
+{
+	if(check_tid(event, traceReader, tid)
+		|| check_type(event, traceReader, "tcreate_after")
+		|| check_int_variable(event, traceReader,
+			"event.fields.tcreate_after.pc", pc, true)
+		|| check_int_variable(event, traceReader,
+			"event.fields.tcreate_after.child_tid", child_tid, true))
+	{
+		std::cerr << "Thread create after event is incorrect.\n";
+		return -1;
+	}
+	return 0;
+
+}
+
 
 static inline int check_message_thread_join(CTFReader::Event& event,
 	const KEDRTraceReader& traceReader, uint64_t tid, uint64_t pc,

@@ -125,7 +125,8 @@ enum execution_event_type
     execution_event_type_signal,
     execution_event_type_wait,
     /* Event contains information about thread create/join operation */
-    execution_event_type_tcreate,
+    execution_event_type_tc_before,
+    execution_event_type_tc_after,
     execution_event_type_tjoin,
     /* Event contains information about function entry/exit */
     execution_event_type_fentry,
@@ -261,12 +262,29 @@ struct execution_event_fields_sw
     CTF_STRUCT_END
 };
 
-/* Same structure for thread create and join events */
-struct execution_event_fields_tcj
+
+struct execution_event_fields_tc_before
 {
     /* Program counter of the instruction(normally, call <*>) */
     addr_t pc;
-    /* Created or joined thread */
+    CTF_STRUCT_END
+};
+
+
+struct execution_event_fields_tc_after
+{
+    /* Program counter of the instruction(normally, call <*>) */
+    addr_t pc;
+    /* Created thread or special mark on error */
+    tid_t child_tid;
+    CTF_STRUCT_END
+};
+
+struct execution_event_fields_tjoin
+{
+    /* Program counter of the instruction(normally, call <*>) */
+    addr_t pc;
+    /* Joined thread */
     tid_t child_tid;
     CTF_STRUCT_END
 };

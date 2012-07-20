@@ -92,7 +92,8 @@ enum event_type : uint8_t {
     signal,
     wait,
     /* Event contains information about thread create/join operation */
-    tcreate,
+    tcreate_before,
+	tcreate_after,
     tjoin,
     /* Event contains information about function entry/exit */
     fentry,
@@ -213,9 +214,22 @@ event {
 		struct {
 			/* Program counter of the instruction(normally, call <*>) */
 			addr_t pc;
-			/* Created or joined thread */
+		} tcreate_before;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*>) */
+			addr_t pc;
+			/* Created thread or signal mark */
 			tid_t child_tid;
-		} tcreate, tjoin;
+		} tcreate_after;
+
+		struct {
+			/* Program counter of the instruction(normally, call <*>) */
+			addr_t pc;
+			/* Thread to which join */
+			tid_t child_tid;
+		} tjoin;
+
 
 		struct {
 			/* Function address */

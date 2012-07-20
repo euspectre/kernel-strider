@@ -1,0 +1,1 @@
+#define <$arg.name$> ((<$arg.type$>)kedr_arg(ls, <$function.name$>_arg_<$arg.name$> + 1))

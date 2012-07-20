@@ -202,109 +202,109 @@ module_param_call(name, \
 //***********************Protocol implementation**********************//
 struct port_listener
 {
-	struct socket *udpsocket;
-	/* Object which implements commands recieved by listener */
-	struct trace_sender* sender;
+    struct socket *udpsocket;
+    /* Object which implements commands recieved by listener */
+    struct trace_sender* sender;
 };
 
 static void port_listener_cb_data(struct sock* sk, int bytes)
 {
-	struct port_listener* listener = (struct port_listener*)sk->sk_user_data;
+    struct port_listener* listener = (struct port_listener*)sk->sk_user_data;
 
-	__be32 sender_addr;
-	__be16 sender_port;
-	struct kedr_message_header* msg;
-	int msg_len;
+    __be32 sender_addr;
+    __be16 sender_port;
+    struct kedr_message_header* msg;
+    int msg_len;
 
-	struct sk_buff *skb = NULL;
+    struct sk_buff *skb = NULL;
 
-	skb = skb_dequeue(&sk->sk_receive_queue);
-	if(skb == NULL)
-	{
-		pr_info("Failed to extract recieved skb.");
-		return;
-	}
+    skb = skb_dequeue(&sk->sk_receive_queue);
+    if(skb == NULL)
+    {
+        pr_info("Failed to extract recieved skb.");
+        return;
+    }
 
-	if(ip_hdr(skb)->protocol != IPPROTO_UDP)
-	{
-		pr_info("Ignore non-UDP packets.");
-		goto out;
-	}
-	sender_addr = ip_hdr(skb)->saddr;
-	sender_port = udp_hdr(skb)->source;
+    if(ip_hdr(skb)->protocol != IPPROTO_UDP)
+    {
+        pr_info("Ignore non-UDP packets.");
+        goto out;
+    }
+    sender_addr = ip_hdr(skb)->saddr;
+    sender_port = udp_hdr(skb)->source;
 
-	msg = (typeof(msg))(skb->data + sizeof(struct udphdr));
-	msg_len = skb->len - sizeof(struct udphdr);
+    msg = (typeof(msg))(skb->data + sizeof(struct udphdr));
+    msg_len = skb->len - sizeof(struct udphdr);
 
-	if(msg_len < kedr_message_header_size)
-	{
-		pr_info("Ignore request with incorrect length(%d).", msg_len);
-		goto out;
-	}
+    if(msg_len < kedr_message_header_size)
+    {
+        pr_info("Ignore request with incorrect length(%d).", msg_len);
+        goto out;
+    }
 
-	if(msg->magic != htonl(KEDR_MESSAGE_HEADER_MAGIC))
-	{
-		pr_info("Ignore udp packets with incorrect magic field.");
-		goto out;
-	}
-	
-	switch((enum kedr_message_command_type)msg->type)
-	{
-	case kedr_message_command_type_start:
-		trace_sender_start(listener->sender,
+    if(msg->magic != htonl(KEDR_MESSAGE_HEADER_MAGIC))
+    {
+        pr_info("Ignore udp packets with incorrect magic field.");
+        goto out;
+    }
+    
+    switch((enum kedr_message_command_type)msg->type)
+    {
+    case kedr_message_command_type_start:
+        trace_sender_start(listener->sender,
             ntohl(sender_addr), ntohs(sender_port));
-	break;
-	case kedr_message_command_type_stop:
-		trace_sender_stop(listener->sender);
-	break;
-	default:
-		pr_info("Ignore incorrect request of type %d.", (int)msg->type);
-		goto out;
-	}
+    break;
+    case kedr_message_command_type_stop:
+        trace_sender_stop(listener->sender);
+    break;
+    default:
+        pr_info("Ignore incorrect request of type %d.", (int)msg->type);
+        goto out;
+    }
 out:
-	kfree_skb(skb);
+    kfree_skb(skb);
 }
 
 static int port_listener_init(struct port_listener* listener,
-	int16_t port, struct trace_sender* sender)
+    int16_t port, struct trace_sender* sender)
 {
-	struct sockaddr_in server;
-	int result;
+    struct sockaddr_in server;
+    int result;
 
-	result = sock_create(PF_INET, SOCK_DGRAM, IPPROTO_UDP,
-		&listener->udpsocket);
+    result = sock_create(PF_INET, SOCK_DGRAM, IPPROTO_UDP,
+        &listener->udpsocket);
 
-	if (result < 0) {
-		pr_err("server: Error creating udpsocket.");
-		return result;
-	}
+    if (result < 0) {
+        pr_err("server: Error creating udpsocket.");
+        return result;
+    }
 
-	server.sin_family = AF_INET;
-	server.sin_addr.s_addr = INADDR_ANY;
-	server.sin_port = htons(port);
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(port);
 
-	result = kernel_bind(listener->udpsocket,
-		(struct sockaddr*)&server, sizeof(server));
-	if (result)
-	{
-		pr_err("Failed to bind server socket.");
-		sock_release(listener->udpsocket);
-		return result;
-	}
+    result = kernel_bind(listener->udpsocket,
+        (struct sockaddr*)&server, sizeof(server));
+    if (result)
+    {
+        pr_err("Failed to bind server socket.");
+        sock_release(listener->udpsocket);
+        return result;
+    }
 
-	listener->sender = sender;
-	listener->udpsocket->sk->sk_user_data = listener;
-	/* Barrier before publish callback for recieving messages */
-	smp_wmb();
-	listener->udpsocket->sk->sk_data_ready = port_listener_cb_data;
+    listener->sender = sender;
+    listener->udpsocket->sk->sk_user_data = listener;
+    /* Barrier before publish callback for recieving messages */
+    smp_wmb();
+    listener->udpsocket->sk->sk_data_ready = port_listener_cb_data;
 
-	return 0;
+    return 0;
 
 }
 
 static void port_listener_destroy(struct port_listener* listener)
 {
-	sock_release(listener->udpsocket);
+    sock_release(listener->udpsocket);
 }
 
 /* Concrete objects for module */
@@ -347,13 +347,13 @@ static void sender_on_function_exit(struct kedr_event_handlers *eh,
 }
 
 static void sender_on_call_pre(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, unsigned long func)
+    unsigned long tid, unsigned long pc, unsigned long func)
 {
     record_function_call_pre(tid, pc, func);
 }
 
 static void sender_on_call_post(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, unsigned long func)
+    unsigned long tid, unsigned long pc, unsigned long func)
 {
     record_function_call_post(tid, pc, func);
 }
@@ -368,7 +368,7 @@ static void sender_begin_memory_events(
 
 static void sender_end_memory_events(
     struct kedr_event_handlers *eh, 
-	unsigned long tid, void *data)
+    unsigned long tid, void *data)
 {
     record_memory_accesses_end(data);
 }
@@ -413,8 +413,8 @@ static void sender_on_memory_barrier_post(struct kedr_event_handlers *eh,
 }
 
 static void sender_on_alloc_post(struct kedr_event_handlers *eh, 
-		unsigned long tid, unsigned long pc, 
-		unsigned long size, unsigned long addr)
+        unsigned long tid, unsigned long pc, 
+        unsigned long size, unsigned long addr)
 {
     record_alloc(tid, pc, size, addr);
 }
@@ -441,8 +441,8 @@ static void sender_on_unlock_pre(struct kedr_event_handlers *eh,
 }
 
 static void sender_on_signal_pre(struct kedr_event_handlers *eh, 
-		unsigned long tid, unsigned long pc, 
-		unsigned long obj_id, enum kedr_sw_object_type type)
+        unsigned long tid, unsigned long pc, 
+        unsigned long obj_id, enum kedr_sw_object_type type)
 {
     record_signal(tid, pc, obj_id, type);
 }
@@ -454,19 +454,25 @@ static void sender_on_wait_post(struct kedr_event_handlers *eh,
     record_wait(tid, pc, obj_id, type);
 }
 
-// TODO: currently  thread_create /thread_join events has no sence.
-static void sender_on_thread_create_post(struct kedr_event_handlers *eh, 
-		unsigned long tid, unsigned long pc, 
-		tid_t child_tid)
+static void sender_on_thread_create_pre(struct kedr_event_handlers *eh, 
+        unsigned long tid, unsigned long pc)
 {
-    record_thread_create(tid, pc, child_tid);
+    record_thread_create_before(tid, pc);
 }
 
-static void sender_on_thread_join_post(struct kedr_event_handlers *eh,
-		unsigned long tid, unsigned long pc, 
-		unsigned long child_tid)
+static void sender_on_thread_create_post(struct kedr_event_handlers *eh, 
+        unsigned long tid, unsigned long pc, 
+        tid_t child_tid)
 {
-	record_thread_join(tid, pc, child_tid);
+    record_thread_create_after(tid, pc, child_tid);
+}
+
+
+static void sender_on_thread_join_post(struct kedr_event_handlers *eh,
+        unsigned long tid, unsigned long pc, 
+        unsigned long child_tid)
+{
+    record_thread_join(tid, pc, child_tid);
 }
 
 static struct kedr_event_handlers sender_event_handlers =
@@ -500,8 +506,9 @@ static struct kedr_event_handlers sender_event_handlers =
     .on_signal_pre =                sender_on_signal_pre,
     .on_wait_post =                 sender_on_wait_post,
     
-	.on_thread_create_post =		sender_on_thread_create_post,
-	.on_thread_join_post = 			sender_on_thread_join_post,
+    .on_thread_create_pre =         sender_on_thread_create_pre,
+    .on_thread_create_post =        sender_on_thread_create_post,
+    .on_thread_join_post =          sender_on_thread_join_post,
 };
 
 /* Client address as module parameter */
@@ -590,20 +597,20 @@ module_param_net_named(client_addr, &client_ops, S_IRUGO | S_IWUSR);
 
 static int __init server_init( void )
 {
-	int result;
+    int result;
 
-	if((buffer_normal_size <= 0) || (buffer_critical_size <= 0))
-	{
-		pr_err("Sizes of buffers for trace should be positive.");
-		return -EINVAL;
-	}
+    if((buffer_normal_size <= 0) || (buffer_critical_size <= 0))
+    {
+        pr_err("Sizes of buffers for trace should be positive.");
+        return -EINVAL;
+    }
 
-	sender = trace_sender_create(
+    sender = trace_sender_create(
         sender_work_interval,
         sender_sensetivity,
         transmition_size_limit,
         transmition_speed_limit);
-	if(sender == NULL)
+    if(sender == NULL)
     {
         result = -EINVAL;
         goto sender_err;
@@ -621,10 +628,10 @@ static int __init server_init( void )
     result = kedr_register_event_handlers(&sender_event_handlers);
     if(result) goto event_handler_err;
 
-	result = port_listener_init(&listener, server_port, sender);
-	if(result) goto listener_err;
+    result = port_listener_init(&listener, server_port, sender);
+    if(result) goto listener_err;
 
-	return 0;
+    return 0;
 
 listener_err:
     kedr_unregister_event_handlers(&sender_event_handlers);
@@ -632,19 +639,19 @@ event_handler_err:
     trace_sender_stop(sender);
     trace_sender_wait_stop(sender);
 sender_start_err:
-	trace_sender_destroy(sender);
+    trace_sender_destroy(sender);
 sender_err:
-	return result;
+    return result;
 }
 
 static void __exit server_exit( void )
 {
-	port_listener_destroy(&listener);
+    port_listener_destroy(&listener);
 
     kedr_unregister_event_handlers(&sender_event_handlers);
 
-	trace_sender_stop(sender);
-	if(trace_sender_wait_stop(sender) == 0);
+    trace_sender_stop(sender);
+    if(trace_sender_wait_stop(sender) == 0);
         trace_sender_destroy(sender);
 }
 

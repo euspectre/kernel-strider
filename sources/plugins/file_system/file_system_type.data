@@ -24,17 +24,7 @@ implementation_header=>>
 /* Need for use sw identificators of super block object */
 #include "super_operations_model.h"
 
-/* In the future, this should be definition in <kedr/..> header. */
-
-#ifndef MODULE_MODEL_STATE_POST_INITIALIZED
-/* 
- * Signal-wait id for module object.
- *
- * NOTE: Only 'POST' id is exist. 'PRE' id has no sence because
- * module is initialized before first instruction is executed.
- */
-#define MODULE_MODEL_STATE_POST_INITIALIZED(mod) (mod)
-#endif
+#include "module_ref_model.h"
 <<
 
 object.type = struct file_system_type
@@ -65,7 +55,7 @@ operation.external.state.transition.condition =
 # module_put() model
 operation.code.post.external =>>
 	if(s->s_type->owner)
-		generate_signal(tid, pc,
+		kedr_eh_on_signal(tid, pc,
 			MODULE_MODEL_STATE_POST_INITIALIZED(s->s_type->owner),
 			KEDR_SWT_COMMON);
 <<

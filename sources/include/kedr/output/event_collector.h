@@ -106,7 +106,8 @@ enum execution_message_type
     execution_message_type_signal,
     execution_message_type_wait,
     /* Message contains information about thread create/join operation */
-    execution_message_type_tcreate,
+    execution_message_type_tc_before,
+    execution_message_type_tc_after,
     execution_message_type_tjoin,
     /* Message contains information about function entry/exit */
     execution_message_type_fentry,
@@ -195,12 +196,28 @@ struct execution_message_sw
     unsigned char type;
 };
 
-struct execution_message_tcj
+struct execution_message_tc_before
 {
-    struct execution_message_base base; /* .type = tcreate/tjoin */
+    struct execution_message_base base; /* .type = tc_before */
+    addr_t pc;
+};
+
+
+struct execution_message_tc_after
+{
+    struct execution_message_base base; /* .type = tc_after */
+    addr_t pc;
+    tid_t child_tid; // TODO: error mark, currently it is '-1'
+    // (0 is used for interrupt handler on cpu0)
+};
+
+struct execution_message_tjoin
+{
+    struct execution_message_base base; /* .type = tjoin */
     addr_t pc;
     tid_t child_tid;
 };
+
 
 struct execution_message_fee
 {
@@ -321,13 +338,28 @@ void execution_event_wait(
 
 
 /*
- * Record information about thread creation/joining operations.
+ * Record information about thread creation.
  */
-void execution_event_thread_create(
+void execution_event_thread_create_before(
+    struct execution_event_collector* collector,
+    tid_t tid, addr_t pc);
+
+void execution_event_thread_create_after(
     struct execution_event_collector* collector,
     tid_t tid, addr_t pc,
     tid_t child_tid);
 
+/* Cancel thread creation, beginning in 'create_before'*/
+static inline void execution_event_thread_create_cancel(
+    struct execution_event_collector* collector,
+    tid_t tid, addr_t pc)
+{
+    execution_event_thread_create_after(collector, tid, pc, -1);
+}
+
+/*
+ * Record information about thread joining.
+ */
 void execution_event_thread_join(
     struct execution_event_collector* collector,
     tid_t tid, addr_t pc,
@@ -493,12 +525,23 @@ static inline void record_wait(tid_t tid, addr_t pc,
 /*
  * Record information about thread creation/joining operations.
  */
-static inline void record_thread_create(tid_t tid, addr_t pc,
+static inline void record_thread_create_before(tid_t tid, addr_t pc)
+{
+    execution_event_thread_create_before(current_collector, tid, pc);
+}
+
+static inline void record_thread_create_after(tid_t tid, addr_t pc,
     tid_t child_tid)
 {
-    execution_event_thread_create(current_collector,
+    execution_event_thread_create_after(current_collector,
         tid, pc, child_tid);
 }
+
+static inline void record_thread_create_cancel(tid_t tid, addr_t pc)
+{
+    execution_event_thread_create_cancel(current_collector, tid, pc);
+}
+
 
 static inline void record_thread_join(tid_t tid, addr_t pc,
     tid_t child_tid)
