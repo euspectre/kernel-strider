@@ -32,6 +32,41 @@
 #include "util.h"
 #include "sections.h"
 #include "hooks.h"
+#include "annot_impl.h"
+/* ====================================================================== */
+
+/* Returns non-zero if the function should not be instrumented even if it
+ * would be otherwise eligible for instrumentation.
+ * Currently, this applies to the annotation functions only. 
+ * In the future, this could help allow the user to specify a custom list of
+ * the functions to ignore. */
+static int
+should_be_ignored(struct kedr_ifunc *func, struct kedr_i13n *i13n)
+{
+	unsigned int i;
+	
+	/* Ignore the annotation functions. */
+	for (i = 0; i < (unsigned int)KEDR_ANN_NUM_TYPES; ++i) {
+		if (func->info.addr == i13n->ann_addr[i])
+			return 1;
+	}
+	return 0;
+}
+
+static void
+remove_ignored_funcs(struct kedr_i13n *i13n)
+{
+	struct kedr_ifunc *pos;
+	struct kedr_ifunc *tmp;
+	
+	list_for_each_entry_safe(pos, tmp, &i13n->ifuncs, list) {
+		if (should_be_ignored(pos, i13n)) {
+			list_del(&pos->list);
+			kfree(pos);
+			--i13n->num_ifuncs;
+		}
+	}
+}
 /* ====================================================================== */
 
 /* For a given function, free the structures related to the jump tables for
@@ -136,6 +171,7 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 {
 	struct module *mod = i13n->target;
 	struct kedr_ifunc *tf;
+	unsigned int i;
 	
 	tf = kzalloc(sizeof(*tf), GFP_KERNEL);
 	if (tf == NULL)
@@ -175,6 +211,11 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	
 	list_add(&tf->list, &i13n->ifuncs);
 	++i13n->num_ifuncs;
+	
+	for (i = 0; i < (unsigned int)KEDR_ANN_NUM_TYPES; ++i) {
+		if (strcmp(tf->name, kedr_annotation_handlers[i].name) == 0)
+			i13n->ann_addr[i] = tf->info.addr;
+	}
 	return 0;
 }
 
@@ -554,6 +595,7 @@ find_functions(struct kedr_i13n *i13n)
 	}
 	kfree(func_boundaries);
 	destroy_special_items(&special_items);
+	remove_ignored_funcs(i13n);
 	
 	list_for_each_entry(pos, &i13n->ifuncs, list) {
 		ret = adjust_size(pos);

@@ -19,8 +19,8 @@ set(FUNCTION_GROUPS
 )
 
 if(NOT KEDR_COI_INSTALL_DIR)
-	# Without KEDR COI plugin for cdev operations will not builded.
-	# Instead, some model for that subsystem will be compiled into standard functions.
+	# Without KEDR COI, the plugin for cdev operations will not built.
+	# Instead, a simple built-in model for that subsystem will be used.
 	list(APPEND FUNCTION_GROUPS "cdev")
 endif(NOT KEDR_COI_INSTALL_DIR)
 
@@ -64,9 +64,10 @@ kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
 kbuild_add_dependencies("kedr_mem_core")
 
 if(KEDR_COI_INSTALL_DIR)
-	# Main module depends on existence of 'cdev' group.
-	# If this group is not builded, tell main module to not include
-	# corresponded lines
+	# The main module provides some of the functionality for a simple 
+	# model for 'cdev' group.
+	# If this model is not going to be used, that functionality implemented
+	# will not be present in the main module.
 	kbuild_add_definitions("-DNO_CDEV")
 endif(KEDR_COI_INSTALL_DIR)
 
@@ -80,7 +81,6 @@ kbuild_add_module(${KMODULE_NAME}
 	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
 	"${TOP_INCLUDE_DIR}/object_types.h"
-	"${TOP_INCLUDE_DIR}/annotations.h"
 	"${CMAKE_BINARY_DIR}/config.h"
 )
 add_dependencies(${KMODULE_NAME} ${KMODULE_NAME}_module.c)

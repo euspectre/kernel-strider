@@ -1,0 +1,194 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that the correct events are generated when the target
+# module contains dynamic annotations.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${REPORTER_MODULE}"; then
+		printf "The \"trace reporter\" module is missing: ${REPORTER_MODULE}\n"
+		exit 1
+	fi
+		
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${FH_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${FH_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	# 1. First, try to load the target while KernelStrider is not loaded.
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Unload the target.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# 2. Now load KernelStrider, load the target again and check if the 
+	# expected events have been recorded in the trace.
+	/sbin/insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	/sbin/insmod "${REPORTER_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Unload the target.
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Get the trace.
+	cat "${TEST_DEBUGFS_FILE}" > "${TEST_TRACE_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	# Unload the remaining modules, they are no longer needed
+	/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	
+	cat "${TEST_TRACE_FILE}" | \
+		sed -ne 's/^TID=0x[0-9a-f]*\s*//;s/0x//;s/ pc=[0-9a-f]*//p;' | \
+		tr -d '\n' | \
+		grep -E "${TEST_MATCH_EXPR}" > /dev/null
+	if test $? -ne 0; then
+		printf "No matching records have been found in the trace.\n"
+		printf "See the trace file: ${TEST_TRACE_FILE}.\n"
+		exit 1
+	fi 
+}
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="kedr_mem_core"
+CORE_MODULE="@CMAKE_BINARY_DIR@/core/${CORE_MODULE_NAME}.ko"
+
+REPORTER_MODULE_NAME="kedr_test_reporter"
+REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="test_annotations"
+TARGET_MODULE="@CMAKE_CURRENT_BINARY_DIR@/test_module/${TARGET_MODULE_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
+TEST_TRACE_FILE="${TEST_TMP_DIR}/trace.txt"
+
+TEST_MATCH_EXPR="@TEST_MATCH_EXPR@"
+
+if test -z "${TEST_MATCH_EXPR}"; then
+	printf "The expression to be matched is empty.\n"
+	exit 1
+fi
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+checkPrereqs
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

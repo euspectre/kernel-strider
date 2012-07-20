@@ -3,6 +3,8 @@
 #define I13N_H_1122_INCLUDED
 
 #include <linux/list.h>
+
+#include "annot_impl.h"
 /* ====================================================================== */
 
 struct module;
@@ -49,6 +51,12 @@ struct kedr_i13n
 	 * addresses of the corresponding original functions. The table 
 	 * is created and maintained only if lookup is enabled. */
 	struct hlist_head *fi_table;
+	
+	/* Addresses of the annotation functions found in the target module.
+	 * The type of the annotation is used as an index. ann_addr[t] must
+	 * be 0 if the annotation function of type 't' is not present in the
+	 * target. */
+	unsigned long ann_addr[KEDR_ANN_NUM_TYPES];
 };
 
 /* Create an instrumentation object for the given target module and 

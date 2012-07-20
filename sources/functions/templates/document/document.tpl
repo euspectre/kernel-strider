@@ -32,10 +32,8 @@
 #include <linux/list.h>
 
 #include <kedr/kedr_mem/core_api.h>
-#include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
-#include <kedr/annotations.h>
 
 #include "config.h"
 
@@ -275,123 +273,6 @@ out:
 EXPORT_SYMBOL(kedr_fh_plugin_unregister);
 /* ====================================================================== */
 
-/* Handlers for dynamic annotations.
- * Note that "call pre" and "call post" events are not reported for these 
- * calls, they are redundant. */
-
-/* "happens-before" / "happens-after" */
-static void 
-happens_before_pre(struct kedr_local_storage *ls)
-{
-	/* nothing to do here */
-}
-static void 
-happens_before_post(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long obj_id;
-	
-	/* This handler is closer to the annotated operation (the annotation
-	 * is expected to be right before the latter), so we report "SIGNAL"
-	 * event here rather than in the pre handler. */
-	obj_id = KEDR_LS_ARG1(ls);
-	kedr_eh_on_signal(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
-}
-
-static void 
-happens_after_pre(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long obj_id;
-	
-	/* This handler is closer to the annotated operation (the annotation
-	 * is expected to be right after the latter), so we report "WAIT"
-	 * event here rather than in the post handler. */
-	obj_id = KEDR_LS_ARG1(ls);
-	kedr_eh_on_wait(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
-}
-
-static void 
-happens_after_post(struct kedr_local_storage *ls)
-{
-	/* nothing to do here */
-}
-	
-static struct kedr_func_drd_handlers 
-handlers_kedr_annotate_happens_before = {
-	.func = (unsigned long)&kedr_annotate_happens_before,
-	.pre_handler = &happens_before_pre,
-	.post_handler = &happens_before_post
-}; 
-
-static struct kedr_func_drd_handlers 
-handlers_kedr_annotate_happens_after = {
-	.func = (unsigned long)&kedr_annotate_happens_after,
-	.pre_handler = &happens_after_pre,
-	.post_handler = &happens_after_post
-};
-
-/* "memory acquired" / "memory released" */
-static void 
-memory_acquired_pre(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long size;
-	
-	size = KEDR_LS_ARG2(ls);
-	if (size != 0)
-		kedr_eh_on_alloc_pre(ls->tid, info->pc, size);
-}
-static void 
-memory_acquired_post(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long addr;
-	unsigned long size;
-	
-	addr = KEDR_LS_ARG1(ls);
-	size = KEDR_LS_ARG2(ls);
-	
-	if (size != 0 && addr != 0)
-		kedr_eh_on_alloc_post(ls->tid, info->pc, size, addr);
-}
-
-static void 
-memory_released_pre(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long addr;
-	
-	addr = KEDR_LS_ARG1(ls);
-	if (addr != 0)
-		kedr_eh_on_free_pre(ls->tid, info->pc, addr);
-}
-static void 
-memory_released_post(struct kedr_local_storage *ls)
-{
-	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
-	unsigned long addr;
-	
-	addr = KEDR_LS_ARG1(ls);
-	if (addr != 0)
-		kedr_eh_on_free_post(ls->tid, info->pc, addr);
-}
-
-static struct kedr_func_drd_handlers 
-handlers_kedr_annotate_memory_acquired = {
-	.func = (unsigned long)&kedr_annotate_memory_acquired,
-	.pre_handler = &memory_acquired_pre,
-	.post_handler = &memory_acquired_post
-};
-
-static struct kedr_func_drd_handlers 
-handlers_kedr_annotate_memory_released = {
-	.func = (unsigned long)&kedr_annotate_memory_released,
-	.pre_handler = &memory_released_pre,
-	.post_handler = &memory_released_post
-};
-/* ====================================================================== */
-
 <$block: join(\n)$>
 /* ====================================================================== */
 
@@ -399,13 +280,6 @@ handlers_kedr_annotate_memory_released = {
  * init function where it is sorted. After that, it remains the same and
  * can be read from any number of threads simultaneously without locking. */
 static struct kedr_func_drd_handlers *handlers[] = {
-	/* handlers for annotations */
-	&handlers_kedr_annotate_happens_before,
-	&handlers_kedr_annotate_happens_after,
-	&handlers_kedr_annotate_memory_acquired,
-	&handlers_kedr_annotate_memory_released,
-		
-	/* handlers for other functions */
 	<$handlerItem: join(,\n\t)$>
 };
 /* ====================================================================== */

@@ -50,8 +50,8 @@ kbuild_add_module(${KMODULE_NAME}
 	"insn_gen.c"
 	"transform.c"
 	"handlers.c"
-	"annotations.c"
 	"resolve_ip.c"
+	"annot_impl.c"
 	"${THUNKS_SOURCE_FILE}"
 
 # Headers
@@ -69,6 +69,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"handlers.h"
 	"thunks.h"
 	"resolve_ip.h"
+	"annot_impl.h"
 
 # Instruction decoder: sources and headers
 	"${ARCH_DIR}/lib/inat.c"
@@ -89,7 +90,6 @@ kbuild_add_module(${KMODULE_NAME}
 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/block_info.h"
 	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
-	"${TOP_INCLUDE_DIR}/annotations.h"
 )
 
 # Generate the table with the information about the machine instructions
@@ -156,6 +156,9 @@ kedr_install_symvers(${KMODULE_NAME})
 
 # User-mode helpers
 add_subdirectory(um_helpers)
+
+# The files needed for the target modules using dynamic annotations
+add_subdirectory(annotations)
 ########################################################################
 
 # Tests

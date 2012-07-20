@@ -1135,13 +1135,38 @@ is_jump_backwards(struct kedr_ir_node *node)
 	 * kernel modules, some special kind of padding, may be. */
 }
 
+/* The handlers of the calls to the annotation functions are set here. 
+ * For other functions, the conventional lookup from the "Function Handling"
+ * subsystem is performed. */
+static void
+fill_call_info_i13n(struct kedr_call_info *info, struct kedr_i13n *i13n)
+{
+	unsigned int i;
+	BUG_ON(info->target == 0);
+	
+	for (i = 0; i < (unsigned int)KEDR_ANN_NUM_TYPES; ++i) {
+		if (info->target != i13n->ann_addr[i])
+			continue;
+		
+		BUG_ON(kedr_annotation_handlers[i].pre == 0);
+		BUG_ON(kedr_annotation_handlers[i].post == 0);
+		
+		info->pre_handler = kedr_annotation_handlers[i].pre;
+		info->post_handler = kedr_annotation_handlers[i].post;
+		info->repl = info->target;
+		return;
+	}
+	kedr_fill_call_info((unsigned long)info);
+}
+
 /* Allocates an instance of 'kedr_call_info' for a given node, initializes
  * the fields which data are already known (depending on the type of the 
  * node), adds the instance to 'call_infos' in 'func'. The node must 
  * correspond to a near call/jump that transfers control to some other
  * function. */
 static int
-prepare_call_info(struct kedr_ir_node *node, struct kedr_ifunc *func)
+prepare_call_info(struct kedr_ir_node *node, struct kedr_ifunc *func, 
+	struct kedr_i13n *i13n)
 {
 	struct kedr_call_info *info;
 	
@@ -1159,7 +1184,7 @@ prepare_call_info(struct kedr_ir_node *node, struct kedr_ifunc *func)
 	if (node->cb_type == KEDR_CB_CALL_REL32_OUT || 
 	    node->cb_type == KEDR_CB_JUMP_REL32_OUT) {
 		info->target = node->dest_addr;
-		kedr_fill_call_info((unsigned long)info);
+		fill_call_info_i13n(info, i13n);
 	}
 	
 	node->call_info = info;
@@ -1184,7 +1209,7 @@ prepare_call_info(struct kedr_ir_node *node, struct kedr_ifunc *func)
  * starts of the blocks and sets other relevant flags. */
 static int
 ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir, 
-	struct kedr_ifunc *func)
+	struct kedr_ifunc *func, struct kedr_i13n *i13n)
 {
 	int ret = 0;
 	
@@ -1227,7 +1252,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		}
 		else {
 			node->cb_type = KEDR_CB_JUMP_INDIRECT_OUT;
-			ret = prepare_call_info(node, func);
+			ret = prepare_call_info(node, func, i13n);
 			if (ret != 0)
 				return ret;
 		}
@@ -1238,7 +1263,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 	if (is_insn_call_near_indirect(&node->insn)) {
 		ir_mark_node_separate_block(node, ir);
 		node->cb_type = KEDR_CB_CALL_INDIRECT;
-		ret = prepare_call_info(node, func);
+		ret = prepare_call_info(node, func, i13n);
 		return ret;
 	}
 	
@@ -1249,7 +1274,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		if (is_transfer_outside(node, func)) {
 			ir_mark_node_separate_block(node, ir);
 			node->cb_type = KEDR_CB_JUMP_REL32_OUT;
-			ret = prepare_call_info(node, func);
+			ret = prepare_call_info(node, func, i13n);
 			if (ret != 0)
 				return ret;
 		}
@@ -1271,7 +1296,7 @@ ir_node_set_block_starts(struct kedr_ir_node *node, struct list_head *ir,
 		if (is_transfer_outside(node, func)) {
 			ir_mark_node_separate_block(node, ir);
 			node->cb_type = KEDR_CB_CALL_REL32_OUT;
-			ret = prepare_call_info(node, func);
+			ret = prepare_call_info(node, func, i13n);
 			if (ret != 0)
 				return ret;
 		}
@@ -1677,7 +1702,8 @@ fill_block_info(struct kedr_ir_node *start, struct list_head *ir)
  * such, determine the types of the blocks, create kedr_block_info 
  * instances where needed and add them to the list in 'func'. */
 static int
-ir_create_blocks(struct kedr_ifunc *func, struct list_head *ir)
+ir_create_blocks(struct kedr_ifunc *func, struct list_head *ir,
+	struct kedr_i13n *i13n)
 {
 	struct kedr_ir_node *pos;
 	struct kedr_ir_node *start = NULL;
@@ -1694,7 +1720,7 @@ ir_create_blocks(struct kedr_ifunc *func, struct list_head *ir)
 	/* The first pass: process control transfer instructions and the 
 	 * instructions that should always be in a separate block. */
 	list_for_each_entry(pos, ir, list) {
-		ret = ir_node_set_block_starts(pos, ir, func);
+		ret = ir_node_set_block_starts(pos, ir, func, i13n);
 		if (ret != 0)
 			return ret;
 	}
@@ -2067,7 +2093,7 @@ kedr_ir_create(struct kedr_ifunc *func, struct kedr_i13n *i13n,
 	if (ret != 0)
 		goto out;
 	
-	ret = ir_create_blocks(func, ir);
+	ret = ir_create_blocks(func, ir, i13n);
 	if (ret != 0)
 		goto out;
 		
