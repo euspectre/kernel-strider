@@ -1,0 +1,1 @@
+&<$object.name$>_destroy_function

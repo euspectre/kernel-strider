@@ -1,0 +1,105 @@
+module.author = Andrey Tsyvarev
+module.license = GPL
+
+header =>>
+/* 
+ * A plugin to the function handling subsystem that allows to use KEDR-COI
+ * to establish needed happens-before links for file systems.
+ */
+
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+#include <linux/kernel.h> 
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/errno.h>
+#include <linux/list.h>
+#include <linux/slab.h>
+#include <linux/fs.h>
+
+#include <kedr/kedr_mem/core_api.h>
+#include <kedr/object_types.h>
+
+#include <kedr-coi/interceptors/file_operations_interceptor.h>
+
+#include "callback_interceptor.h"
+
+#include "file_operations_model.h"
+#include "inode_operations_model.h"
+#include "super_operations_model.h"
+#include "file_system_type_model.h"
+
+#include "fs_interception.h"
+
+#include "module_ref_model.h"
+<<
+
+object.name = fs_interception
+object.init = return fs_interception_init();
+object.destroy = fs_interception_destroy();
+
+object.name = file_operations_model
+object.init = return file_operations_model_connect(&file_operations_interceptor_payload_register);
+object.destroy = file_operations_model_disconnect(&file_operations_interceptor_payload_unregister);
+
+object.name = inode_operations_model
+object.init = return inode_operations_model_connect(&inode_operations_interceptor_payload_register);
+object.destroy = inode_operations_model_disconnect(&inode_operations_interceptor_payload_unregister);
+
+object.name = super_operations_model
+object.init = return super_operations_model_connect(&super_operations_interceptor_payload_register);
+object.destroy = super_operations_model_disconnect(&super_operations_interceptor_payload_unregister);
+
+object.name = file_system_type_model
+object.init = return file_system_type_model_connect(&file_system_type_interceptor_payload_register);
+object.destroy = file_system_type_model_disconnect(&file_system_type_interceptor_payload_unregister);
+
+[group]
+function.name = register_filesystem
+returnType = int
+
+arg.type = struct file_system_type*
+arg.name = fs
+
+pre =>>
+    file_system_type_interceptor_watch(fs);
+    /* Relation: File system registration should be happened before its operations are called. */
+    kedr_eh_on_signal_pre(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
+<<
+
+post =>>
+    kedr_eh_on_signal_post(tid, pc, FST_MODEL_STATE_PRE_REGISTERED(fs), KEDR_SWT_COMMON);
+    if(returnValue)
+		file_system_type_interceptor_forget(fs);
+<<
+
+[group]
+function.name = unregister_filesystem
+returnType = int
+
+arg.type = struct file_system_type*
+arg.name = fs
+
+post =>>
+    if(returnValue == 0)
+		file_system_type_interceptor_forget(fs);
+<<
+
+on_target_load = fs_interception_start();
+
+on_target_unload = fs_interception_stop();
+
+on_before_exit =>>
+    /* Relation: all module_put(m) calls should be happened before exit() */
+	kedr_eh_on_wait(tid, pc, MODULE_MODEL_STATE_POST_INITIALIZED(m),
+		KEDR_SWT_COMMON);
+<<

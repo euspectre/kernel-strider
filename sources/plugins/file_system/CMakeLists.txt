@@ -2,6 +2,7 @@
 set(plugin_name "kedr_plugin_file_system")
 
 kbuild_include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+kbuild_include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 kbuild_include_directories("${KEDR_COI_INSTALL_DIR}/include")
 
 kbuild_use_symbols("${KEDR_COI_INSTALL_DIR}/lib/modules/${KBUILD_VERSION_STRING}/symvers/kedr_coi.symvers")
@@ -13,7 +14,7 @@ kbuild_use_symbols("${CMAKE_BINARY_DIR}/functions/Module.symvers")
 kbuild_add_dependencies("kedr_func_drd")
 
 kbuild_add_module(${plugin_name}
-    "module.c"
+    "plugin.c"
     "file_operations_model.c"
     "file_operations_model.h"
     
@@ -37,6 +38,12 @@ kbuild_add_module(${plugin_name}
     "file_system_type_model.h"
 )
 
+# Plugin code generation
+rule_generate_file("plugin.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/module.data"
+    "${model_templates_dir}/plugin_module.c")
+
+
 # Interception for whole file system is taken from example in KEDR COI
 rule_copy_file("fs_interception.c"
     "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/examples/file_access_counter/fs_interception.c")
@@ -56,7 +63,6 @@ rule_copy_file("inode_operations_interceptor.c"
     "${interceptors_dir}/inode_operations_interceptor.c")
 rule_copy_file("dentry_operations_interceptor.c"
     "${interceptors_dir}/dentry_operations_interceptor.c")
-
 
 
 

@@ -1,0 +1,1 @@
+&<$object.name$>_init_function

@@ -1,0 +1,1 @@
+{&<$function.name$>, &<$function.name$>_repl}

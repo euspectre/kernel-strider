@@ -1,0 +1,32 @@
+[group]
+function.name = kthread_create_on_node
+returnType = struct task_struct*
+
+arg.type = int (*)(void *data)
+arg.name = threadfn
+
+arg.type = void*
+arg.name = data
+
+arg.type = int
+arg.name = node
+
+arg.type = const char*
+arg.name = namefmt
+
+# Variadic number of arguments. This parameter is not used in templates.
+arg.ellipsis = true
+
+pre =>>
+	kedr_eh_on_thread_create_pre(tid, pc);
+<<
+post =>>
+	kedr_eh_on_thread_create_post(tid, pc,
+		returnValue ? (unsigned long)returnValue : (unsigned long)0);
+/* 
+ * TODO: Really, child process is not started here but after first
+ * wake_up_process().
+ * But for determine first wake_up_process() call we need additional
+ * efforts.
+ */
+<<
