@@ -9,9 +9,9 @@
  *
  * To use these annotations, one needs to #include this header in the code 
  * of the target module and #define KEDR_ANNOTATIONS_ENABLED to a non-zero 
- * value. It is also needed to instruct the build system of the target 
- * module to compile kedr_annotations.ñ and link the resuling object file
- * into the target when the target is being built. 
+ * value before that #include directive. It is also needed to instruct the
+ * build system of the target module to compile kedr_annotations.c and link
+ * the resuling object file into the target when the target is being built. 
  *
  * [NB] A target module containing such annotations can be used normally 
  * even if KernelStrider is not loaded. */
