@@ -1,6 +1,6 @@
 FENTRY name="kedr_test_stack_on_call"
-CALL_PRE pc=kedr_test_stack_on_call+0xa/0x13 [test_stack_on_call] name="kedr_test_stack_func"
+CALL_PRE pc=kedr_test_stack_on_call+0xa name="kedr_test_stack_func"
 FENTRY name="kedr_test_stack_func"
 FEXIT name="kedr_test_stack_func"
-CALL_POST pc=kedr_test_stack_on_call+0xa/0x13 [test_stack_on_call] name="kedr_test_stack_func"
+CALL_POST pc=kedr_test_stack_on_call+0xa name="kedr_test_stack_func"
 FEXIT name="kedr_test_stack_on_call"

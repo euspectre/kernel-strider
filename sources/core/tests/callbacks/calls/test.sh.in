@@ -110,8 +110,11 @@ doTest()
 		exit 1
 	fi
 	
-	# Get the trace and preprocess it (remove TID field).
-	cat "${TEST_DEBUGFS_FILE}" | sed -ne 's/^TID=0x[0-9a-f]*\s*//;p;' > "${TEST_TRACE_FILE}"	
+	# Get the trace and preprocess it: remove TID field, symbol size 
+	# and module name, make sure a NULL pointer is reported as "0x0".
+	cat "${TEST_DEBUGFS_FILE}" | \
+		sed -e 's/^TID=0x[0-9a-f]*\s*//; s/\/0x[0-9a-f]*\s*/ /g;' | \
+		sed -e 's/\s*\[[^]]*\]//g; s/\s*(null)/0x0/g' > "${TEST_TRACE_FILE}"
 	if test $? -ne 0; then
 		printf "Failed to read data from the output file in debugfs: "
 		printf "${TEST_DEBUGFS_FILE}\n"
