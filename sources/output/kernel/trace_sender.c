@@ -133,7 +133,7 @@ static int kedr_trace_session_start(
     kedr_trace_session_set_state(trace_session,
         kedr_trace_session_state_started);
 
-    pr_info("Trace session has been started.");
+    pr_info("Trace session has been started.\n");
 
     return 0;
 }
@@ -169,7 +169,7 @@ static void kedr_trace_session_stop(
     kedr_trace_session_set_state(trace_session,
         kedr_trace_session_state_ready);
     
-    pr_info("Trace session has been stopped.");
+    pr_info("Trace session has been stopped.\n");
 }
 
 /* Helpers for the next function */
@@ -326,7 +326,7 @@ static void kedr_trace_session_terminate(
 {
     BUG_ON(trace_session->is_terminated);
     trace_session->is_terminated = 1;
-    pr_info("Trace session is terminated.");
+    pr_info("Trace session is terminated.\n");
 }
 
 /*
@@ -348,11 +348,11 @@ static int kedr_trace_session_wait_stop(
 
     if(result == 0)
     {
-        pr_info("Success.");
+        pr_info("Success.\n");
     }
     else
     {
-        pr_info("Fail.");
+        pr_info("Fail.\n");
     }
 
     return result;
@@ -540,7 +540,7 @@ static int trace_sender_send_msg(struct trace_sender* sender,
     result = kernel_sendmsg(sender->clientsocket, &msg, vec, vec_num, size);
 	if(result < 0)
 	{
-		pr_err("Error occure while sending message.");
+		pr_err("Error occured while sending the message.\n");
 		return result;
 	}
     sender->seq++;
@@ -631,7 +631,7 @@ static int trace_sender_send_trace(struct trace_sender* sender,
             if(result < 0)
             {
                 /* As if the message was lost in network. */
-                pr_err("Failed to send msg. Ignore it.");
+                pr_err("Failed to send msg. Ignore it.\n");
                 sender->seq++;
             }
         }
@@ -865,7 +865,7 @@ static void trace_sender_work(struct work_struct *data)
         result = mutex_lock_interruptible(&sender->trace_session_mutex);
         if(result < 0)
         {
-            pr_err("Failed to acquire mutex for starting trace sessions.");
+            pr_err("Failed to acquire mutex for starting trace sessions.\n");
 
             spin_lock_irqsave(&sender->lock, flags);
             trace_sender_unfreeze_state_internal(sender,
@@ -884,7 +884,7 @@ static void trace_sender_work(struct work_struct *data)
             }
             else
             {
-                pr_err("Failed to start trace session.");
+                pr_err("Failed to start trace session.\n");
             }
         }
 
@@ -923,7 +923,7 @@ static void trace_sender_work(struct work_struct *data)
                 sender->transmition_interval_empty_jiff);
         break;
         default:
-            pr_err("Unexpected error while sending trace: %d.", result);
+            pr_err("Unexpected error while sending trace: %d.\n", result);
             /* Queue work again - may be error will be recovered */
             queue_delayed_work(sender->wq, &sender->work,
                 sender->transmition_interval_jiff);
@@ -972,7 +972,7 @@ static void trace_sender_work(struct work_struct *data)
         spin_unlock_irqrestore(&sender->lock, flags);
 	break;
 	default:
-        pr_info("Invalid trace sender state %d.", (int)sender->state);
+        pr_info("Invalid trace sender state %d.\n", (int)sender->state);
 		spin_unlock_irqrestore(&sender->lock, flags);
 	}
 }
@@ -993,26 +993,26 @@ struct trace_sender* trace_sender_create(
         || (transmition_interval > 1000)
         || (transmition_interval_empty > 1000))
     {
-        pr_err("Incorrect value of transmition intervals. Should be in [0,1000].");
+        pr_err("Incorrect value of transmition intervals. Should be in [0,1000].\n");
         goto err;
     }
 
     if(transmition_interval_empty < transmition_interval)
     {
         pr_err("Transmition interval for empty trace shouldn't be less "
-            "than one for non-emtpy trace.");
+            "than one for non-emtpy trace.\n");
         goto err;
     }
 
     if(transmition_size_limit < 0)
     {
-        pr_err("Negative value of transmition size.");
+        pr_err("Negative value of transmition size.\n");
         goto err;
     }
 
     if(transmition_rate_limit < 0)
     {
-        pr_err("Negative value of transmition speed.");
+        pr_err("Negative value of transmition speed.\n");
         goto err;
     }
 
@@ -1020,14 +1020,14 @@ struct trace_sender* trace_sender_create(
         > transmition_interval * transmition_rate_limit)
     {
         pr_err("At least one message of size 'transmition_size_limit' "
-            "should be allowed to send at every transmition_interval");
+            "should be allowed to send at every transmition_interval.\n");
         goto err;
     }
 
     sender = kmalloc(sizeof(*sender), GFP_KERNEL);
     if(sender == NULL)
     {
-        pr_err("Failed to allocate sender structure.");
+        pr_err("Failed to allocate sender structure.\n");
         result = -ENOMEM;
         goto alloc_err;
     }
@@ -1036,13 +1036,13 @@ struct trace_sender* trace_sender_create(
 		&sender->clientsocket);
 	if(result)
 	{
-		pr_err("Failed to create client socket.");
+		pr_err("Failed to create client socket.\n");
         goto sock_err;
 	}
 
 	sender->wq = create_singlethread_workqueue("sendtrace");
 	if (!sender->wq){
-		pr_err("Failed to create workqueue for sending trace.");
+		pr_err("Failed to create workqueue for sending trace.\n");
 		result = -ENOMEM;
         goto workqueue_err;
 	}
@@ -1111,7 +1111,7 @@ int trace_sender_start(struct trace_sender* sender,
         htonl(client_addr), htons(client_port));
 	spin_unlock_irqrestore(&sender->lock, flags);
     
-    pr_info("Trace server has been started.");
+    pr_info("Trace server has been started.\n");
 
 	return result;
 }
@@ -1124,7 +1124,7 @@ void trace_sender_stop(struct trace_sender* sender)
     trace_sender_stop_internal(sender);
 	spin_unlock_irqrestore(&sender->lock, flags);
 
-    pr_info("Trace sender has been stopped.");
+    pr_info("Trace sender has been stopped.\n");
 
 	return;
 }
@@ -1141,13 +1141,13 @@ int trace_sender_wait_stop(struct trace_sender* sender)
     if(result == 0)
     {
         smp_rmb();
-        pr_info("Success.");
+        pr_info("Success.\n");
         flush_work(&sender->work.work);
         
     }
     else
     {
-        pr_info("Fail.");
+        pr_info("Fail.\n");
     }
 
     return result;
@@ -1168,7 +1168,7 @@ struct execution_event_collector* trace_sender_collect_messages(
     //pr_info("000");
     if(trace_session == NULL)
     {
-        pr_err("Failed to allocate trace session structure.");
+        pr_err("Failed to allocate trace session structure.\n");
         return NULL;
     }
 
@@ -1190,7 +1190,7 @@ struct execution_event_collector* trace_sender_collect_messages(
 
     if(sender->trace_session)
     {
-        pr_err("Only one event collector may be processed at a time.");
+        pr_err("Only one event collector may be processed at a time.\n");
         goto err;
     }
 
@@ -1230,7 +1230,7 @@ int trace_sender_stop_collect_messages(struct trace_sender* sender,
     result = mutex_lock_interruptible(&sender->trace_session_mutex);
     if(result < 0)
     {
-        pr_err("Failed to acquire mutex for remove trace sessions.");
+        pr_err("Failed to acquire mutex for remove trace sessions.\n");
         return result;
     }
     
@@ -1245,13 +1245,13 @@ int trace_sender_stop_collect_messages(struct trace_sender* sender,
         result = kedr_trace_session_wait_stop(trace_session);
         if(result < 0)
         {
-            pr_err("Failed to wait until trace session stop. Do not remove event collector.");
+            pr_err("Failed to wait until trace session stop. Do not remove event collector.\n");
             return result;
         }
         result = mutex_lock_interruptible(&sender->trace_session_mutex);
         if(result < 0)
         {
-            pr_err("Failed to acquire mutex for remove trace sessions.");
+            pr_err("Failed to acquire mutex for remove trace sessions.\n");
             return result;
         }
     }

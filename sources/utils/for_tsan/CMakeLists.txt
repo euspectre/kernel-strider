@@ -9,7 +9,7 @@ install(PROGRAMS
 add_subdirectory(symbolize)
 
 option(WITH_REPORT_ADDR2LINE
-	"Whether to build addr2line-style converter for Thread Sanitizer report"
+	"Whether to build addr2line-style converter of Thread Sanitizer reports"
 	ON)
 if(WITH_REPORT_ADDR2LINE)
 
@@ -26,14 +26,14 @@ if(WITH_REPORT_ADDR2LINE)
 			CMAKE_FLAGS "-DLINK_LIBRARIES:string=elf"
 			OUTPUT_VARIABLE libelf_compile_out)
 		if(NOT libelf_compile_result)
-			#message("Output of libelf example compilation:\n${libelf_compile_out}")
+			message("It seems that the development files for libelf library are not")
+			message("present on this system. The files are needed to build the")
+			message("addr2line-style converter of ThreadSanitizer reports.")
+			message("Please, install the development files for libelf library or use")
+			message("-DWITH_REPORT_ADDR2LINE=OFF to disable building of the converter.")
 			
-			message("It seems that libelf development library is absent on the system.")
-			message("This library is needed for addr2line-style ThreadSanitizer report converter.")
-			message("Please, install libelf development library")
-			message("or disable building of the converter with -DWITH_REPORT_ADDR2LINE=OFF.")
-			
-			message(FATAL_ERROR "Libelf development library is not installed or cannot be used.")
+			message(FATAL_ERROR 
+				"Development files for libelf are not installed or cannot be used.")
 		endif(NOT libelf_compile_result)
 		
 		set(libelf_headers "FOUND" CACHE INTERNAL "Whether libelf headers are installed")
