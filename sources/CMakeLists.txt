@@ -170,20 +170,6 @@ else (READELF)
 	message (FATAL_ERROR "readelf is not found")
 endif (READELF)
 
-# Libelf is required for addr2line-style Thread Sanitizer report convertion.
-# utils/for_tsan/addr2line
-message (STATUS "Checking for libelf headers")
-
-try_compile(libelf_compile_result # Result variable
-    "${CMAKE_BINARY_DIR}/libelf_check" # Binary dir
-    "${CMAKE_SOURCE_DIR}/libelf_check.c" # Source file
-    CMAKE_FLAGS "-DLINK_LIBRARIES:string=elf"
-    OUTPUT_VARIABLE libelf_compile_out)
-if(NOT libelf_compile_result)
-    message("Output of libelf example compilation:\n${libelf_compile_out}")
-    message(FATAL_ERROR "Libelf library is not installed or cannot be used.")
-endif(NOT libelf_compile_result)
-
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.
