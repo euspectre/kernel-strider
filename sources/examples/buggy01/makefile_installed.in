@@ -1,0 +1,13 @@
+MODULE_NAME := @KMODULE_NAME@
+KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
+
+all: $(MODULE_NAME).ko
+
+$(MODULE_NAME).ko: module.c
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+clean:
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
+
+.PHONY: all clean

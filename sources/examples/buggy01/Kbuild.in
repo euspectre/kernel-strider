@@ -1,0 +1,5 @@
+MODULE_NAME := @KMODULE_NAME@
+
+obj-m := $(MODULE_NAME).o
+$(MODULE_NAME)-y := module.o
+

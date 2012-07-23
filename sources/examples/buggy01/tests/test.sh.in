@@ -1,0 +1,120 @@
+#!/bin/sh
+
+########################################################################
+# This test checks if the basic functionality of "buggy01" module is OK.
+# The test does not trigger the system crash due to the race between 
+# the initialization and the usage of a resource, so it should be safe
+# to use.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		/sbin/rmmod "${TARGET_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	/sbin/insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Try to read the data from the file the target module maintains.
+	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Read twice, just in case
+	cat "${TEST_DEBUGFS_FILE}" > /dev/null
+	if test $? -ne 0; then
+		printf "Failed to read data from the file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	cat "${TEST_DEBUGFS_FILE}" > /dev/null
+	if test $? -ne 0; then
+		printf "Failed to read data from the file in debugfs: "
+		printf "${TEST_DEBUGFS_FILE}\n"
+		umount "${TEST_DEBUGFS_DIR}"
+		cleanupAll
+		exit 1
+	fi
+	
+	umount "${TEST_DEBUGFS_DIR}"
+	
+	# Unload the modules, they are no longer needed
+	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: $0"
+	exit 1
+fi
+
+TARGET_MODULE_NAME="@KMODULE_NAME@"
+TARGET_MODULE="@CMAKE_CURRENT_BINARY_DIR@/${TARGET_MODULE_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/@KMODULE_NAME@/data"
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

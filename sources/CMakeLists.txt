@@ -346,6 +346,8 @@ add_subdirectory(include)
 add_subdirectory(tools)
 
 add_subdirectory(plugins)
+
+add_subdirectory(examples)
 #######################################################################
 
 # "Global" tests 
