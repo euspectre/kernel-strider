@@ -170,6 +170,16 @@ else (READELF)
 	message (FATAL_ERROR "readelf is not found")
 endif (READELF)
 
+# addr2line is needed to properly resolve the source lines in the 
+# reports.
+message (STATUS "Checking for addr2line")
+find_program (ADDR2LINE addr2line)
+if (ADDR2LINE)
+	message (STATUS "Checking for addr2line - ${ADDR2LINE}")
+else (ADDR2LINE)
+	message (FATAL_ERROR "addr2line is not found")
+endif (ADDR2LINE)
+
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.
