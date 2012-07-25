@@ -3,6 +3,7 @@ set(GROUP_NAME "strings")
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"memset"
 	"memcpy"
+	"__memcpy"
 	"memmove"
 	"memcmp"
 	"memscan"
@@ -29,6 +30,7 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 
 	"skip_spaces"
 	"strim"
+	"strstrip"
 
 	"strlen"
 	"strnlen"
