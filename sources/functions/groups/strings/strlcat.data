@@ -22,33 +22,23 @@
 		unsigned long src_len;
 		unsigned long dest_len;
 		unsigned long to_append;
-		struct kedr_event_handlers *eh;
-		
-		eh = kedr_get_event_handlers();
+
 		src_len = (unsigned long)strnlen((const char *)src, 
 			(size_t)count);
 		dest_len = ls->data;
 		count -= dest_len;
 		to_append = (src_len > count) ? count : src_len + 1;
 		
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 3,
-				&data);
-		
-		if (eh->on_memory_event != NULL) {
-			/* read 'src' */
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				src, to_append, KEDR_ET_MREAD, data);
-			/* find the length of 'dest' */
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				dest, dest_len + 1, KEDR_ET_MREAD, data);
-			/* append 'src' to 'dest' */
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				dest + dest_len, to_append, 
-				KEDR_ET_MWRITE, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_begin_memory_events(ls->tid, 3, &data);
+		/* read 'src' */
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			src, to_append, KEDR_ET_MREAD, data);
+		/* find the length of 'dest' */
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			dest, dest_len + 1, KEDR_ET_MREAD, data);
+		/* append 'src' to 'dest' */
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			dest + dest_len, to_append, KEDR_ET_MWRITE, data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	<<
 #######################################################################

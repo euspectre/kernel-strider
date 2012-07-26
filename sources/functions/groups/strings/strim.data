@@ -14,9 +14,7 @@
 		unsigned long str = KEDR_LS_ARG1(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
-		struct kedr_event_handlers *eh;
-		
-		eh = kedr_get_event_handlers();
+
 		len = ls->data;
 		
 		/* strim() reads the whole string at least once
@@ -26,34 +24,18 @@
 		 * the terminating null if there are no trailing 
 		 * whitespace chars). */
 		if (len == 0) {
-			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 1,
-					&data);
-			
-			if (eh->on_memory_event != NULL) {
-				eh->on_memory_event(eh, ls->tid, info->pc, 
-					str, 1, KEDR_ET_MREAD, data);
-			}
-
-			if (eh->end_memory_events != NULL)
-				eh->end_memory_events(eh, ls->tid, data);
+			kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+				str, 1, KEDR_ET_MREAD);
 		}
 		else { /* A non-empty string */
 			unsigned long pos = 
 				(unsigned long)strlen((const char *)ret);
-			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 2,
-					&data);
-			
-			if (eh->on_memory_event != NULL) {
-				eh->on_memory_event(eh, ls->tid, info->pc, 
+			kedr_eh_begin_memory_events(ls->tid, 2,	&data);
+			kedr_eh_on_memory_event(ls->tid, info->pc, 
 					str, len + 1, KEDR_ET_MREAD, data);
-				eh->on_memory_event(eh, ls->tid, info->pc, 
+			kedr_eh_on_memory_event(ls->tid, info->pc, 
 					ret + pos, 1, KEDR_ET_MWRITE, data);
-			}
-			
-			if (eh->end_memory_events != NULL)
-				eh->end_memory_events(eh, ls->tid, data);
+			kedr_eh_end_memory_events(ls->tid, data);
 		}
 	<<
 #######################################################################

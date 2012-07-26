@@ -13,25 +13,16 @@
 		unsigned long reject = KEDR_LS_ARG2(ls);
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
-		struct kedr_event_handlers *eh;
-		
-		eh = kedr_get_event_handlers();
+
 		len = (unsigned long)strlen((const char *)reject) + 1;
 		
 		/* strcspn() reads the whole 'reject' string and the first
 		 * ret + 1 bytes from 'str'. */
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 2,
-				&data);
-		
-		if (eh->on_memory_event != NULL) {
-			eh->on_memory_event(eh, ls->tid, info->pc, 
+		kedr_eh_begin_memory_events(ls->tid, 2, &data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
 				reject, len, KEDR_ET_MREAD, data);
-			eh->on_memory_event(eh, ls->tid, info->pc, 
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
 				str, ret + 1, KEDR_ET_MREAD, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	<<
 #######################################################################

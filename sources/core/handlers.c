@@ -16,6 +16,7 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/hardirq.h>
@@ -391,6 +392,34 @@ is_stack_address(unsigned long addr)
 	return (KEDR_PTR_ALIGN(addr, THREAD_SIZE) == 
 		KEDR_PTR_ALIGN(sp, THREAD_SIZE));
 }
+
+static void
+eh_on_memory_event_impl(struct kedr_event_handlers *eh, 
+	unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type,
+	void *data)
+{
+	/* Filter out the accesses to the stack and to the user 
+	 * space memory if required. That is, call on_memory_event()
+	 * with 0 as 'addr' as if the event did not happen. */
+	if ((!process_stack_accesses && is_stack_address(addr)) || 
+	    (!process_um_accesses && is_user_space_address(addr)))
+		addr = 0;
+	eh->on_memory_event(eh, tid, pc, addr, size, type, data);
+}
+
+void
+kedr_eh_on_memory_event(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type,
+	void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_memory_event != NULL)
+		eh_on_memory_event_impl(eh, tid, pc, addr, size, type, data);
+}
+EXPORT_SYMBOL(kedr_eh_on_memory_event);
 /* ====================================================================== */
 
 /* For each memory access event that could happen in the block, executes 
@@ -431,15 +460,7 @@ report_events(struct kedr_local_storage *ls, void *data)
 		}
 		
 		addr = ls->values[n];
-		
-		/* Filter out the accesses to the stack and to the user 
-		 * space memory if required. That is, call on_memory_event()
-		 * with 0 as 'addr' as if the event did not happen. */
-		if ((!process_stack_accesses && is_stack_address(addr)) || 
-		    (!process_um_accesses && is_user_space_address(addr)))
-			addr = 0;
-		
-		eh_current->on_memory_event(eh_current, ls->tid, 
+		eh_on_memory_event_impl(eh_current, ls->tid, 
 			info->events[i].pc, addr, size, type, data);
 	}
 }

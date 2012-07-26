@@ -14,9 +14,6 @@
 		unsigned long ret  = KEDR_LS_RET_VAL(ls);
 		unsigned long len;
 		unsigned long size;
-		struct kedr_event_handlers *eh;
-		
-		eh = kedr_get_event_handlers();
 		
 		len = (unsigned long)strlen((const char *)chars) + 1;
 		if (ret == 0)
@@ -27,18 +24,11 @@
 		
 		/* strpbrk() reads the whole 'chars' string and the first
 		 * 'size' bytes from 'str'. */
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 2,
-				&data);
-		
-		if (eh->on_memory_event != NULL) {
-			eh->on_memory_event(eh, ls->tid, info->pc, 
+		kedr_eh_begin_memory_events(ls->tid, 2, &data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
 				chars, len, KEDR_ET_MREAD, data);
-			eh->on_memory_event(eh, ls->tid, info->pc, 
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
 				str, size, KEDR_ET_MREAD, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	<<
 #######################################################################

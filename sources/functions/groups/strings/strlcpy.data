@@ -13,30 +13,20 @@
 		unsigned long from = KEDR_LS_ARG2(ls);
 		unsigned long count = KEDR_LS_ARG3(ls);
 		unsigned long size = 0;
-		struct kedr_event_handlers *eh;
-		
-		eh = kedr_get_event_handlers();
+
 		size = strnlen((const char *)from, count) + 1;
 		if (size > count)
 			size = count;
 		
 		if (size > 0) {
-			if (eh->begin_memory_events != NULL)
-				eh->begin_memory_events(eh, ls->tid, 2,
-					&data);
-			
-			if (eh->on_memory_event != NULL) {
-				eh->on_memory_event(eh, ls->tid, info->pc, 
+			kedr_eh_begin_memory_events(ls->tid, 2, &data);
+			kedr_eh_on_memory_event(ls->tid, info->pc, 
 					from, size, KEDR_ET_MREAD, data);
-				/* [NB] strlcpy() does not pad the 
-				 * destination string with 0s like strncpy 
-				 * does. */
-				eh->on_memory_event(eh, ls->tid, info->pc, 
+			/* [NB] strlcpy() does not pad the destination 
+			 * string with 0s like strncpy() does. */
+			kedr_eh_on_memory_event(ls->tid, info->pc, 
 					to, count, KEDR_ET_MWRITE, data);
-			}
-
-			if (eh->end_memory_events != NULL)
-				eh->end_memory_events(eh, ls->tid, data);
+			kedr_eh_end_memory_events(ls->tid, data);
 		}
 	<<
 #######################################################################

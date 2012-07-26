@@ -238,9 +238,12 @@ struct kedr_event_handlers *
 kedr_get_event_handlers(void);
 /* ====================================================================== */
 
-/* Convenience wrappers that can be used if it is needed to obtain the 
- * current set of handlers and call some of these handlers. The wrapper 
- * functions have no effect if the corresponding handlers are not set. */
+/* These functions should be used if it is needed to obtain the current set 
+ * of handlers and call some of these handlers. The functions have no effect
+ * if the corresponding handlers are not set. 
+ *
+ * It is not recommended to call the handlers directly in the new code. 
+ * kedr_eh*() functions should be used instead. */
 static inline void
 kedr_eh_on_target_loaded(struct module *target_module)
 {
@@ -307,16 +310,11 @@ kedr_eh_end_memory_events(unsigned long tid, void *data)
 		eh->end_memory_events(eh, tid, data);
 }
 
-static inline void
+void
 kedr_eh_on_memory_event(unsigned long tid, unsigned long pc, 
 	unsigned long addr, unsigned long size, 
 	enum kedr_memory_event_type type,
-	void *data)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_memory_event != NULL)
-		eh->on_memory_event(eh, tid, pc, addr, size, type, data);
-}
+	void *data);
 
 /* A convenience function to report a single memory event. */
 static inline void
@@ -325,16 +323,9 @@ kedr_eh_on_single_memory_event(unsigned long tid, unsigned long pc,
 	enum kedr_memory_event_type type)
 {
 	void *data = NULL;
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	
-	if (eh->begin_memory_events != NULL)
-		eh->begin_memory_events(eh, tid, 1, &data);
-	
-	if (eh->on_memory_event != NULL)
-		eh->on_memory_event(eh, tid, pc, addr, size, type, data);
-	
-	if (eh->end_memory_events != NULL)
-		eh->end_memory_events(eh, tid, data);
+	kedr_eh_begin_memory_events(tid, 1, &data);
+	kedr_eh_on_memory_event(tid, pc, addr, size, type, data);
+	kedr_eh_end_memory_events(tid, data);
 }
 
 static inline void

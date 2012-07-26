@@ -20,26 +20,13 @@ report_events_strsep(struct kedr_local_storage *ls)
 	char *end = NULL;
 	unsigned long size;
 	unsigned long sep_len;
-	struct kedr_event_handlers *eh;
-	
-	eh = kedr_get_event_handlers();
 	
 	/* First, strsep() reads the pointer the first argument
 	 * points to. */
-	if (eh->begin_memory_events != NULL)
-		eh->begin_memory_events(eh, ls->tid, 1,
-			&data);
-	
-	if (eh->on_memory_event != NULL) {
-		eh->on_memory_event(eh, ls->tid, info->pc, 
-			(unsigned long)pstr, 
-			(unsigned long)sizeof(char *), 
-			KEDR_ET_MREAD, data);
-	}
-
-	if (eh->end_memory_events != NULL)
-		eh->end_memory_events(eh, ls->tid, data);
-	data = NULL;
+	kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+		(unsigned long)pstr, 
+		(unsigned long)sizeof(char *), 
+		KEDR_ET_MREAD);
 	
 	sbegin = *pstr;
 	if (sbegin == NULL)
@@ -51,66 +38,41 @@ report_events_strsep(struct kedr_local_storage *ls)
 	
 	/* Report reading of the whole 'seps' string, including
 	 * the terminating 0. */
-	if (eh->begin_memory_events != NULL)
-		eh->begin_memory_events(eh, ls->tid, 1,
-			&data);
-	
-	if (eh->on_memory_event != NULL) {
-		eh->on_memory_event(eh, ls->tid, info->pc, 
-			(unsigned long)seps, sep_len + 1,  
-			KEDR_ET_MREAD, data);
-	}
-
-	if (eh->end_memory_events != NULL)
-		eh->end_memory_events(eh, ls->tid, data);
-	data = NULL;
+	kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+		(unsigned long)seps, sep_len + 1, KEDR_ET_MREAD);
 	
 	end = strpbrk(sbegin, seps);
 	if (end == NULL) {
 		/* The whole 'sbegin' will be read; NULL will be
 		 * written to *pstr. */
 		size = (unsigned long)strlen(sbegin) + 1;
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 2,
-				&data);
-		
-		if (eh->on_memory_event != NULL) {
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				(unsigned long)sbegin, size,
-				KEDR_ET_MREAD, data);
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				(unsigned long)pstr, 
-				(unsigned long)sizeof(char *),
-				KEDR_ET_MWRITE, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_begin_memory_events(ls->tid, 2, &data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)sbegin, size,
+			KEDR_ET_MREAD, data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)pstr, 
+			(unsigned long)sizeof(char *),
+			KEDR_ET_MWRITE, data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	}
 	else {
 		/* The first 'size' bytes of 'sbegin' will be read;
 		 * '\0' will be written to *end; end+1 will be 
 		 * written to *pstr. */
 		size = (unsigned long)(end - sbegin) + 1;
-		if (eh->begin_memory_events != NULL)
-			eh->begin_memory_events(eh, ls->tid, 3,
-				&data);
-		
-		if (eh->on_memory_event != NULL) {
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				(unsigned long)sbegin, size,
-				KEDR_ET_MREAD, data);
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				(unsigned long)end, 1,
-				KEDR_ET_MWRITE, data);
-			eh->on_memory_event(eh, ls->tid, info->pc, 
-				(unsigned long)pstr, 
-				(unsigned long)sizeof(char *),
-				KEDR_ET_MWRITE, data);
-		}
-
-		if (eh->end_memory_events != NULL)
-			eh->end_memory_events(eh, ls->tid, data);
+		kedr_eh_begin_memory_events(ls->tid, 3, &data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)sbegin, size,
+			KEDR_ET_MREAD, data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)end, 1,
+			KEDR_ET_MWRITE, data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)pstr, 
+			(unsigned long)sizeof(char *),
+			KEDR_ET_MWRITE, data);
+		kedr_eh_end_memory_events(ls->tid, data);
 	}
 out:
 	return;
