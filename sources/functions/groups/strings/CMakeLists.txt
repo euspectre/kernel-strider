@@ -43,6 +43,40 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 
 	"strstr"
 	"strnstr"
+	
+	"sscanf"
+	"vsscanf"
+
+	"simple_strtoull"
+	"simple_strtoul"
+	"simple_strtol"
+	"simple_strtoll"
+
+	"strict_strtoull"
+	"strict_strtoul"
+	"strict_strtoll"
+	"strict_strtol"
+
+	"kstrtoull"
+	"kstrtoll"
+	"_kstrtoul"
+	"_kstrtol"
+	"kstrtouint"
+	"kstrtoint"
+	"kstrtou16"
+	"kstrtos16"
+	"kstrtou8"
+	"kstrtos8"
+
+	"vsnprintf"
+	"snprintf"
+	"vscnprintf"
+	"scnprintf"
+	"vsprintf"
+	"sprintf"
+
+	"kvasprintf"
+	"kasprintf"
 )
 create_handlers_group(${GROUP_NAME} ${functions})
 

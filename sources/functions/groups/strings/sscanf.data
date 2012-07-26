@@ -1,0 +1,20 @@
+[group]
+	# Name of the target function
+	function.name = sscanf
+
+	code.post =>>
+		const char *buf = (const char *)KEDR_LS_ARG1_VA(ls);
+		unsigned long len;
+		
+		/* Currently, we only report a read from the buffer
+		 * but not the read of the format string or the writes
+		 * to the other arguments. 
+		 * For simplicity, we assume the whole string has been
+		 * read. */
+		if (buf != NULL) {
+			len = (unsigned long)strlen(buf) + 1;
+			kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+				(unsigned long)buf, len, KEDR_ET_MREAD);
+		}
+	<<
+#######################################################################

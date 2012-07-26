@@ -1,0 +1,26 @@
+[group]
+	# Name of the target function
+	function.name = simple_strtol
+
+	code.post =>>
+		const char *cp = (const char *)KEDR_LS_ARG1(ls);
+		char **endp = (char **)KEDR_LS_ARG2(ls);
+		unsigned int base = (unsigned int)KEDR_LS_ARG3(ls);
+		char *local_end = NULL;
+		unsigned long len;
+		
+		/* To determine the size of the read memory area, we 
+		 * need to know where the function has stopped. If the
+		 * caller was not interested in that information, obtain
+		 * it ourselves. */
+		if (endp == NULL) {
+			long res = simple_strtol(cp, &local_end, base);
+			(void)res;
+			endp = &local_end;
+		}
+		len = (unsigned long)(*endp - cp) + 1;
+		
+		kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+			(unsigned long)cp, len, KEDR_ET_MREAD);
+	<<
+#######################################################################

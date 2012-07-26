@@ -1,0 +1,15 @@
+[group]
+	# Name of the target function
+	function.name = vsprintf
+
+	code.post =>>
+		const char *buf = (const char *)KEDR_LS_ARG1(ls);
+		unsigned long len = KEDR_LS_RET_VAL(ls) + 1;
+		
+		/* Currently, we only report a write to the buffer
+		 * but not the read of the format string or of the 
+		 * arguments (for '%s' or the like). */
+		kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+			(unsigned long)buf, len, KEDR_ET_MWRITE);
+	<<
+#######################################################################

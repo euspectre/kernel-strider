@@ -1,0 +1,28 @@
+[group]
+	# Name of the target function
+	function.name = strict_strtoull
+
+	code.post =>>
+		const char *cp = (const char *)KEDR_LS_ARG1(ls);
+		unsigned long dest = KEDR_LS_ARG3(ls);
+		unsigned long len;
+		void *data = NULL; 
+		
+		/* For simplicity, we assume the whole string has been
+		 * read (the implementation in 2.6.32 calls strlen(cp)
+		 * anyway). 
+		 * If the conversion has been successful, the result is 
+		 * written where the 3rd argument points to. Otherwise,
+		 * 0 is written there, so the write happens in both 
+		 * cases too. */
+		len = (unsigned long)strlen(cp) + 1;
+				
+		kedr_eh_begin_memory_events(ls->tid, 2, &data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			(unsigned long)cp, len, KEDR_ET_MREAD, data);
+		kedr_eh_on_memory_event(ls->tid, info->pc, 
+			dest, sizeof(unsigned long long), KEDR_ET_MWRITE, 
+			data);
+		kedr_eh_end_memory_events(ls->tid, data);
+	<<
+#######################################################################

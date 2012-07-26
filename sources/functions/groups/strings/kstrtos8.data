@@ -1,0 +1,26 @@
+[group]
+	# Name of the target function
+	function.name = kstrtos8
+
+	code.post =>>
+		const char *s = (const char *)KEDR_LS_ARG1(ls);
+		unsigned long res = KEDR_LS_ARG3(ls);
+		unsigned long err = KEDR_LS_RET_VAL(ls);
+		unsigned long len;
+		
+		/* For simplicity, we assume the whole string has been
+		 * read. 
+		 * If the conversion has been successful, the result is 
+		 * written where the 3rd argument points to. Otherwise,
+		 * that memory area remains untouched. */
+		len = (unsigned long)strlen(s) + 1;
+		kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+			(unsigned long)s, len, KEDR_ET_MREAD);
+		
+		if (err == 0) {
+			kedr_eh_on_single_memory_event(ls->tid, info->pc, 
+				res, sizeof(s8), 
+				KEDR_ET_MWRITE);
+		}
+	<<
+#######################################################################
