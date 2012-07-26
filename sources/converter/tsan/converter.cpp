@@ -1020,7 +1020,7 @@ int main(int argc, char** argv)
     }
     else if(*pointer_bits == "64")
     {
-        TsanTraceBuilder<uint32_t> traceBuilder(traceReader);
+        TsanTraceBuilder<uint64_t> traceBuilder(traceReader);
         traceBuilder.build(std::cout);
     }
     else
