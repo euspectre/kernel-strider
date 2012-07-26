@@ -37,4 +37,17 @@ kedr_test_arg_func(unsigned long arg1, unsigned long arg2,
 	unsigned long arg3, unsigned long arg4, unsigned long arg5,
 	unsigned long arg6, unsigned long arg7, unsigned long arg8);
 
+/* A function with 2 "non-variable" arguments and and a variable argument 
+ * list. 
+ * The function returns its start address. */
+unsigned long
+kedr_test_arg_func_va(unsigned long arg1, unsigned long arg2, ...);
+
+/* A function with 3 "non-variable" arguments, the first two of which are 
+ * ordinary and the last one is 'va_list'. 
+ * The function returns its start address. */
+unsigned long
+kedr_test_arg_func_va_list(unsigned long arg1, unsigned long arg2, 
+	va_list args);
+
 #endif /* TEST_ARG_H_1737_INCLUDED */

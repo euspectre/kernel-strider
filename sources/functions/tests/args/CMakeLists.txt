@@ -14,7 +14,15 @@ configure_file (
 )
 
 kedr_test_add_script (functions.args.01
-    test.sh
+    test.sh 0
+)
+
+kedr_test_add_script (functions.args.02
+    test.sh 1
+)
+
+kedr_test_add_script (functions.args.03
+    test.sh 2
 )
 
 add_subdirectory(provider)

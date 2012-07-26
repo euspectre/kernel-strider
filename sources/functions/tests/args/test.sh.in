@@ -6,7 +6,13 @@
 # where appropriate.
 # 
 # Usage: 
-#   sh test.sh
+#   sh test.sh [test_mode]
+#
+# 'test_mode':
+# 0 (default) - check retrieval of the arguments and of the return value 
+#   for an ordinary function;
+# 1 - same for a function with variable argument list; 
+# 2 - same for a function with 'va_list' as the last argument.
 ########################################################################
 
 ########################################################################
@@ -80,7 +86,7 @@ doTest()
 		exit 1
 	fi
 	
-	/sbin/insmod "${CHECKER_MODULE}"
+	/sbin/insmod "${CHECKER_MODULE}" ${TEST_MODE_SPEC}
 	if test $? -ne 0; then
 		printf "Failed to load the \"checker\" module: ${CHECKER_MODULE_NAME}\n"
 		cleanupAll
@@ -139,9 +145,14 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
-if test $# -ne 0; then
-	printf "Usage: sh $0\n"
+if test $# -gt 1; then
+	printf "Usage: sh $0 [test_mode]\n"
 	exit 1
+fi
+
+TEST_MODE_SPEC="test_mode=0"
+if test -n "$1"; then
+	TEST_MODE_SPEC="test_mode=$1"
 fi
 
 CORE_MODULE_NAME="@CORE_MODULE_NAME@"

@@ -158,34 +158,50 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
  * of the target function. The local storage (pointed to by 'ls') is used to
  * obtain that value. The KEDR_LS_ARGn(ls) returns the value as unsigned 
  * long.
+ * 
+ * [IMPORTANT]
+ * If the target function has a variable argument list (e.g. snprintf()),
+ * use KEDR_LS_ARGn_VA(ls) instead of KEDR_LS_ARGn(ls), even for the 
+ * arguments that are not variable. This is because on x86-32, such 
+ * functions receive all their arguments on stack. On x86-64, the 
+ * convention is the same as for the functions without variable argument 
+ * lists.
+ *
+ * Note that the rules for the functions that have 'va_list' as one of the 
+ * arguments (e.g. vsnprintf()) are the same as for the functions without 
+ * variable argument lists. 'va_list' is a single argument like any other.
+ * That is, KEDR_LS_ARGn(ls) can and should be used in the handlers for
+ * vsnprintf() but KEDR_LS_ARGn_VA(ls) should be used in the handlers for
+ * snprintf().
  *
  * [NB] The saved value of %rsp/%esp is as it should be before the call 
  * to the target in the original code. That is, if the target receives some
  * of its arguments on stack, the saved %rsp/%esp will point to the first 
  * ("top-most") of such arguments.
  *
- * KEDR_LS_ARGn() macros can only be used if the function actually has the
+ * KEDR_LS_ARG*() macros can only be used if the function actually has the
  * corresponding argument. If, for example, KEDR_LS_ARG4() is used in a 
  * handler of some function and that function has 3 arguments, the behaviour
  * is undefined.
  *
  * The registers are saved in the local storage before the target function
- * is called. So it should be safe to use the corresponding KEDR_LS_ARGn()
+ * is called. So it should be safe to use the corresponding KEDR_LS_ARG*()
  * macros both in the pre- and in the post-handler of that function. 
  *
- * As for the stack-based arguments, things are different. In a pre-handler
+ * As for the stack-based arguments, things are different. In a pre-handler,
  * they have the same values as on entry to the target function but the 
  * latter may change them at will (they are local variables anyway). So be
- * careful when using the corresponding KEDR_LS_ARGn() in the post 
+ * careful when using the corresponding KEDR_LS_ARG*() in the post 
  * handlers. If it is necessary to access the initial value of such 
  * argument in a post handler, it can be useful to save the value of that
  * argument to 'ls->data' in a pre handler and use that saved value in the 
  * post handler.
  * 
- * Note that KEDR_LS_ARGn() cannot be used in the handlers for the functions
- * with variable argument lists. It seems that such functions get all their
- * arguments on stack. These macros also cannot be used for the functions 
- * with 'fastcall' attribute on x86-32.
+ * Neither KEDR_LS_ARGn() nor KEDR_LS_ARGn_VA() can be used in the handlers
+ * for the functions with 'fastcall' attribute on x86-32. Same for the 
+ * functions with floating-point parameters or the parameters to be stored 
+ * in SSE registers and the like. Such functions should be rare (if they
+ * exist at all) in the kernel modules.
  *
  * KEDR_LS_RET_VAL(ls) uses the local storage ('*ls') to obtain the return
  * value of the function, cast to unsigned long. To be exact, it returns 
@@ -207,6 +223,18 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
 # define KEDR_LS_ARG8(_ls) \
 	(*(unsigned long *)((_ls)->r.sp + sizeof(unsigned long)))
 
+/* The convention for the functions with variable argument lists is the 
+ * same. */
+# define KEDR_LS_ARG1_VA(_ls) KEDR_LS_ARG1(_ls)
+# define KEDR_LS_ARG2_VA(_ls) KEDR_LS_ARG2(_ls)
+# define KEDR_LS_ARG3_VA(_ls) KEDR_LS_ARG3(_ls)
+# define KEDR_LS_ARG4_VA(_ls) KEDR_LS_ARG4(_ls)
+# define KEDR_LS_ARG5_VA(_ls) KEDR_LS_ARG5(_ls)
+# define KEDR_LS_ARG6_VA(_ls) KEDR_LS_ARG6(_ls)
+# define KEDR_LS_ARG7_VA(_ls) KEDR_LS_ARG7(_ls)
+# define KEDR_LS_ARG8_VA(_ls) KEDR_LS_ARG8(_ls)
+
+/* The return value. */
 # define KEDR_LS_RET_VAL(_ls) ((_ls)->ret_val)
 
 #else /* CONFIG_X86_32 */
@@ -232,6 +260,26 @@ kedr_set_function_handlers(struct kedr_function_handlers *fh);
 # define KEDR_LS_ARG8(_ls) \
 	(*(unsigned long *)((_ls)->r.sp + 4 * sizeof(unsigned long)))
 
+/* The functions with variable argument lists (but not with 'va_list' 
+ * argument) have all their parameters on stack. */
+# define KEDR_LS_ARG1_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp))
+# define KEDR_LS_ARG2_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + sizeof(unsigned long)))
+# define KEDR_LS_ARG3_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 2 * sizeof(unsigned long)))
+# define KEDR_LS_ARG4_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 3 * sizeof(unsigned long)))
+# define KEDR_LS_ARG5_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 4 * sizeof(unsigned long)))
+# define KEDR_LS_ARG6_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 5 * sizeof(unsigned long)))
+# define KEDR_LS_ARG7_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 6 * sizeof(unsigned long)))
+# define KEDR_LS_ARG8_VA(_ls) \
+	(*(unsigned long *)((_ls)->r.sp + 7 * sizeof(unsigned long)))
+
+/* The return value. */
 # define KEDR_LS_RET_VAL(_ls) ((_ls)->ret_val)
 
 #endif /* ifdef CONFIG_X86_64 */

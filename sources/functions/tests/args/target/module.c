@@ -11,7 +11,8 @@
  * under the terms of the GNU General Public License version 2 as published
  * by the Free Software Foundation.
  ======================================================================== */
- 
+
+#include <stdarg.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/errno.h>
@@ -24,6 +25,19 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
+static unsigned long
+test_func(unsigned long arg1, unsigned long arg2, ...)
+{
+	va_list args;
+	unsigned long ret;
+	
+	va_start(args, arg2);
+	ret = kedr_test_arg_func_va_list(arg1, arg2, args);
+	va_end(args);
+	
+	return ret;
+}
+
 static void __exit
 test_cleanup_module(void)
 {
@@ -31,7 +45,16 @@ test_cleanup_module(void)
 	ret = kedr_test_arg_func(KEDR_TEST_ARG1, KEDR_TEST_ARG2, 
 		KEDR_TEST_ARG3, KEDR_TEST_ARG4, KEDR_TEST_ARG5,
 		KEDR_TEST_ARG6, KEDR_TEST_ARG7, KEDR_TEST_ARG8);
+	BUG_ON(ret == 0);
 	
+	ret = kedr_test_arg_func_va(KEDR_TEST_ARG1, KEDR_TEST_ARG2, 
+		KEDR_TEST_ARG3, KEDR_TEST_ARG4, KEDR_TEST_ARG5,
+		KEDR_TEST_ARG6, KEDR_TEST_ARG7, KEDR_TEST_ARG8);
+	BUG_ON(ret == 0);
+	
+	ret = test_func(KEDR_TEST_ARG1, KEDR_TEST_ARG2, 
+		KEDR_TEST_ARG3, KEDR_TEST_ARG4, KEDR_TEST_ARG5,
+		KEDR_TEST_ARG6, KEDR_TEST_ARG7, KEDR_TEST_ARG8);
 	BUG_ON(ret == 0);
 }
 

@@ -40,6 +40,25 @@ kedr_test_arg_func(unsigned long arg1, unsigned long arg2,
 	return (unsigned long)&kedr_test_arg_func;
 }
 EXPORT_SYMBOL(kedr_test_arg_func);
+
+unsigned long
+kedr_test_arg_func_va(unsigned long arg1, unsigned long arg2, ...)
+{
+	if (arg2 == arg1)
+		return 0;
+	return (unsigned long)&kedr_test_arg_func_va;
+}
+EXPORT_SYMBOL(kedr_test_arg_func_va);
+
+unsigned long
+kedr_test_arg_func_va_list(unsigned long arg1, unsigned long arg2, 
+	va_list args)
+{
+	if (arg2 == arg1)
+		return 0;
+	return (unsigned long)&kedr_test_arg_func_va_list;
+}
+EXPORT_SYMBOL(kedr_test_arg_func_va_list);
 /* ====================================================================== */
 
 static void __exit
