@@ -46,6 +46,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <errno.h>
 #include <sys/wait.h>
@@ -81,6 +82,8 @@ static inline int text_streamed_converter_start(
         perror("Failed to create input pipe for converter");
         goto err_input_pipe;
     }
+    fcntl(converter->inputPipe[0], F_SETFD, FD_CLOEXEC);
+    fcntl(converter->inputPipe[1], F_SETFD, FD_CLOEXEC);
     
     result = pipe(converter->outputPipe);
     if(result)
@@ -88,6 +91,8 @@ static inline int text_streamed_converter_start(
         perror("Failed to create output pipe for converter");
         goto err_output_pipe;
     }
+    fcntl(converter->outputPipe[0], F_SETFD, FD_CLOEXEC);
+    fcntl(converter->outputPipe[1], F_SETFD, FD_CLOEXEC);
 
     converter->converterPID = fork();
     if(converter->converterPID == -1)
@@ -159,7 +164,15 @@ static inline void text_streamed_converter_stop(
 {
     (void)close(converter->inputPipe[1]);
     
+    //fprintf(stderr, "Wait while converter is exited(pid is %d)...\n",
+    //    (int)converter->converterPID);
+    //fflush(stderr);
+    
     (void)waitpid(converter->converterPID, NULL, 0);
+    
+    //fprintf(stderr, "Success(pid is %d).\n",
+    //    (int)converter->converterPID);
+    //fflush(stderr);
     
     (void)close(converter->outputPipe[0]);
 }
