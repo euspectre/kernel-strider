@@ -75,8 +75,8 @@ static int kedr_trace_update_subbuffer(struct kedr_trace* trace)
      * N <= k * rate_max + C1 = C2.
      */
     struct ring_buffer* last_buffer = NULL;/* NULL -  not found*/
-    int last_cpu;
-    uint64_t last_ts;
+    int last_cpu = 0;
+    uint64_t last_ts = 0;
     /* Current message parameters */
     struct ring_buffer* buffer;
     int cpu;
