@@ -22,7 +22,7 @@ set(trace_receiver_control_usage "trace_receiver_control_usage")
 
 rule_copy_source("${trace_receiver_control_usage}")
 
-# Create 'shipped' file with CTF trace metadata format
+# Create 'shipped' file with usage
 add_custom_command(OUTPUT "${trace_receiver_control_usage}.o"
 	COMMAND ld -o "${trace_receiver_control_usage}.o" "--format=binary"
 		"${trace_receiver_control_usage}" "-r"

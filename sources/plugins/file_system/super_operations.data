@@ -26,6 +26,8 @@ implementation_header =>>
 
 /* For use state of file_system_type object */
 #include "file_system_type_model.h"
+/* For use state of inode object */
+#include "inode_operations_model.h"
 <<
 
 object.type = struct super_block
@@ -61,6 +63,12 @@ operation.code.post.external =>>
 	}
 <<
 
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = returnValue
+operation.external.state.transition.pre_value =
+operation.external.state.transition.post_value = ALLOCATED
+operation.external.state.transition.condition = returnValue
+
 [group]
 operation.name = destroy_inode
 
@@ -77,6 +85,12 @@ operation.code.post.external =>>
 		kedr_eh_on_free(tid, pc, (unsigned long)inode);
 	}
 <<
+
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = inode
+operation.external.state.transition.pre_value = ALLOCATED
+operation.external.state.transition.post_value =
+operation.external.state.transition.condition = 1
 
 
 [group]
@@ -307,6 +321,12 @@ operation.protection = SUPER_OPERATIONS_DROP_INODE_RETURN_INT != 0
 
 operation.state.value = INITIALIZED
 
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = inode
+operation.external.state.transition.pre_value = INITIALIZED
+operation.external.state.transition.post_value = ALLOCATED
+operation.external.state.transition.condition = 1
+
 [group]
 operation.name = drop_inode
 operation.callback_name = drop_inode
@@ -319,6 +339,12 @@ operation.object = inode->i_sb
 operation.protection = SUPER_OPERATIONS_DROP_INODE_RETURN_INT == 0
 
 operation.state.value = INITIALIZED
+
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = inode
+operation.external.state.transition.pre_value = INITIALIZED
+operation.external.state.transition.post_value = ALLOCATED
+operation.external.state.transition.condition = 1
 
 [group]
 operation.name = dirty_inode_with_flags

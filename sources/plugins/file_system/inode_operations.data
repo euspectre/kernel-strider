@@ -39,6 +39,12 @@ object.state.value = INITIALIZED
 object.state.pre_id = &obj->i_sb_list
 object.state.post_id = &obj->i_dentry
 
+object.state.value = ALLOCATED
+
+object.state.pre_id = &obj->i_list
+object.state.post_id = &obj->i_sb
+
+
 [group]
 operation.name = create
 operation.returnType = int

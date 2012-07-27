@@ -41,6 +41,8 @@ header =>>
 #include "fs_interception.h"
 
 #include "module_ref_model.h"
+
+#include "fill_super_interceptor.h"
 <<
 
 object.name = fs_interception
@@ -63,6 +65,12 @@ object.name = file_system_type_model
 object.init = return file_system_type_model_connect(&file_system_type_interceptor_payload_register);
 object.destroy = file_system_type_model_disconnect(&file_system_type_interceptor_payload_unregister);
 
+
+object.name = fill_super_interceptor
+object.init = return fill_super_interceptor_init();
+object.destroy = fill_super_interceptor_destroy();
+
+################### Global functions interception ######################
 [group]
 function.name = register_filesystem
 returnType = int
@@ -94,6 +102,95 @@ post =>>
 		file_system_type_interceptor_forget(fs);
 <<
 
+
+# Functions which are normally used in mount()/get_sb() file system type operation.
+
+[group]
+function.name = get_sb_nodev
+
+arg.type = struct file_system_type*
+arg.name = fs_type
+
+arg.type = int
+arg.name = flags
+
+arg.type = void*
+arg.name = data
+
+arg.type = fill_super_t
+arg.name = fill_super
+
+arg.type = struct vfsmount*
+arg.name = mnt
+
+pre=>>
+	/* Replace callback in function parameter */
+	fill_super = fill_super_interceptor_replace(fs_type, fill_super);
+<<
+post=>>
+	/* Forget callback interception */
+	fill_super_interceptor_forget(fs_type);
+<<
+
+
+[group]
+function.name = get_sb_bdev
+
+arg.type = struct file_system_type*
+arg.name = fs_type
+
+arg.type = int
+arg.name = flags
+
+arg.type = const char*
+arg.name = dev_name
+
+arg.type = void*
+arg.name = data
+
+arg.type = fill_super_t
+arg.name = fill_super
+
+arg.type = struct vfsmount*
+arg.name = mnt
+
+pre=>>
+	/* Replace callback in function parameter */
+	fill_super = fill_super_interceptor_replace(fs_type, fill_super);
+<<
+post=>>
+	/* Forget callback interception */
+	fill_super_interceptor_forget(fs_type);
+<<
+
+[group]
+function.name = get_sb_single
+
+arg.type = struct file_system_type*
+arg.name = fs_type
+
+arg.type = int
+arg.name = flags
+
+arg.type = void*
+arg.name = data
+
+arg.type = fill_super_t
+arg.name = fill_super
+
+arg.type = struct vfsmount*
+arg.name = mnt
+
+pre=>>
+	/* Replace callback in function parameter */
+	fill_super = fill_super_interceptor_replace(fs_type, fill_super);
+<<
+post=>>
+	/* Forget callback interception */
+	fill_super_interceptor_forget(fs_type);
+<<
+
+###################### Process events from core ########################
 on_target_load = fs_interception_start();
 
 on_target_unload = fs_interception_stop();

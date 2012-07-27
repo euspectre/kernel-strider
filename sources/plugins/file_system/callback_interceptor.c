@@ -1,4 +1,4 @@
-#include "callback_interception.h"
+#include "callback_interceptor.h"
 
 #include <linux/list.h>
 #include <linux/spinlock.h>
@@ -30,7 +30,7 @@ struct callback_interceptor* callback_interceptor_create(void)
         return NULL;
     }
     INIT_LIST_HEAD(&interceptor->map_elems);
-    SPINLOCK_INIT(&interceptor->lock);
+    spin_lock_init(&interceptor->lock);
     
     return interceptor;
 }
@@ -69,7 +69,7 @@ int callback_interceptor_map(struct callback_interceptor* interceptor,
     int result = 0;
     struct map_elem* elem;
     spin_lock_irqsave(&interceptor->lock, flags);
-    list_for_each_entry(&interceptor->map_elems, elem, list_elem)
+    list_for_each_entry(elem, &interceptor->map_elems, list_elem)
     {
         if(elem->object == object)
         {
@@ -84,7 +84,7 @@ int callback_interceptor_map(struct callback_interceptor* interceptor,
     elem = kmalloc(sizeof(*elem), GFP_ATOMIC);
     if(elem == NULL)
     {
-        pr_err("Failed to allocate interceptor mapping element structure.")
+        pr_err("Failed to allocate interceptor mapping element structure.");
         result = -ENOMEM;
         goto out;
     }
@@ -112,7 +112,7 @@ int callback_interceptor_forget(struct callback_interceptor* interceptor,
     int result = 1;
     struct map_elem* elem;
     spin_lock_irqsave(&interceptor->lock, flags);
-    list_for_each_entry(&interceptor->map_elems, elem, list_elem)
+    list_for_each_entry(elem, &interceptor->map_elems, list_elem)
     {
         if(elem->object == object)
         {
@@ -142,7 +142,7 @@ int callback_interceptor_get_callback(struct callback_interceptor* interceptor,
     int result = -EINVAL;
     struct map_elem* elem;
     spin_lock_irqsave(&interceptor->lock, flags);
-    list_for_each_entry(&interceptor->map_elems, elem, list_elem)
+    list_for_each_entry(elem, &interceptor->map_elems, list_elem)
     {
         if(elem->object == object)
         {

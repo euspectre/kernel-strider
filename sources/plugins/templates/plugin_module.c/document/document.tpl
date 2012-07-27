@@ -5,6 +5,10 @@
 
 <$if concat(block)$><$block: join(\n)$>
 
+//#define REPLACEMENT_PAIR(orig, repl) {&orig, &repl + 
+// BUILD_BUG_ON_ZERO(!__builtin_types_compatible_p(typeof(&orig), typeof(&repl)))}
+#define REPLACEMENT_PAIR(orig, repl) {&orig, &repl}
+
 static struct kedr_repl_pair rp[] =
 {
     <$replacement_pair: join(,\n\t)$>

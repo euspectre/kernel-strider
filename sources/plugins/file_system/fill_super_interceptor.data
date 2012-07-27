@@ -1,0 +1,76 @@
+interceptor.group.name = fill_super
+
+header=>>
+#include <linux/fs.h>
+<<
+
+implementation_header=>>
+#include <linux/dcache.h>
+
+#include "fs_interception.h"
+
+#include "inode_operations_model.h"
+#include "super_operations_model.h"
+
+/* Common operations concerning new super block with operations and root dentry */
+static void on_super_created(unsigned long tid, unsigned long pc, struct super_block* s)
+{
+	struct dentry* root_dentry = s->s_root;
+	super_operations_interceptor_watch(s);
+	if(root_dentry)
+	{
+		struct inode* root_inode = root_dentry->d_inode;
+		dentry_operations_interceptor_watch(root_dentry);
+		if(root_inode)
+		{
+			inode_operations_interceptor_watch(root_inode);
+			kedr_eh_on_signal(tid, pc, INODE_MODEL_STATE_PRE_INITIALIZED(root_inode),
+				KEDR_SWT_COMMON);
+		}
+	}
+}
+<<
+
+# General interceptor for fill_super() callback in all cases.
+# If specialization will be required, it should be added.
+[group]
+interceptor.name = fill_super_interceptor
+callback.typename = fill_super_t
+
+callback.returnType = int
+
+callback.arg.type = struct super_block*
+callback.arg.name = s
+
+callback.arg.type = void*
+callback.arg.name = data
+
+callback.arg.type = int
+callback.arg.name = silent
+
+callback.object_type = struct file_system_type*
+
+callback.object = s->s_type
+
+pre=>>
+#define pc ((unsigned long)callback_orig)
+#define tid (kedr_get_thread_id())
+	kedr_eh_on_alloc(tid, pc, sizeof(struct super_block), (unsigned long)s);
+#undef pc
+#undef tid
+<<
+
+post=>>
+#define pc ((unsigned long)callback_orig)
+#define tid (kedr_get_thread_id())
+	if(returnValue == 0)
+	{
+		on_super_created(tid, pc, s);
+	}
+	else
+	{
+		kedr_eh_on_free(tid, pc, (unsigned long)s);
+	}
+#undef pc
+#undef tid
+<<

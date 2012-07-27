@@ -36,6 +36,12 @@ kbuild_add_module(${plugin_name}
     "super_operations_model.h"
     "file_system_type_model.c"
     "file_system_type_model.h"
+    
+    "fill_super_interceptor.c"
+    "fill_super_interceptor.h"
+    
+    "callback_interceptor.h"
+    "callback_interceptor.c"
 )
 
 # Plugin code generation
@@ -111,5 +117,13 @@ rule_generate_file("file_system_type_model.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/file_system_type.data"
     "${model_templates_dir}/operations_model.h")
 
+
+rule_generate_file("fill_super_interceptor.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fill_super_interceptor.data"
+    "${model_templates_dir}/callback_interceptor.c")
+
+rule_generate_file("fill_super_interceptor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fill_super_interceptor.data"
+    "${model_templates_dir}/callback_interceptor.h")
 
 kedr_install_kmodule(${plugin_name})

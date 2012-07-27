@@ -27,8 +27,6 @@
 
 #include <getopt.h>
 
-#include <cassert>
-
 using namespace std;
 
 /* Wrapper around addresses for template extracting and pretty printing */
@@ -41,16 +39,8 @@ struct Addr<uint32_t>
     uint32_t addr;
     
     Addr(uint32_t addr) : addr(addr) {}
-    
-#ifndef KEDR_DEBUG
     Addr(const CTFVarInt& var, CTFContext& context):
         addr(var.getUInt32(context)) {}
-#else
-    Addr(const CTFVarInt& var, CTFContext& context)
-        {assert(var.isExist(context) == 1); addr = var.getUInt32(context);}
-#endif /* KEDR_DEBUG */
-
-
     /* For comparision */
     operator uint32_t(void) const {return addr;}
 };
@@ -61,15 +51,8 @@ struct Addr<uint64_t>
     uint64_t addr;
 
     Addr(uint64_t addr) : addr(addr) {}
-
-#ifndef KEDR_DEBUG
     Addr(const CTFVarInt& var, CTFContext& context):
         addr(var.getUInt64(context)) {}
-#else
-    Addr(const CTFVarInt& var, CTFContext& context)
-        {assert(var.isExist(context) == 1); addr = var.getUInt64(context); }
-#endif /* KEDR_DEBUG */
-
     /* For comparision */
     operator uint64_t(void) const {return addr;}
 };
@@ -97,29 +80,17 @@ struct Size<uint32_t>
 {
     uint32_t size;
 
-#ifndef KEDR_DEBUG
     Size(const CTFVarInt& var, CTFContext& context):
         size(var.getUInt32(context)) {}
-#else
-    Size(const CTFVarInt& var, CTFContext& context)
-        {assert(var.isExist(context) == 1); size = var.getUInt32(context); }
-#endif /* KEDR_DEBUG */
 };
 
 template<>
 struct Size<uint64_t>
 {
-    uint64_t size;
-
-#ifndef KEDR_DEBUG
     Size(const CTFVarInt& var, CTFContext& context):
         size(var.getUInt64(context)) {}
-#else
-    Size(const CTFVarInt& var, CTFContext& context)
-        {assert(var.isExist(context) == 1); size = var.getUInt64(context); }
-#endif /* KEDR_DEBUG */
     
-
+    uint64_t size;
 };
 
 
@@ -651,8 +622,7 @@ KEDRTraceProcessor::KEDRTraceProcessor(KEDRTraceReader& traceReader)
 void KEDRTraceProcessor::process(KEDREventProcessor& eventProcessor)
 {
     eventProcessor.currentTraceProcessor = this;
-    KEDRTraceReader::EventIterator iter(traceReader);
-    for(;
+    for(KEDRTraceReader::EventIterator iter(traceReader);
         iter;
         ++iter)
     {
@@ -867,8 +837,8 @@ public:
         const KEDRTraceReader::EventIterator& iter);
 
     void processUnknown(
-        const KEDRTraceReader::EventIterator& iter)
-            {cerr << "Event of unknown type: " << eventTypeVar.getInt32(*iter) << ".\n";}
+        const KEDRTraceReader::EventIterator& /*iter*/)
+            {cerr << "Event of unknown type.\n";}
 
 private:
     ThreadMap<T> threads;
@@ -1028,9 +998,6 @@ private:
     /* Thread join */
     const CTFVarInt& TJVarPC;
     const CTFVarInt& TJVarTid;
-
-    /* Unknown event */
-    const CTFVarEnum& eventTypeVar;
 };
 
 template<class T>
@@ -1118,9 +1085,8 @@ KEDREventProcessorStandard<T>::KEDREventProcessorStandard(
     SV(TCAVarTid, "tcreate_after", "child_tid"),
 
     SV(TJVarPC, "tjoin", "pc"),
-    SV(TJVarTid, "tjoin", "child_tid"),
+    SV(TJVarTid, "tjoin", "child_tid")
 #undef SV
-    eventTypeVar(findEnum(traceReader, "stream.event.header.type"))
 {
 }
 
@@ -1864,157 +1830,31 @@ public:
     }
 };
 
-/************************ Section record ******************************/
-/* Representation of one record in 'sections' file */
-struct SectionRecord
-{
-    uint64_t addr;
-    string name;
-    
-    SectionRecord(uint64_t addr, const string& name):
-        addr(addr), name(name) {}
-};
-
-/* Extract records from 'sections' file */
-vector<SectionRecord> loadSectionRecords(const char* sectionsFile)
-{
-    vector<SectionRecord> sectionRecords;
-    
-    FILE* f = fopen(sectionsFile, "r");
-    if(f == NULL)
-    {
-        perror("Failed to open file with sections");
-        throw runtime_error("Failed to open file with sections");
-    }
-    
-    char* line = NULL;
-    size_t alloc_size;
-    ssize_t len;
-    int lineno = 1;
-    
-    for(len = getline(&line, &alloc_size, f);
-        len > 0;
-        len = getline(&line, &alloc_size, f), ++lineno)
-    {
-        /* Discard newline character */
-        if(line[len - 1] == '\n') line[len - 1] = '\0';
-
-        char* current = line;
-        /* Skip initial spaces */
-        while(isspace(*current)) current++;
-        
-        if(*current == '\0') continue;/* Line is empty */
-        
-        /* Read address */
-        errno = 0;
-        long long addr = strtoll(current, &current, 16);
-        if(errno)
-        {
-            fprintf(stderr, "Failed to parse address in sections file "
-                "at line %d\n", lineno);
-            free(line);
-            fclose(f);
-            throw logic_error("Failed to parse sections file");
-        }
-        /* Skip spaces between address and section name */
-        while(isspace(*current)) current++;
-        /* Rest is a section name */
-        sectionRecords.push_back(SectionRecord(addr, current));
-    }
-    free(line);
-    fclose(f);
-    
-    return sectionRecords;
-}
-
-
-/************************** Sections mapping **************************/
-
-/* Additional types */
-template<class T>
-struct AddrRange
-{
-    T start;
-    T end;
-    
-    AddrRange(T start, T end) : start(start), end(end) {}
-    AddrRange(T value) : start(value), end(value + 1) {}
-    
-    bool operator<(const AddrRange& AddrRange) const {return end <= AddrRange.start;}
-};
-
-/* 
- * Determine whether section contain code, which is mapped
- * into memory when module is loaded.
- */
-static inline bool isCodeScn(const GElf_Shdr& shdr)
-{
-    if(!(shdr.sh_flags & SHF_ALLOC)) return false;
-    if(!(shdr.sh_flags & SHF_EXECINSTR)) return false;
-    if(shdr.sh_size <= 0) return false;
-
-    return true;
-}
-
-/* 
- * Return mapping of code sections into memory.
- * 
- * Key of the resulted map is AddrRange of addresses, value is an index of
- * the section in ELF file.
- */
-template<class T>
-map<AddrRange<T>, int> getCodeSectionsMapping(Elf* e,
-    const vector<SectionRecord>& sectionRecords)
-{
-    map<AddrRange<T>, int> sectionsMapping;
-    
-    size_t shdrstrndx;
-    elf_getshdrstrndx(e, &shdrstrndx);
-
-    size_t nSections;
-    elf_getshdrnum(e, &nSections);
-    
-    for(int i = 0; i < (int)nSections; i++)
-    {
-        Elf_Scn* scn = elf_getscn(e, i);
-        
-        GElf_Shdr shdr;
-        gelf_getshdr(scn, &shdr);
-        
-        if(!isCodeScn(shdr)) continue;
-        
-        const char* scn_name = elf_strptr(e, shdrstrndx, shdr.sh_name);
-        if((scn_name == NULL) || (*scn_name == '\0')) continue;
-        
-        for(int j = 0; j < (int)sectionRecords.size(); j++)
-        {
-            const SectionRecord& sectionRecord = sectionRecords[j];
-            if(sectionRecord.name == scn_name)
-            {
-                T start = sectionRecord.addr;
-                T end = start + shdr.sh_size;
-                sectionsMapping.insert(
-                    make_pair(AddrRange<T>(start, end), i));
-                break;
-            }
-        }
-    }
-    
-    return sectionsMapping;
-}
-
 /************** Converter to tsan with resolving PCs ******************/
 /* 
  * Prepend each event in tsan trace with commentaries about pc
  * originated.
  */
 
+/* Additional types */
+template<class T>
+struct Range
+{
+    T start;
+    T end;
+    
+    Range(T start, T end) : start(start), end(end) {}
+    Range(T value) : start(value), end(value + 1) {}
+    
+    bool operator<(const Range& range) const {return end <= range.start;}
+};
+
 template<class T>
 class EventProcessorTsanPC: public EventProcessor<T>, private TsanEventPrinter<T>
 {
 public:
     EventProcessorTsanPC(ostream& os,
-        const map<AddrRange<T>, string>& sections)
+        const map<Range<T>, string>& sections)
         : TsanEventPrinter<T>(os), sections(sections) {}
 
     void processCallPre(ThreadInfo<T>* thread,
@@ -2199,7 +2039,7 @@ public:
         thread->lastIsMA = false;
     }
 private:
-    map<AddrRange<T>, string> sections;
+    map<Range<T>, string> sections;
     
     void printPCInfo(Addr<T> pc);
 };
@@ -2207,7 +2047,7 @@ private:
 template<class T>
 void EventProcessorTsanPC<T>::printPCInfo(Addr<T> pc)
 {
-    typename map<AddrRange<T>, string>::const_iterator iter = sections.find(pc.addr);
+    typename map<Range<T>, string>::const_iterator iter = sections.find(pc.addr);
     if(iter != sections.end())
     {
         T offset = pc - iter->first.start;
@@ -2217,152 +2057,123 @@ void EventProcessorTsanPC<T>::printPCInfo(Addr<T> pc)
     }
 }
 
-
-/************** Fix lock prefixes in events ***************************/
-/* 
- * For all memory access events check fist byte of instruction
- * (to which PC points). If first byte is f0 ('lock' prefix), then event
- * is treated as locked memory access.
- */
-
-template<class T>
-class EventProcessorFixLock: public EventProcessorTransform<T>
+/**********************************************************************/
+/* Representation of one record in 'sections' file */
+struct SectionRecord
 {
-public:
-    EventProcessorFixLock(EventProcessor<T>* eventProcessor,
-        const char* moduleFile, const vector<SectionRecord>& sectionRecords);
-    ~EventProcessorFixLock();
+    uint64_t addr;
+    string name;
     
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
-        enum kedr_memory_event_type type)
-    {
-        if(isLockPrefix(pc))
-        {
-            switch(type)
-            {
-            case KEDR_ET_MREAD:
-                EventProcessorTransform<T>::processLMARead(thread, pc, addr, size);
-            break;
-            case KEDR_ET_MWRITE:
-                EventProcessorTransform<T>::processLMAWrite(thread, pc, addr, size);
-            break;
-            case KEDR_ET_MUPDATE:
-                EventProcessorTransform<T>::processLMAUpdate(thread, pc, addr, size);
-            break;
-            }
-//#ifdef KEDR_DEBUG
-            cerr << "Memory access at " << pc
-                << " has been transformed into locked access." << endl;
-//#endif
-        }
-        else
-        {
-            EventProcessorTransform<T>::processMA(thread, pc, addr, size, type);
-        }
-    }
-private:
-    int fd;
-    Elf* e;
-    
-    map<AddrRange<T>, const unsigned char*> sectionDataMap;
-    
-    bool isLockPrefix(Addr<T> addr);
+    SectionRecord(uint64_t addr, const string& name):
+        addr(addr), name(name) {}
 };
 
-template<class T>
-bool EventProcessorFixLock<T>::isLockPrefix(Addr<T> addr)
+/* Extract records from 'sections' file */
+vector<SectionRecord> loadSectionRecords(const char* sectionsFile)
 {
-    typename map<AddrRange<T>, const unsigned char*>::const_iterator iter
-        = sectionDataMap.find(AddrRange<T>(addr.addr));
-    if(iter != sectionDataMap.end())
+    vector<SectionRecord> sectionRecords;
+    
+    FILE* f = fopen(sectionsFile, "r");
+    if(f == NULL)
     {
-        T offset = addr - iter->first.start;
-        const unsigned char* data = iter->second;
-        
-        if(data[offset] == 0xf0) return true;
+        perror("Failed to open file with sections");
+        throw runtime_error("Failed to open file with sections");
     }
-    return false;
+    
+    char* line = NULL;
+    size_t alloc_size;
+    ssize_t len;
+    int lineno = 1;
+    for(len = getline(&line, &alloc_size, f);
+        len > 0;
+        len = getline(&line, &alloc_size, f), ++lineno)
+    {
+        /* Discard newline character */
+        if(line[len - 1] == '\n') line[len - 1] = '\0';
+
+        char* current = line;
+        /* Skip initial spaces */
+        while(isspace(*current)) current++;
+        if(*current == '\0') continue;/* Line is empty */
+        
+        /* Read address */
+        errno = 0;
+        long long addr = strtoll(current, &current, 16);
+        if(errno)
+        {
+            fprintf(stderr, "Failed to parse address in sections file "
+                "at line %d\n", lineno);
+            fclose(f);
+            throw logic_error("Failed to parse sections file");
+        }
+        /* Skip spaces between address and section name */
+        while(isspace(*current)) current++;
+        /* Rest is a section name */
+        sectionRecords.push_back(SectionRecord(addr, current));
+    }
+    fclose(f);
+    
+    return sectionRecords;
 }
 
-template<class T>
-EventProcessorFixLock<T>::EventProcessorFixLock(
-    EventProcessor<T> *eventProcessor,
-    const char* moduleFile,
-    const vector<SectionRecord>& sectionRecords)
-        : EventProcessorTransform<T>(eventProcessor)
+/* 
+ * Determine whether section contain code, which is mapped
+ * into memory when module is loaded.
+ */
+static inline bool isCodeScn(const GElf_Shdr& shdr)
 {
-    /* Open module file as ELF */
-    if(elf_version(EV_CURRENT) == EV_NONE)
-    {
-        throw runtime_error("Libelf initialization failed");
-    }
+    if(shdr.sh_flags & SHF_ALLOC) return false;
+    if(shdr.sh_flags & SHF_EXECINSTR) return false;
+    if(shdr.sh_size <= 0) return false;
+
+    return true;
+}
+
+/* 
+ * Return mapping of code sections into memory.
+ * 
+ * Key of the resulted map is range of addresses, value is an index of
+ * the section in ELF file.
+ */
+template<class T>
+map<Range<T>, int> getCodeSectionsMapping(Elf* e,
+    const vector<SectionRecord>& sectionRecords)
+{
+    map<Range<T>, int> sectionsMapping;
     
-    fd = open(moduleFile, O_RDONLY);
-    if(fd == -1)
-    {
-        cerr << "Failed to open file '" << moduleFile << "': "
-            << strerror(errno) << "." << endl;
-        throw runtime_error("Failed to open module file.");
-    }
+    size_t shdrstrndx;
+    elf_getshdrstrndx(e, &shdrstrndx);
+
+    size_t nSections;
+    elf_getshdrnum(e, &nSections);
     
-    e = elf_begin(fd, ELF_C_READ, NULL);
-    if(e == NULL)
+    for(int i = 0; i < (int)nSections; i++)
     {
-        close(fd);
-        throw runtime_error("elf_begin() failed");
-    }
-    
-    if(elf_kind(e) != ELF_K_ELF)
-    {
-        close(fd);
-        throw runtime_error("Not an ELF");
-    }
-    
-    try
-    {
-        /* Determine sections mapping usign section records */
-        map<AddrRange<T>, int> sectionsMapping
-            = getCodeSectionsMapping<T>(e, sectionRecords);
+        Elf_Scn* scn = elf_getscn(e, i);
         
-        /* For each section in mapping extract data for that section. */
-        for(typename map<AddrRange<T>, int>::const_iterator iter = sectionsMapping.begin();
-            iter != sectionsMapping.end();
-            ++iter)
+        GElf_Shdr shdr;
+        gelf_getshdr(scn, &shdr);
+        
+        if(!isCodeScn(shdr)) continue;
+        
+        const char* scn_name = elf_strptr(e, shdrstrndx, shdr.sh_name);
+        if((scn_name == NULL) || (*scn_name == '\0')) continue;
+        
+        for(int j = 0; j < (int)sectionRecords.size(); j++)
         {
-            Elf_Scn* scn = elf_getscn(e, iter->second);
-            assert(scn);
-            Elf_Data* data = elf_rawdata(scn, NULL);
-            if(data == NULL)
+            const SectionRecord& sectionRecord = sectionRecords[j];
+            if(sectionRecord.name == scn_name)
             {
-                GElf_Shdr shdr;
-                gelf_getshdr(scn, &shdr);
-                size_t shdrstrndx;
-                elf_getshdrstrndx(e, &shdrstrndx);
-                
-                cerr << "Failed to extract data for section '"
-                    << elf_strptr(e, shdrstrndx, shdr.sh_name) << "'." << endl;
-                
-                throw runtime_error("Failed to extract data for module section.");
+                T start = sectionRecord.addr;
+                T end = start + shdr.sh_size;
+                sectionsMapping.insert(
+                    make_pair(Range<T>(start, end), i));
+                break;
             }
-            
-            sectionDataMap.insert(make_pair(iter->first, (const unsigned char*)data->d_buf));
         }
     }
-    catch(exception&)
-    {
-        elf_end(e);
-        close(fd);
-        
-        throw;
-    }
-}
-
-template<class T>
-EventProcessorFixLock<T>::~EventProcessorFixLock(void)
-{
-    elf_end(e);
-    close(fd);
+    
+    return sectionsMapping;
 }
 
 /****************************** Options *******************************/
@@ -2409,7 +2220,7 @@ int Options::parseParameters(int argc, char** argv)
         {"sections", 1, 0, optSectionsFile},
         {"module", 1, 0, optModuleFile},
         {"fix-lock", 0, 0, optFixLock},
-        {"fix-all", 0, 0, optFixAll},
+        {"fix-all", 0, 0, optFixLock},
         {"resolve-pc", 0, 0, optResolvePC},
         {"help", 0, 0, optHelp},
         {0, 0, 0, 0}
@@ -2457,7 +2268,6 @@ int Options::parseParameters(int argc, char** argv)
             }
             traceDir = optarg;
         break;
-        case optFixAll:
         case optFixLock:
             fixLock = true;
         break;
@@ -2564,15 +2374,15 @@ KEDREventProcessor* createEventProcessor(const KEDRTraceReader& traceReader,
             throw runtime_error("Not an ELF");
         }
         /* Determine sections mapping usign sections file */
-        map<AddrRange<T>, int> sectionsMapping
+        map<Range<T>, int> sectionsMapping
             = getCodeSectionsMapping<T>(e,
                 loadSectionRecords(options.sectionsFile.c_str()));
         
         /* Same mapping, but use section names instead of indices */
-        map<AddrRange<T>, string> sectionsMappingNames;
+        map<Range<T>, string> sectionsMappingNames;
         
-        typename map<AddrRange<T>, int>::const_iterator iter = sectionsMapping.begin();
-        typename map<AddrRange<T>, int>::const_iterator iter_end = sectionsMapping.end();
+        typename map<Range<T>, int>::const_iterator iter = sectionsMapping.begin();
+        typename map<Range<T>, int>::const_iterator iter_end = sectionsMapping.end();
         
         size_t shdrstrndx;
         elf_getshdrstrndx(e, &shdrstrndx);
@@ -2591,6 +2401,7 @@ KEDREventProcessor* createEventProcessor(const KEDRTraceReader& traceReader,
         
         elf_end(e);
         close(fd);
+        
         /* Create tsan processor which resolve PC */
         eventProcessorIntermediate = new EventProcessorTsanPC<T>(cout,
             sectionsMappingNames);
@@ -2605,15 +2416,6 @@ KEDREventProcessor* createEventProcessor(const KEDRTraceReader& traceReader,
     eventProcessorIntermediate = new EventProcessorRestorePC<T>(
         eventProcessorIntermediate);
     
-    if(options.fixLock)
-    {
-        /* Additionally wraps into fix-locks transformator. */
-        eventProcessorIntermediate = new EventProcessorFixLock<T>(
-            eventProcessorIntermediate,
-            options.moduleFile.c_str(),
-            loadSectionRecords(options.sectionsFile.c_str()));
-    }
-    
     return new KEDREventProcessorStandard<T>(traceReader, eventProcessorIntermediate);
 }
 
@@ -2625,7 +2427,7 @@ int main(int argc, char** argv)
     
     if(options.parseParameters(argc, argv) != 0) return 1;
     
-    KEDRTraceReader traceReader(options.traceDir.c_str());
+    KEDRTraceReader traceReader(argv[1]);
     
     KEDRTraceProcessor traceProcessor(traceReader);
     
@@ -2645,7 +2447,12 @@ int main(int argc, char** argv)
     }
     else if(*pointer_bits == "64")
     {
+<<<<<<< local
         eventProcessor = createEventProcessor<uint64_t>(traceReader, options);
+=======
+        TsanTraceBuilder<uint64_t> traceBuilder(traceReader);
+        traceBuilder.build(std::cout);
+>>>>>>> other
     }
     else
     {
