@@ -1,10 +1,18 @@
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 
 /* ====================================================================== */
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
+/* ====================================================================== */
+
+/* This parameter is only needed to guard the sequence of the calls to some 
+ * functions. They will never be called but we need to make GCC think they
+ * can be. */
+int must_be_zero = 0;
+module_param(must_be_zero, int, S_IRUGO);
 /* ====================================================================== */
 
 /* The test functions to be called */
@@ -43,6 +51,10 @@ static void
 kedr_test_base_reg_no_esi_edi2(void)
 { }	
 #endif
+
+/* The following function is not intended to be called but we need to
+ * make the compiler and linker think it is. */
+void kedr_test_io_mem(void);
 /* ====================================================================== */
 
 /* [NB] It is safer to call the test functions from the cleanup function
@@ -97,6 +109,13 @@ test_cleanup_module(void)
 	/* [NB] When adding more tests with the functions that are actually
 	 * executable rather than testing-only, consider calling these 
 	 * functions here to make sure they do not crash the system. */
+	
+	if (must_be_zero != 0) {
+		/* List the calls to the functions here that must never be
+		 * called but the calls to which must be present in the code
+		 * somewhere. */
+		kedr_test_io_mem();
+	}
 	return;
 }
 
