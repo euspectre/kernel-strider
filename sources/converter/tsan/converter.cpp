@@ -749,9 +749,10 @@ public:
         Addr<T> /*pc*/, Addr<T> /*func*/) {}
     virtual void processCallPost(ThreadInfo<T>* /*thread*/,
         Addr<T> /*pc*/, Addr<T> /*func*/) {}
-    virtual void processMA(ThreadInfo<T>* /*thread*/,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/,
-        enum kedr_memory_event_type /*type*/) {}
+    virtual void processMAStart(ThreadInfo<T>* /*thread*/,
+        int /*nEvents*/) {}
+    virtual void processMA(Addr<T> /*pc*/, Addr<T> /*addr*/,
+        Size<T> /*size*/, enum kedr_memory_event_type /*type*/) {}
     virtual void processLMAUpdate(ThreadInfo<T>* /*thread*/,
         Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/) {}
     virtual void processLMARead(ThreadInfo<T>* /*thread*/,
@@ -1161,12 +1162,14 @@ void KEDREventProcessorStandard<T>::processMA(
     const KEDRTraceReader::EventIterator& iter)
 {
     ThreadInfo<T>* threadInfo = getThreadInfo(iter);
+    int nEvents = MAVarElements.getNElems(*iter);
+    eventProcessor.processMAStart(threadInfo, nEvents);
+    
     for(CTFVarArray::ElemIterator elemIter(MAVarElements, *iter);
         elemIter;
         ++elemIter)
     {
-        eventProcessor.processMA(threadInfo,
-            Addr<T>(MASVarPC, *elemIter),
+        eventProcessor.processMA(Addr<T>(MASVarPC, *elemIter),
             Addr<T>(MASVarAddr, *elemIter),
             Size<T>(MASVarSize, *elemIter),
             (enum kedr_memory_event_type)MASVarType.getUInt32(*elemIter));
@@ -1401,84 +1404,53 @@ ThreadInfo<T>* KEDREventProcessorStandard<T>::getThreadInfo(
 /*************** Standard converter into Tsan events*******************/
 /* Converts intermediate event into tsan event. */
 template<class T>
-class EventProcessorTsan: public EventProcessor<T>, private TsanEventPrinter<T>
+class EventProcessorTsan: public EventProcessor<T>, protected TsanEventPrinter<T>
 {
 public:
-    EventProcessorTsan(ostream& os) : TsanEventPrinter<T>(os) {}
+    EventProcessorTsan(ostream& os) : TsanEventPrinter<T>(os),
+        isMAblockStarted(false), threadMA(NULL) {}
 
     void processCallPre(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> /*func*/)
     {
         printFunctionCall(thread->tid, pc);
-        thread->lastIsMA = false;
     }
     void processCallPost(ThreadInfo<T>* thread,
         Addr<T> /*pc*/, Addr<T> /*func*/)
     {
         printFunctionExit(thread->tid);
-        thread->lastIsMA = false;
     }
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMAStart(ThreadInfo<T>* thread, int /*nEvents*/)
+    {
+        threadMA = thread;
+        isMAblockStarted = false;
+    }
+    
+    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(!thread->lastIsMA)
+        if(!isMAblockStarted)
         {
-            printBlock(thread->tid, pc);
-            thread->lastIsMA = true;
+            printBlock(threadMA->tid, pc);
+            isMAblockStarted = true;
         }
         switch(type)
         {
         case KEDR_ET_MREAD:
-            printRead(thread->tid, pc, addr, size);
+            printRead(threadMA->tid, pc, addr, size);
         break;
         case KEDR_ET_MWRITE:
         case KEDR_ET_MUPDATE:
-            printWrite(thread->tid, pc, addr, size);
+            printWrite(threadMA->tid, pc, addr, size);
         break;
         }
     }
-
-    /* Locked operations and barriers are only broken memory access series. */
-    void processLMAUpdate(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processLMARead(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processLMAWrite(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMRB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMWB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMFB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-
-
 
     virtual void processIOMA(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(!thread->lastIsMA)
-        {
-            printBlock(thread->tid, pc);
-            thread->lastIsMA = true;
-        }
+        printBlock(thread->tid, pc);
 
         switch(type)
         {
@@ -1496,13 +1468,11 @@ public:
         Addr<T> pc, Size<T> size, Addr<T> pointer)
     {
         printAlloc(thread->tid, pc, size, pointer);
-        thread->lastIsMA = false;
     }
     void processFree(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> pointer)
     {
         printFree(thread->tid, pc, pointer);
-        thread->lastIsMA = false;
     }
 
     void processLock(ThreadInfo<T>* thread,
@@ -1510,74 +1480,68 @@ public:
         enum kedr_lock_type /*type*/)
     {
         printLock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
         printUnlock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processRLock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
         printRLock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processRUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
         printUnlock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processSignal(ThreadInfo<T>* thread, Addr<T> pc,
         Addr<T> obj, enum kedr_sw_object_type /*type*/)
     {
         printSignal(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processWait(ThreadInfo<T>* thread, Addr<T> pc,
         Addr<T> obj, enum kedr_sw_object_type /*type*/)
     {
         printWait(thread->tid, pc, obj);
-        thread->lastIsMA = false;
     }
     void processThreadCreateBefore(ThreadInfo<T>* thread,
         Addr<T> pc)
     {
         printThreadCreateBefore(thread->tid, pc);
-        thread->lastIsMA = false;
     }
     void processThreadCreateAfter(ThreadInfo<T>* thread,
         Addr<T> /*pc*/ , ThreadInfo<T>* childThread)
     {
         printThreadCreateAfter(thread->tid, childThread->tid);
-        thread->lastIsMA = false;
     }
     void processThreadJoin(ThreadInfo<T>* thread,
         Addr<T> pc, ThreadInfo<T>* childThread)
     {
         printThreadJoin(thread->tid, pc, childThread->tid);
-        thread->lastIsMA = false;
     }
     
     void processThreadStart(ThreadInfo<T>* thread,
         ThreadInfo<T>* parentThread)
     {
         printThreadStart(thread->tid, parentThread ? parentThread->tid : Tid(0));
-        thread->lastIsMA = false;
     }
     void processThreadStop(ThreadInfo<T>* thread)
     {
         printThreadEnd(thread->tid);
-        thread->lastIsMA = false;
     }
+protected:
+    /* Whether block is started for current memory accesses seria. */
+    bool isMAblockStarted;
+    /* Thread for current memory accesses seria */
+    ThreadInfo<T>* threadMA;
 };
 
-/********************** Converter for restore PC***********************/
+/********************** Base event converter **************************/
 /* 
  * Base class for EventProcessor -> EventProcessor converters.
  * 
@@ -1612,11 +1576,15 @@ public:
     {
         eventProcessor->processCallPost(thread, pc, func);
     }
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMAStart(ThreadInfo<T>* thread, int nEvents)
+    {
+        eventProcessor->processMAStart(thread, nEvents);
+    }
+    
+    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        eventProcessor->processMA(thread, pc, addr, size, type);
+        eventProcessor->processMA(pc, addr, size, type);
     }
     void processLMAUpdate(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size)
@@ -1748,12 +1716,17 @@ public:
     }
 #define RESTORE_PC if(pc == 0) pc = thread->callAddr
 
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMAStart(ThreadInfo<T>* thread, int nEvents)
+    {
+        threadMA = thread;
+        EventProcessorTransform<T>::processMAStart(thread, nEvents);
+    }
+
+    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        RESTORE_PC;
-        EventProcessorTransform<T>::processMA(thread, pc, addr, size, type);
+        if(pc == 0) pc = threadMA->callAddr;
+        EventProcessorTransform<T>::processMA(pc, addr, size, type);
     }
     void processLMAUpdate(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size)
@@ -1862,6 +1835,8 @@ public:
         RESTORE_PC;
         EventProcessorTransform<T>::processThreadJoin(thread, pc, childThread);
     }
+private:
+    ThreadInfo<T>* threadMA;
 };
 
 /************************ Section record ******************************/
@@ -2010,89 +1985,49 @@ map<AddrRange<T>, int> getCodeSectionsMapping(Elf* e,
  */
 
 template<class T>
-class EventProcessorTsanPC: public EventProcessor<T>, private TsanEventPrinter<T>
+class EventProcessorTsanPC: public EventProcessorTsan<T>
 {
 public:
     EventProcessorTsanPC(ostream& os,
         const map<AddrRange<T>, string>& sections)
-        : TsanEventPrinter<T>(os), sections(sections) {}
+        : EventProcessorTsan<T>(os), sections(sections) {}
 
     void processCallPre(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> /*func*/)
+        Addr<T> pc, Addr<T> func)
     {
         printPCInfo(pc);
-        printFunctionCall(thread->tid, pc);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processCallPre(thread, pc, func);
     }
-    void processCallPost(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*func*/)
-    {
-        printFunctionExit(thread->tid);
-        thread->lastIsMA = false;
-    }
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
+
+    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(!thread->lastIsMA)
+        if(!EventProcessorTsan<T>::isMAblockStarted)
         {
-            printBlock(thread->tid, pc);
-            thread->lastIsMA = true;
+            printBlock(EventProcessorTsan<T>::threadMA->tid, pc);
+            EventProcessorTsan<T>::isMAblockStarted = true;
         }
         printPCInfo(pc);
         switch(type)
         {
         case KEDR_ET_MREAD:
-            printRead(thread->tid, pc, addr, size);
+            printRead(EventProcessorTsan<T>::threadMA->tid, pc, addr, size);
         break;
         case KEDR_ET_MWRITE:
         case KEDR_ET_MUPDATE:
-            printWrite(thread->tid, pc, addr, size);
+            printWrite(EventProcessorTsan<T>::threadMA->tid, pc, addr, size);
         break;
         }
     }
-
-    /* Locked operations and barriers are only broken memory access series. */
-    void processLMAUpdate(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processLMARead(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processLMAWrite(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMRB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMWB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-    void processMFB(ThreadInfo<T>* thread, Addr<T> /*pc*/)
-    {
-        thread->lastIsMA = false;
-    }
-
-
 
     virtual void processIOMA(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(!thread->lastIsMA)
-        {
-            printBlock(thread->tid, pc);
-            thread->lastIsMA = true;
-        }
+        printBlock(thread->tid, pc);
+
         printPCInfo(pc);
+
         switch(type)
         {
         case KEDR_ET_MREAD:
@@ -2103,101 +2038,81 @@ public:
             printWrite(thread->tid, pc, addr, size);
         break;
         }
+
     }
 
     void processAlloc(ThreadInfo<T>* thread,
         Addr<T> pc, Size<T> size, Addr<T> pointer)
     {
         printPCInfo(pc);
-        printAlloc(thread->tid, pc, size, pointer);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processAlloc(thread, pc, size, pointer);
     }
     void processFree(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> pointer)
     {
         printPCInfo(pc);
-        printFree(thread->tid, pc, pointer);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processFree(thread, pc, pointer);
     }
 
     void processLock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
-        enum kedr_lock_type /*type*/)
+        enum kedr_lock_type type)
     {
         printPCInfo(pc);
-        printLock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processLock(thread, pc, obj, type);
     }
     void processUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
-        enum kedr_lock_type /*type*/)
+        enum kedr_lock_type type)
     {
         printPCInfo(pc);
-        printUnlock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processUnlock(thread, pc, obj, type);
     }
     void processRLock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
-        enum kedr_lock_type /*type*/)
+        enum kedr_lock_type type)
     {
         printPCInfo(pc);
-        printRLock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processRLock(thread, pc, obj, type);
     }
     void processRUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
-        enum kedr_lock_type /*type*/)
+        enum kedr_lock_type type)
     {
         printPCInfo(pc);
-        printUnlock(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processRUnlock(thread, pc, obj, type);
     }
     void processSignal(ThreadInfo<T>* thread, Addr<T> pc,
-        Addr<T> obj, enum kedr_sw_object_type /*type*/)
+        Addr<T> obj, enum kedr_sw_object_type type)
     {
         printPCInfo(pc);
-        printSignal(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processSignal(thread, pc, obj, type);
     }
     void processWait(ThreadInfo<T>* thread, Addr<T> pc,
-        Addr<T> obj, enum kedr_sw_object_type /*type*/)
+        Addr<T> obj, enum kedr_sw_object_type type)
     {
         printPCInfo(pc);
-        printWait(thread->tid, pc, obj);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processWait(thread, pc, obj, type);
     }
     void processThreadCreateBefore(ThreadInfo<T>* thread,
         Addr<T> pc)
     {
         printPCInfo(pc);
-        printThreadCreateBefore(thread->tid, pc);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processThreadCreateBefore(thread, pc);
     }
     void processThreadCreateAfter(ThreadInfo<T>* thread,
-        Addr<T> /*pc*/ , ThreadInfo<T>* childThread)
+        Addr<T> pc , ThreadInfo<T>* childThread)
     {
         printThreadCreateAfter(thread->tid, childThread->tid);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processThreadCreateAfter(thread, pc, childThread);
     }
     void processThreadJoin(ThreadInfo<T>* thread,
         Addr<T> pc, ThreadInfo<T>* childThread)
     {
         printPCInfo(pc);
-        printThreadJoin(thread->tid, pc, childThread->tid);
-        thread->lastIsMA = false;
+        EventProcessorTsan<T>::processThreadJoin(thread, pc, childThread);
     }
     
-    void processThreadStart(ThreadInfo<T>* thread,
-        ThreadInfo<T>* parentThread)
-    {
-        printThreadStart(thread->tid, parentThread ? parentThread->tid : Tid(0));
-        thread->lastIsMA = false;
-    }
-    void processThreadStop(ThreadInfo<T>* thread)
-    {
-        printThreadEnd(thread->tid);
-        thread->lastIsMA = false;
-    }
 private:
     map<AddrRange<T>, string> sections;
     
