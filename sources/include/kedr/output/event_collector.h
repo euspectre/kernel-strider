@@ -121,6 +121,7 @@ enum execution_message_type
 struct execution_message_base
 {
     tid_t tid;
+    uint64_t ts;/* Own timestamp */
     uint16_t counter;
     char type;
 };

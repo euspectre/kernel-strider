@@ -80,14 +80,17 @@ static int kedr_trace_update_subbuffer(struct kedr_trace* trace)
     /* Current message parameters */
     struct ring_buffer* buffer;
     int cpu;
-    uint64_t ts;
+    uint64_t ts_rb;/* Timestampt used only for call ring buffer functions */
+    uint64_t ts;/* Timestamp used for sorting */
     /* Firstly check buffer with normal messages */
     buffer = trace->event_collector.buffer_normal;
     for(cpu = 0; cpu < NR_CPUS; cpu++)
     {
         struct ring_buffer_event* event = ring_buffer_peek(buffer, cpu,
-            &ts LOST_EVENTS_ARG);
+            &ts_rb LOST_EVENTS_ARG);
         if(event == NULL) continue;/* no events in this subbuffer */
+
+        ts = ((struct execution_message_base*)event)->ts;
 
         if((last_buffer == NULL) || (last_ts > ts))
         {
@@ -104,9 +107,11 @@ static int kedr_trace_update_subbuffer(struct kedr_trace* trace)
     for(cpu = 0; cpu < NR_CPUS; cpu++)
     {
         struct ring_buffer_event* event = ring_buffer_peek(buffer, cpu,
-            &ts LOST_EVENTS_ARG);
+            &ts_rb LOST_EVENTS_ARG);
         if(event == NULL) continue;/* no events in this subbuffer */
 
+        ts = ((struct execution_message_base*)event)->ts;
+        
         if((last_buffer == NULL) || (last_ts > ts))
         {
             last_buffer = buffer;
@@ -187,7 +192,8 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
     struct msg_builder* builder)
 {
     struct ring_buffer_event* event;
-    uint64_t ts;
+    uint64_t ts_rb;/* Time from ring_buffer. Used only for call functions. */
+    uint64_t ts;/* Time which is stored with event and used for sort. */
     
     ssize_t result;
     ssize_t size = 0;
@@ -219,8 +225,10 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
         {
             // TODO: process lost messages
             event = ring_buffer_peek(trace->current_buffer,
-                trace->current_cpu, &ts LOST_EVENTS_ARG);
+                trace->current_cpu, &ts_rb LOST_EVENTS_ARG);
             if(event == NULL) break;
+            
+            ts = ((struct execution_message_base*)event)->ts;
             
             result = kedr_trace_add_event(trace, builder,
                 ring_buffer_event_data(event),
@@ -229,7 +237,7 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
             if(result < 0) break;
 
             ring_buffer_consume(trace->current_buffer,
-                trace->current_cpu, &ts LOST_EVENTS_ARG);
+                trace->current_cpu, &ts_rb LOST_EVENTS_ARG);
             
             if(result == 0)
             {

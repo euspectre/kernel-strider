@@ -8,6 +8,8 @@
 
 #include <linux/module.h> /* Export functions for write message */
 
+#include <linux/hrtimer.h> /* high resolution timer for clock*/
+
 int execution_event_collector_init(
     struct execution_event_collector* event_collector,
     size_t buffer_normal_size, size_t buffer_critical_size)
@@ -41,7 +43,15 @@ void execution_event_collector_destroy(
     ring_buffer_free(event_collector->buffer_critical);
 }
 
-
+/* 
+ * Need own clocks for sorting events between cpu-buffers.
+ * Original clocks of ring_buffer is not always sufficient for that purpose.
+ */
+static u64 kedr_clock(void)
+{
+    //should be correct with garantee
+    return ktime_to_ns(ktime_get());
+}
 /*************** Writting messages into buffer ************************/
 
 /* 
@@ -90,6 +100,7 @@ void execution_event_memory_accesses_begin(
     
     message_ma->base.type = execution_message_type_ma;
     message_ma->base.tid = tid;
+    message_ma->base.ts = kedr_clock();
     message_ma->base.counter = atomic_inc_return(&collector->message_counter);
     message_ma->n_subevents = n_accesses;
 
@@ -153,6 +164,7 @@ if(event == NULL) return;                                               \
 message_##struct_suffix = ring_buffer_event_data(event);                \
 message_##struct_suffix->base.type = execution_message_type_##type_suffix;  \
 message_##struct_suffix->base.tid = tid;                                \
+message_##struct_suffix->base.ts = kedr_clock();                        \
 message_##struct_suffix->base.counter = atomic_inc_return(&collector->message_counter);
 
 /* Between macros message_##struct_suffix contains pointer to typed message. */

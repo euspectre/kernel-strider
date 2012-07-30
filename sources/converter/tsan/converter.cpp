@@ -751,8 +751,9 @@ public:
         Addr<T> /*pc*/, Addr<T> /*func*/) {}
     virtual void processMAStart(ThreadInfo<T>* /*thread*/,
         int /*nEvents*/) {}
-    virtual void processMA(Addr<T> /*pc*/, Addr<T> /*addr*/,
-        Size<T> /*size*/, enum kedr_memory_event_type /*type*/) {}
+    virtual void processMA(ThreadInfo<T>* /*thread*/,
+        Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/,
+        enum kedr_memory_event_type /*type*/) {}
     virtual void processLMAUpdate(ThreadInfo<T>* /*thread*/,
         Addr<T> /*pc*/, Addr<T> /*addr*/, Size<T> /*size*/) {}
     virtual void processLMARead(ThreadInfo<T>* /*thread*/,
@@ -1169,7 +1170,8 @@ void KEDREventProcessorStandard<T>::processMA(
         elemIter;
         ++elemIter)
     {
-        eventProcessor.processMA(Addr<T>(MASVarPC, *elemIter),
+        eventProcessor.processMA(threadInfo,
+            Addr<T>(MASVarPC, *elemIter),
             Addr<T>(MASVarAddr, *elemIter),
             Size<T>(MASVarSize, *elemIter),
             (enum kedr_memory_event_type)MASVarType.getUInt32(*elemIter));
@@ -1408,7 +1410,7 @@ class EventProcessorTsan: public EventProcessor<T>, protected TsanEventPrinter<T
 {
 public:
     EventProcessorTsan(ostream& os) : TsanEventPrinter<T>(os),
-        isMAblockStarted(false), threadMA(NULL) {}
+        isMAblockStarted(false) {}
 
     void processCallPre(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> /*func*/)
@@ -1420,28 +1422,27 @@ public:
     {
         printFunctionExit(thread->tid);
     }
-    void processMAStart(ThreadInfo<T>* thread, int /*nEvents*/)
+    void processMAStart(ThreadInfo<T>* /*thread*/, int /*nEvents*/)
     {
-        threadMA = thread;
         isMAblockStarted = false;
     }
     
-    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
         if(!isMAblockStarted)
         {
-            printBlock(threadMA->tid, pc);
+            printBlock(thread->tid, pc);
             isMAblockStarted = true;
         }
         switch(type)
         {
         case KEDR_ET_MREAD:
-            printRead(threadMA->tid, pc, addr, size);
+            printRead(thread->tid, pc, addr, size);
         break;
         case KEDR_ET_MWRITE:
         case KEDR_ET_MUPDATE:
-            printWrite(threadMA->tid, pc, addr, size);
+            printWrite(thread->tid, pc, addr, size);
         break;
         }
     }
@@ -1537,8 +1538,6 @@ public:
 protected:
     /* Whether block is started for current memory accesses seria. */
     bool isMAblockStarted;
-    /* Thread for current memory accesses seria */
-    ThreadInfo<T>* threadMA;
 };
 
 /********************** Base event converter **************************/
@@ -1581,10 +1580,10 @@ public:
         eventProcessor->processMAStart(thread, nEvents);
     }
     
-    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        eventProcessor->processMA(pc, addr, size, type);
+        eventProcessor->processMA(thread, pc, addr, size, type);
     }
     void processLMAUpdate(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size)
@@ -1716,17 +1715,11 @@ public:
     }
 #define RESTORE_PC if(pc == 0) pc = thread->callAddr
 
-    void processMAStart(ThreadInfo<T>* thread, int nEvents)
-    {
-        threadMA = thread;
-        EventProcessorTransform<T>::processMAStart(thread, nEvents);
-    }
-
-    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(pc == 0) pc = threadMA->callAddr;
-        EventProcessorTransform<T>::processMA(pc, addr, size, type);
+        RESTORE_PC;
+        EventProcessorTransform<T>::processMA(thread, pc, addr, size, type);
     }
     void processLMAUpdate(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size)
@@ -1835,8 +1828,6 @@ public:
         RESTORE_PC;
         EventProcessorTransform<T>::processThreadJoin(thread, pc, childThread);
     }
-private:
-    ThreadInfo<T>* threadMA;
 };
 
 /************************ Section record ******************************/
@@ -1999,46 +1990,19 @@ public:
         EventProcessorTsan<T>::processCallPre(thread, pc, func);
     }
 
-    void processMA(Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        if(!EventProcessorTsan<T>::isMAblockStarted)
-        {
-            printBlock(EventProcessorTsan<T>::threadMA->tid, pc);
-            EventProcessorTsan<T>::isMAblockStarted = true;
-        }
         printPCInfo(pc);
-        switch(type)
-        {
-        case KEDR_ET_MREAD:
-            printRead(EventProcessorTsan<T>::threadMA->tid, pc, addr, size);
-        break;
-        case KEDR_ET_MWRITE:
-        case KEDR_ET_MUPDATE:
-            printWrite(EventProcessorTsan<T>::threadMA->tid, pc, addr, size);
-        break;
-        }
+        EventProcessorTsan<T>::processMA(thread, pc, addr, size, type);
     }
 
     virtual void processIOMA(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        printBlock(thread->tid, pc);
-
         printPCInfo(pc);
-
-        switch(type)
-        {
-        case KEDR_ET_MREAD:
-            printRead(thread->tid, pc, addr, size);
-        break;
-        case KEDR_ET_MWRITE:
-        case KEDR_ET_MUPDATE:
-            printWrite(thread->tid, pc, addr, size);
-        break;
-        }
-
+        EventProcessorTsan<T>::processIOMA(thread, pc, addr, size, type);
     }
 
     void processAlloc(ThreadInfo<T>* thread,
@@ -2148,8 +2112,7 @@ public:
         const char* moduleFile, const vector<SectionRecord>& sectionRecords);
     ~EventProcessorFixLock();
     
-    void processMA(ThreadInfo<T>* thread,
-        Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
         if(isLockPrefix(pc))
@@ -2183,6 +2146,8 @@ private:
     map<AddrRange<T>, const unsigned char*> sectionDataMap;
     
     bool isLockPrefix(Addr<T> addr);
+    
+    ThreadInfo<T>* threadMA;
 };
 
 template<class T>
