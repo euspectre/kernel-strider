@@ -50,7 +50,7 @@ sample_open(struct inode *inode, struct file *filp)
 	filp->private_data = some_data->buf;
 	mutex_unlock(&some_lock);
 	
-	return nonseekable_open(inode, filp);;
+	return nonseekable_open(inode, filp);
 }
 
 static int 
