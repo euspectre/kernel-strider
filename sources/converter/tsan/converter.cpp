@@ -1744,7 +1744,7 @@ public:
         Addr<T> pc, Addr<T> func)
     {
         EventProcessorTransform<T>::processCallPost(thread, pc, func);
-        thread->callAddr = NULL;
+        thread->callAddr = 0;
     }
 #define RESTORE_PC if(pc == 0) pc = thread->callAddr
 
