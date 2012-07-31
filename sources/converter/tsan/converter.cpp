@@ -2072,7 +2072,7 @@ public:
     void processThreadCreateAfter(ThreadInfo<T>* thread,
         Addr<T> pc , ThreadInfo<T>* childThread)
     {
-        printThreadCreateAfter(thread->tid, childThread->tid);
+        printPCInfo(pc);
         EventProcessorTsan<T>::processThreadCreateAfter(thread, pc, childThread);
     }
     void processThreadJoin(ThreadInfo<T>* thread,
