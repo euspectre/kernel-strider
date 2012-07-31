@@ -55,28 +55,18 @@ doTest()
 		exit 1
 	fi
 	
-	# Read twice, just in case
-	cat "${TEST_DEBUGFS_FILE}" > /dev/null
-	if test $? -ne 0; then
+	chmod +x "${TEST_APP}"
+	"${TEST_APP}" "${TEST_DEBUGFS_FILE}"
+		if test $? -ne 0; then
 		printf "Failed to read data from the file in debugfs: "
 		printf "${TEST_DEBUGFS_FILE}\n"
 		umount "${TEST_DEBUGFS_DIR}"
 		cleanupAll
 		exit 1
 	fi
-	
-	cat "${TEST_DEBUGFS_FILE}" > /dev/null
-	if test $? -ne 0; then
-		printf "Failed to read data from the file in debugfs: "
-		printf "${TEST_DEBUGFS_FILE}\n"
-		umount "${TEST_DEBUGFS_DIR}"
-		cleanupAll
-		exit 1
-	fi
-	
 	umount "${TEST_DEBUGFS_DIR}"
 	
-	# Unload the modules, they are no longer needed
+	# Unload the target, its is no longer needed
 	/sbin/rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
@@ -97,6 +87,8 @@ fi
 
 TARGET_MODULE_NAME="@KMODULE_NAME@"
 TARGET_MODULE="@CMAKE_CURRENT_BINARY_DIR@/${TARGET_MODULE_NAME}.ko"
+
+TEST_APP="@CMAKE_BINARY_DIR@/examples/test_buggy01/test_buggy01"
 
 TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
 TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"

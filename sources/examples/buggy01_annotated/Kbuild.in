@@ -1,0 +1,6 @@
+MODULE_NAME := @KMODULE_NAME@
+
+ccflags-y := -DKEDR_ANNOTATIONS_ENABLED=1 -I$(src)
+obj-m := $(MODULE_NAME).o
+$(MODULE_NAME)-y := module.o kedr_annotations.o
+
