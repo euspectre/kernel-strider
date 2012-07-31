@@ -1,5 +1,5 @@
-#ifndef TRACE_RECIEVER_H
-#define TRACE_RECIEVER_H
+#ifndef TRACE_RECEIVER_H
+#define TRACE_RECEIVER_H
 
 #include "udp_packet_definition.h"
 
@@ -10,7 +10,7 @@
 
 #define KEDR_MESSAGE_HEADER_CONTROL_MAGIC 0xBBB5B4B3
 
-/* Types of control messages to the reciever */
+/* Types of control messages to the receiver */
 enum kedr_message_control_type
 {
 /* Keep-connection-alive packet */
@@ -35,7 +35,7 @@ enum kedr_message_control_type
 	kedr_message_control_type_wait_trace_end,
 };
 
-/* Types of messages contain information about trace reciever. */
+/* Types of messages contain information about trace receiver. */
 enum kedr_message_info_type
 {
 	kedr_message_info_type_start_connection = 0,
@@ -46,4 +46,4 @@ enum kedr_message_info_type
 	kedr_message_info_type_stop
 };
 
-#endif /* TRACE_RECIEVER_H */
+#endif /* TRACE_RECEIVER_H */

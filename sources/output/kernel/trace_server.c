@@ -203,7 +203,7 @@ module_param_call(name, \
 struct port_listener
 {
     struct socket *udpsocket;
-    /* Object which implements commands recieved by listener */
+    /* Object which implements commands received by listener */
     struct trace_sender* sender;
 };
 
@@ -221,7 +221,7 @@ static void port_listener_cb_data(struct sock* sk, int bytes)
     skb = skb_dequeue(&sk->sk_receive_queue);
     if(skb == NULL)
     {
-        pr_info("Failed to extract recieved skb.");
+        pr_info("Failed to extract received skb.");
         return;
     }
 
@@ -294,7 +294,7 @@ static int port_listener_init(struct port_listener* listener,
 
     listener->sender = sender;
     listener->udpsocket->sk->sk_user_data = listener;
-    /* Barrier before publish callback for recieving messages */
+    /* Barrier before publish callback for receiving messages */
     smp_wmb();
     listener->udpsocket->sk->sk_data_ready = port_listener_cb_data;
 

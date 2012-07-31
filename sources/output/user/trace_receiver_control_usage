@@ -5,7 +5,7 @@ Usage:
 where any action may be:
     
     --start <trace-directory>
-        start trace reciever, and wait until it is initialized.
+        start trace receiver, and wait until it is initialized.
         
         <trace-directory> is a directory where trace should be stored.
         
@@ -13,19 +13,19 @@ where any action may be:
         replaced with string representation of UUID of the trace stored.
     
     --stop
-        stop trace reciever, and wait until it is exited.
+        stop trace receiver, and wait until it exits.
     
     --init-session <server-addr>
         send 'start' signal to the server with given address, and wait
-        until session is started.
+        until the session is started.
         
-        Address is internet address of the server.
+        Address is the IP address of the server.
         
-        Also server port may be specified after ':'. Otherwise default
+        The server port may be specified after ':'. Otherwise, the default
         server port is used ($SERVER_PORT$).
     --break-session <server-addr>
         send 'stop' signal to the server with given address, and wait
-        until session is broken.
+        until the session is broken.
         
         Format of the address is the same as for --init-session action.
     
@@ -35,17 +35,18 @@ where any action may be:
     
     --stop-trace
         wait until transmission of current trace ends.
-        If no trace is currently transmitted, immidiately returns.
+        Returns immediately if no trace is currently transmitted.
     
 Options may be follows:
 
     --receiver-port=<number>
-        port on which trace reciever is operate/will be operate after start.
+        port on which trace receiver is operating/will be operating after 
+        start.
         If not given, default value $RECEIVER_PORT$ is used.
         
-        If there are many such options, the last one affects on all actions.
+        If there are several such options, the last one takes effect.
 
 Development options:
 
-    --reciever-path=<path>
-        Path to the reciever program.
+    --receiver-path=<path>
+        Path to the receiver program.

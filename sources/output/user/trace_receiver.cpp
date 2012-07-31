@@ -675,7 +675,7 @@ void TraceReceiver::mainLoop(void)
         }
         else if(result < (int)kedr_message_header_size)
         {
-            std::cerr << "Recieve packet which size is too small("
+            std::cerr << "Receive packet which size is too small("
                 << result << "). Ignore it.\n";
         }
         else if(kedrHeader.magic == htonl(KEDR_MESSAGE_HEADER_MAGIC))

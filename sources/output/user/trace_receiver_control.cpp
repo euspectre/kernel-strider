@@ -60,7 +60,7 @@ public:
         uint16_t receiverPort_native);
     ~TraceReceiverControl(void);
 
-    uint16_t getRecieverPort_native(void) const
+    uint16_t getReceiverPort_native(void) const
         { return ntohs(receiverAddr.sin_port);}
 
     /* 
@@ -259,7 +259,7 @@ int ControlActionStart::doAction(TraceReceiverControl& control)
         
         char receiverPortStr[10];
         snprintf(receiverPortStr, sizeof(receiverPortStr), "%d",
-            (int)control.getRecieverPort_native());
+            (int)control.getReceiverPort_native());
 
         /* TODO: remove fixed size. */
         char traceDirectoryFormatStr[256];
@@ -774,7 +774,7 @@ int ControlParams::parseParameters(int argc, char** argv)
 
 }
 
-/* Trace reciever control */
+/* Trace receiver control */
 bool TraceReceiverControl::isReceiverTerminated = false;
 bool TraceReceiverControl::isReceiverInitialized = false;
 
@@ -915,7 +915,7 @@ int TraceReceiverControl::_recvControlMessage(
     
     if(kedrControl.magic != htonl(KEDR_MESSAGE_HEADER_CONTROL_MAGIC))
     {
-        std::cerr << "Invalid magic field in the recieved information packet.\n";
+        std::cerr << "Invalid magic field in the received information packet.\n";
         return -1;
     }
     

@@ -60,9 +60,9 @@ enum kedr_message_type
 
     /* Start of the range with marks */
     kedr_message_type_mark_range_start,
-    /* Start of the session with reciever */
+    /* Start of the session with receiver */
     kedr_message_type_mark_session_start = kedr_message_type_mark_range_start,
-    /* End of the session with reciever */
+    /* End of the session with receiver */
     kedr_message_type_mark_session_end,
     /* Stop transmit CTF meta data */
     kedr_message_type_mark_meta_ctf_end,

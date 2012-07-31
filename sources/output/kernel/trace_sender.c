@@ -341,7 +341,7 @@ static int kedr_trace_session_wait_stop(
 {
     int result;
     
-    pr_info("Wait until trace session will stop...");
+    pr_info("Wait until trace session stops...");
     
     result = wait_event_interruptible(trace_session->stop_waiter,
         trace_session->state == kedr_trace_session_state_ready);
@@ -375,7 +375,7 @@ enum trace_sender_state_type
 };
 
 /*
- * State of the sender may be changed in the recieve message callback,
+ * State of the sender may be changed in the receive message callback,
  * so it cannot be protected by mutex, only spinlock.
  * But some actions, which change state, cannot be performed under
  * spinlock. E.g., message sending.
@@ -1000,7 +1000,7 @@ struct trace_sender* trace_sender_create(
     if(transmition_interval_empty < transmition_interval)
     {
         pr_err("Transmition interval for empty trace shouldn't be less "
-            "than one for non-emtpy trace.\n");
+            "than one for non-empty trace.\n");
         goto err;
     }
 
@@ -1133,7 +1133,7 @@ int trace_sender_wait_stop(struct trace_sender* sender)
 {
 	int result;
     
-    pr_info("Wait until trace sender will stop...");
+    pr_info("Wait until trace sender stops...");
     
     result = wait_event_killable(sender->stop_waiter,
         sender->state == trace_sender_state_ready);
@@ -1245,13 +1245,13 @@ int trace_sender_stop_collect_messages(struct trace_sender* sender,
         result = kedr_trace_session_wait_stop(trace_session);
         if(result < 0)
         {
-            pr_err("Failed to wait until trace session stop. Do not remove event collector.\n");
+            pr_err("Failed to wait until trace session stops. Do not remove event collector.\n");
             return result;
         }
         result = mutex_lock_interruptible(&sender->trace_session_mutex);
         if(result < 0)
         {
-            pr_err("Failed to acquire mutex for remove trace sessions.\n");
+            pr_err("Failed to acquire mutex for removal of trace sessions.\n");
             return result;
         }
     }
