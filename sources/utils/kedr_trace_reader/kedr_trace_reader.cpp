@@ -99,6 +99,12 @@ KEDRTraceReader::KEDRStream::KEDRStream(
 	counterVar = &findInt(traceReader, "stream.event.context.counter");
 }
 
+/* Comparision of timestamps, which takes into account int type overflow */
+static inline bool isTimestampAfter(uint64_t ts1, uint64_t ts2)
+{
+	return ((int64_t)(ts1 - ts2)) > 0;
+}
+
 bool KEDRTraceReader::isEventOlder(Event& event1, KEDRStream& stream1,
 	Event& event2, KEDRStream& stream2)
 {
@@ -109,9 +115,9 @@ bool KEDRTraceReader::isEventOlder(Event& event1, KEDRStream& stream1,
 	uint64_t timestamp1 = stream1.timestampVar->getUInt64(event1);
 	uint64_t timestamp2 = stream2.timestampVar->getUInt64(event2);
 	
-	if(timestamp1 > timestamp2 + traceReader.time_precision)
+	if(isTimestampAfter(timestamp1, timestamp2 + traceReader.time_precision))
 		return false;
-	else if(timestamp2 > timestamp1 + traceReader.time_precision)
+	else if(isTimestampAfter(timestamp2, timestamp1 + traceReader.time_precision))
 		return true;
 	else
 	{
