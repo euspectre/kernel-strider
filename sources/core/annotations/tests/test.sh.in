@@ -47,11 +47,6 @@ cleanupAll()
 		/sbin/rmmod "${REPORTER_MODULE_NAME}"
 	fi
 
-	lsmod | grep "${FH_MODULE_NAME}" > /dev/null 2>&1
-	if test $? -eq 0; then
-		/sbin/rmmod "${FH_MODULE_NAME}"
-	fi
-	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
 		/sbin/rmmod "${CORE_MODULE_NAME}"
