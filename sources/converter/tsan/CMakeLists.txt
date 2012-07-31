@@ -6,7 +6,7 @@ rule_copy_source("converter_usage")
 add_custom_command(OUTPUT "converter_usage.o"
 	COMMAND ld -o "converter_usage.o" "--format=binary"
 		"converter_usage" "-r"
-	DEPENDS "converter_usage")
+	DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/converter_usage")
 
 
 add_executable(${executable_name}

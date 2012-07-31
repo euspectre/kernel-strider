@@ -26,7 +26,7 @@ rule_copy_source("${trace_receiver_control_usage}")
 add_custom_command(OUTPUT "${trace_receiver_control_usage}.o"
 	COMMAND ld -o "${trace_receiver_control_usage}.o" "--format=binary"
 		"${trace_receiver_control_usage}" "-r"
-	DEPENDS "${trace_receiver_control_usage}")
+	DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${trace_receiver_control_usage}")
 
 
 add_executable(${trace_receiver_control_name}

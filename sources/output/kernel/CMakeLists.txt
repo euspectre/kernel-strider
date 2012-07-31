@@ -102,7 +102,7 @@ set(meta_template_shipped_file "${CMAKE_CURRENT_BINARY_DIR}/ctf_meta_template.o_
 add_custom_command(OUTPUT "${meta_template_shipped_file}"
 	COMMAND ld -o "${meta_template_shipped_file}" "--format=binary"
 		"${meta_template_file}" "-r"
-	DEPENDS "${meta_template_file}")
+	DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${meta_template_file}")
 
 kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
 kbuild_add_dependencies("kedr_mem_core")

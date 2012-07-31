@@ -1406,7 +1406,8 @@ ThreadInfo<T>* KEDREventProcessorStandard<T>::getThreadInfo(
 /*************** Standard converter into Tsan events*******************/
 /* Converts intermediate event into tsan event. */
 template<class T>
-class EventProcessorTsan: public EventProcessor<T>, protected TsanEventPrinter<T>
+class EventProcessorTsan: public EventProcessor<T>,
+    protected TsanEventPrinter<T>
 {
 public:
     EventProcessorTsan(ostream& os) : TsanEventPrinter<T>(os),
@@ -1415,34 +1416,35 @@ public:
     void processCallPre(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> /*func*/)
     {
-        printFunctionCall(thread->tid, pc);
+        TsanEventPrinter<T>::printFunctionCall(thread->tid, pc);
     }
     void processCallPost(ThreadInfo<T>* thread,
         Addr<T> /*pc*/, Addr<T> /*func*/)
     {
-        printFunctionExit(thread->tid);
+        TsanEventPrinter<T>::printFunctionExit(thread->tid);
     }
     void processMAStart(ThreadInfo<T>* /*thread*/, int /*nEvents*/)
     {
         isMAblockStarted = false;
     }
     
-    void processMA(ThreadInfo<T>* thread, Addr<T> pc, Addr<T> addr, Size<T> size,
+    void processMA(ThreadInfo<T>* thread,
+        Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
         if(!isMAblockStarted)
         {
-            printBlock(thread->tid, pc);
+            TsanEventPrinter<T>::printBlock(thread->tid, pc);
             isMAblockStarted = true;
         }
         switch(type)
         {
         case KEDR_ET_MREAD:
-            printRead(thread->tid, pc, addr, size);
+            TsanEventPrinter<T>::printRead(thread->tid, pc, addr, size);
         break;
         case KEDR_ET_MWRITE:
         case KEDR_ET_MUPDATE:
-            printWrite(thread->tid, pc, addr, size);
+            TsanEventPrinter<T>::printWrite(thread->tid, pc, addr, size);
         break;
         }
     }
@@ -1451,16 +1453,16 @@ public:
         Addr<T> pc, Addr<T> addr, Size<T> size,
         enum kedr_memory_event_type type)
     {
-        printBlock(thread->tid, pc);
+        TsanEventPrinter<T>::printBlock(thread->tid, pc);
 
         switch(type)
         {
         case KEDR_ET_MREAD:
-            printRead(thread->tid, pc, addr, size);
+            TsanEventPrinter<T>::printRead(thread->tid, pc, addr, size);
         break;
         case KEDR_ET_MWRITE:
         case KEDR_ET_MUPDATE:
-            printWrite(thread->tid, pc, addr, size);
+            TsanEventPrinter<T>::printWrite(thread->tid, pc, addr, size);
         break;
         }
     }
@@ -1468,72 +1470,75 @@ public:
     void processAlloc(ThreadInfo<T>* thread,
         Addr<T> pc, Size<T> size, Addr<T> pointer)
     {
-        printAlloc(thread->tid, pc, size, pointer);
+        TsanEventPrinter<T>::printAlloc(thread->tid, pc, size, pointer);
     }
     void processFree(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> pointer)
     {
-        printFree(thread->tid, pc, pointer);
+        TsanEventPrinter<T>::printFree(thread->tid, pc, pointer);
     }
 
     void processLock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
-        printLock(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printLock(thread->tid, pc, obj);
     }
     void processUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
-        printUnlock(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printUnlock(thread->tid, pc, obj);
     }
     void processRLock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
-        printRLock(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printRLock(thread->tid, pc, obj);
     }
     void processRUnlock(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> obj,
         enum kedr_lock_type /*type*/)
     {
-        printUnlock(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printUnlock(thread->tid, pc, obj);
     }
     void processSignal(ThreadInfo<T>* thread, Addr<T> pc,
         Addr<T> obj, enum kedr_sw_object_type /*type*/)
     {
-        printSignal(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printSignal(thread->tid, pc, obj);
     }
     void processWait(ThreadInfo<T>* thread, Addr<T> pc,
         Addr<T> obj, enum kedr_sw_object_type /*type*/)
     {
-        printWait(thread->tid, pc, obj);
+        TsanEventPrinter<T>::printWait(thread->tid, pc, obj);
     }
     void processThreadCreateBefore(ThreadInfo<T>* thread,
         Addr<T> pc)
     {
-        printThreadCreateBefore(thread->tid, pc);
+        TsanEventPrinter<T>::printThreadCreateBefore(thread->tid, pc);
     }
     void processThreadCreateAfter(ThreadInfo<T>* thread,
         Addr<T> /*pc*/ , ThreadInfo<T>* childThread)
     {
-        printThreadCreateAfter(thread->tid, childThread->tid);
+        TsanEventPrinter<T>::printThreadCreateAfter(thread->tid,
+            childThread->tid);
     }
     void processThreadJoin(ThreadInfo<T>* thread,
         Addr<T> pc, ThreadInfo<T>* childThread)
     {
-        printThreadJoin(thread->tid, pc, childThread->tid);
+        TsanEventPrinter<T>::printThreadJoin(thread->tid, pc,
+            childThread->tid);
     }
     
     void processThreadStart(ThreadInfo<T>* thread,
         ThreadInfo<T>* parentThread)
     {
-        printThreadStart(thread->tid, parentThread ? parentThread->tid : Tid(0));
+        TsanEventPrinter<T>::printThreadStart(thread->tid,
+            parentThread ? parentThread->tid : Tid(0));
     }
     void processThreadStop(ThreadInfo<T>* thread)
     {
-        printThreadEnd(thread->tid);
+        TsanEventPrinter<T>::printThreadEnd(thread->tid);
     }
 protected:
     /* Whether block is started for current memory accesses seria. */
