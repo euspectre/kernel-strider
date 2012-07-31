@@ -12,11 +12,11 @@ and '--break-session' commands instead of '127.0.0.1'.
 
 				1. Single trace.
 
- $ ./kedr_capture_trace --start ~/kernel/trace
+ $ ./kedr_save_trace --start ~/kernel/trace
 
 start trace capturing, storing trace to '~/kernel/trace' directory.
 
-$ ./kedr_capture_trace --init-session 127.0.0.1
+$ ./kedr_save_trace --init-session 127.0.0.1
 
 setup session with 'kedr_trace_sender' module (the module should be
 loaded into kernel before this command).
@@ -27,12 +27,12 @@ $ <... do anything>
 
 $ <unloading target module>
 
-$ ./kedr_capture_trace --break-session 127.0.0.1
+$ ./kedr_save_trace --break-session 127.0.0.1
 
 break session with 'kedr_trace_sender' module. Command may be omitted,
 if the module is not intended to send other traces.
 
-$ ./kedr_capture_trace --stop
+$ ./kedr_save_trace --stop
 
 stop trace capturing.
 
@@ -40,13 +40,13 @@ For capture next trace, all steps from the first one should be repeated.
 
 				2. Multiple traces.
 
-$ ./kedr_capture_trace --start ~/kernel/trace/%u
+$ ./kedr_save_trace --start ~/kernel/trace/%u
 
 start trace capturing, each trace will be stored to
 '~/kernel/trace/UUID' directory, where UUID is Unique Universal Identifier
 of the trace, which is unique for every new trace generated. 
 
-$ ./kedr_capture_trace --init-session 127.0.0.1
+$ ./kedr_save_trace --init-session 127.0.0.1
 
 setup session with 'kedr_trace_sender' module (the module should be
 loaded into kernel before this command).
@@ -57,12 +57,12 @@ $ <... do anything, reloading target module, load another target module...>
 
 $ <unloading the last target module>
 
-$ ./kedr_capture_trace --break-session 127.0.0.1
+$ ./kedr_save_trace --break-session 127.0.0.1
 
 break session with 'kedr_trace_sender' module. Command may be omitted,
 if the module is not intended to send any other traces.
 
-$ ./kedr_capture_trace --stop
+$ ./kedr_save_trace --stop
 
 stop trace capturing.
 
@@ -71,18 +71,18 @@ stop trace capturing.
 Single trace with some sync commands for make trace receiving process
 reliable.
 
-$ ./kedr_capture_trace --start ~/kernel/trace
+$ ./kedr_save_trace --start ~/kernel/trace
 
 start trace capturing, storing trace to '~/kernel/trace' directory.
 
-$ ./kedr_capture_trace --init-session 127.0.0.1
+$ ./kedr_save_trace --init-session 127.0.0.1
 
 setup session with 'kedr_trace_sender' module (the module should be
 loaded into kernel before this command).
 
 $ <loading module under kernel-strider, target module>
 
-$ ./kedr_capture_trace --start-trace
+$ ./kedr_save_trace --start-trace
 
 wait until the first packet of new trace is arrived and processed.
 
@@ -90,15 +90,15 @@ $ <... do anything>
 
 $ <unloading target module>
 
-$ ./kedr_capture_trace --stop-trace
+$ ./kedr_save_trace --stop-trace
 
 wait until the last packet of the trace is arrived and processed.
 
-$ ./kedr_capture_trace --break-session 127.0.0.1
+$ ./kedr_save_trace --break-session 127.0.0.1
 
 break session with 'kedr_trace_sender' module.
 
-$ ./kedr_capture_trace --stop
+$ ./kedr_save_trace --stop
 
 stop trace capturing.
 
@@ -108,6 +108,6 @@ incomplete trace received.
 Without '--start-trace' command '--stop-trace' may return before trace
 begins to be received.
 
-Commands to './kedr_capture_trace' may be given in one invocation:
+Commands to './kedr_save_trace' may be given in one invocation:
 
-$ ./kedr_capture_trace --stop-trace --break-session 127.0.0.1 --stop
+$ ./kedr_save_trace --stop-trace --break-session 127.0.0.1 --stop

@@ -537,7 +537,7 @@ int ControlActionEndTrace::doAction(TraceReceiverControl& control)
 
 static int print_command(char* buf, int buf_size, void*)
 {
-    return snprintf(buf, buf_size, "%s", "kedr_capture_trace");//TODO: configure command
+    return snprintf(buf, buf_size, "%s", "kedr_save_trace");//TODO: configure command
 }
 
 static int print_server_port(char* buf, int buf_size, void*)

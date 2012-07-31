@@ -14,7 +14,7 @@ set(KEDR_TRACE_RECEIVER_PATH
     CACHE INTERNAL "Full path to the installed trace receiver program")
 
 
-set(trace_receiver_control_name "kedr_capture_trace")
+set(trace_receiver_control_name "kedr_save_trace")
 
 
 # Create template for usage of trace receiver control executable
@@ -38,7 +38,7 @@ install(TARGETS "${trace_receiver_control_name}"
     DESTINATION "${KEDR_INSTALL_PREFIX_EXEC}")
 
 # For using in tests
-set(trace_receiver_control_test_name "kedr_capture_trace_test" CACHE
+set(trace_receiver_control_test_name "kedr_save_trace_test" CACHE
     INTERNAL "Name of the program which control trace receiver and used in tests.")
 set(trace_receiver_control_test_dir "${CMAKE_CURRENT_BINARY_DIR}" CACHE
     INTERNAL "Directory of the program which control trace receiver and used in tests.")
