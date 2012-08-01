@@ -255,7 +255,7 @@ template<class T>
 class ThreadMap
 {
 public:
-    ThreadMap(void) : nextID(0) {}
+    ThreadMap(int firstID = 0) : nextID(firstID) {}
     
     ThreadInfo<T>* find(Addr<T> addr)
     {
@@ -1038,7 +1038,8 @@ private:
 template<class T>
 KEDREventProcessorStandard<T>::KEDREventProcessorStandard(
     const KEDRTraceReader& traceReader, EventProcessor<T>* eventProcessor)
-    : eventProcessor(*eventProcessor),
+    : threads(1), /* thread id 0 is reserved for tsan */
+    eventProcessor(*eventProcessor),
     childTidFinder(*this),
     tidVar(findInt(traceReader, "stream.event.context.tid")),
 /* Macro for store event's variable, integer type */
@@ -1411,7 +1412,12 @@ class EventProcessorTsan: public EventProcessor<T>,
 {
 public:
     EventProcessorTsan(ostream& os) : TsanEventPrinter<T>(os),
-        isMAblockStarted(false) {}
+        isMAblockStarted(false)
+    {
+        TsanEventPrinter<T>::commentBegin() << "Main thread which create others.";
+        TsanEventPrinter<T>::commentEnd();
+        TsanEventPrinter<T>::printThreadStart(0, 0);
+    }
 
     void processCallPre(ThreadInfo<T>* thread,
         Addr<T> pc, Addr<T> /*func*/)
