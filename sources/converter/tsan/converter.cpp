@@ -1533,6 +1533,9 @@ public:
     void processThreadStart(ThreadInfo<T>* thread,
         ThreadInfo<T>* parentThread)
     {
+        TsanEventPrinter<T>::commentBegin() << "Thread " << thread->tid
+            << " is started (real TID is " << thread->addr << ")";
+        TsanEventPrinter<T>::commentEnd();
         TsanEventPrinter<T>::printThreadStart(thread->tid,
             parentThread ? parentThread->tid : Tid(0));
     }
@@ -1878,7 +1881,7 @@ vector<SectionRecord> loadSectionRecords(const char* sectionsFile)
         
         /* Read address */
         errno = 0;
-        long long addr = strtoll(current, &current, 16);
+        unsigned long long addr = strtoull(current, &current, 16);
         if(errno)
         {
             fprintf(stderr, "Failed to parse address in sections file "
