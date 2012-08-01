@@ -1,0 +1,1059 @@
+Here is a step-by-step tutorial on how to build and install KernelStrider 
+and use it with ThreadSanitizer to reveal data races in a Linux kernel 
+module. The tutorial also shows how to use dynamic annotations to assist 
+the race detector and eliminate false positives. 
+========================================================================
+
+Overview
+
+KernelStrider instruments the kernel module under analysis ("target 
+module"). When the code of the target module is executed, KernelStrider 
+collects information about the memory locations accessed by that code, 
+about the functions called, etc. ThreadSanitizer analyzes these data ("the 
+trace") in the user space and reveals data races in the target module.
+
+The detailed information about what ThreadSanitizer can do and how it works 
+is here:
+http://code.google.com/p/data-race-test/
+
+Currently, KernelStrider can be used on x86 systems only, both 32-bit and 
+64-bit systems are supported.
+
+IMPORTANT
+It is not recommended to use KernelStrider on the machines holding 
+important data or providing important services.
+
+Main components of KernelStrider operate in the kernel space. The system 
+instruments the modules under analysis, collects information about how 
+these modules operate and allows to change their behavior. This creates 
+both a security hole and a potential for system instability, especially if 
+the kernel modules under analysis are faulty.
+
+There is no warranty. If you use KernelStrider, you do so at your own risk. 
+========================================================================
+
+Prerequisites
+
+1. GCC 4.0 or newer, at least C and C++ compilers are needed.
+
+2. GNU make.
+
+3. Linux kernel version 2.6.32 or newer with loadable module support and 
+debugfs support enabled in the configuration. 
+
+If you would like to resolve the addresses in the report on the detected
+data races, that is, to find the matching lines of the source code of the
+module under analysis, CONFIG_DEBUG_INFO should also be set to "y" in the
+kernel configuration ("Kernel hacking" - "Compile the kernel with debug
+info").
+
+It is also convenient (although not required for this particular tutorial)
+to have the following parameters set in the kernel configuration:
+
+- CONFIG_DEBUG_SPINLOCK=y ("Kernel hacking" - "Spinlock and rw-lock 
+debugging: basic checks") - among other things, the operations with
+spinlocks are not inlined if this option is set to "y", which makes these
+operations detectable by our system.
+
+- CONFIG_FUNCTION_TRACER=y ("Kernel hacking" - "Tracers" - "Function 
+tracer") - although KernelStrider *does not* use the function tracer
+(Ftrace) subsystem, this option has a useful side effect: it makes sure
+that each function of the target module is at least 5 bytes long (size of
+the relative near jump instruction) and is therefore instrumentable by
+KernelStrider core. Sometimes it can be necessary for all the functions of
+the target module to be "visible" to KernelStrider, even the short ones.
+
+4. Everything necessary to build Linux kernel modules for the currently
+running kernel.
+
+5. CMake 2.6 or newer (http://cmake.org/).
+
+6. Readelf and Addr2line. These tools are usually present (they are from 
+"binutils" package).
+
+7. Development files for libelf library. Look for a package named 
+"libelf-devel", "libelf-dev", "elfutils-libelf-devel", "libelfutils-devel",
+"lib64elfutils-devel" or something like that for your Linux distribution.
+========================================================================
+
+Building ThreadSanitizer
+
+Get the source code of ThreadSanitizer here: 
+http://code.google.com/p/data-race-test/source/checkout
+
+Here we assume the source code is in /home/user/temp/data-race-test. 
+
+To be able to analyze Linux kernel modules, we need to build the "offline" 
+variant of ThreadSanitizer.
+
+    $ cd /home/user/temp/data-race-test/tsan
+    $ make VALGRIND_ROOT= GTEST_ROOT= PIN_ROOT= OFFLINE=1 l64d
+
+"l64d" make target used above is for 64-bit Linux systems, For 32-bit 
+systems, specify "l32d" instead.
+
+ThreadSanitizer executable should now be in 
+/home/user/temp/data-race-test/tsan/bin. On 64-bit x86 systems, it is
+"amd64-linux-debug-ts_offline", on 32-bit ones -
+"x86-linux-debug-ts_offline" or something like that.
+
+It is convenient to make a symlink to that executable somewhere in $PATH. 
+For example, (assuming /home/user/bin is in $PATH):
+
+    $ ln -s 
+/home/user/temp/data-race-test/tsan/bin/amd64-linux-debug-ts_offline \
+        /home/user/bin/ts_offline
+========================================================================
+
+Building and Installing KernelStrider
+
+Get the latest release of KernelStrider here:
+http://code.google.com/p/kernel-strider/downloads/. Unpack the archive to a 
+directory of your choice.
+
+Alternatively, you can checkout the latest sources from the repository, see 
+https://code.google.com/p/kernel-strider/source/checkout. The sources of
+KernelStrider are in "sources" subdirectory in this case.
+
+KernelStrider only supports out-of-source builds, that is, it cannot be 
+built in the directory where its sources lie. The source tree is not
+changed during the build.
+
+Here we assume the top working directory is /home/user/temp. Create a build 
+directory and configure KernelStrider:
+
+    $ mkdir build
+    $ cd build
+    $ cmake <path_to_KernelStrider_sources>
+
+By default, KernelStrider is configured to be installed to /usr/local tree. 
+If you would like to install it to another location, say, /home/user/apps,
+run CMake as follows instead:
+
+    $ cmake -DCMAKE_INSTALL_PREFIX=/home/user/apps \
+        <path_to_KernelStrider_sources>
+
+In this tutorial, we assume KernelStrider will be installed to the default 
+location.
+
+Now build KernelStrider:
+
+    $ make
+    
+If you like, you can build and run KernelStrider's self-tests before 
+installing (root privileges are needed):
+
+    # make check
+
+Install KernelStrider. If you are installing it to the default location, 
+root privileges may be needed.
+
+    # make install
+
+Now KernelStrider should be installed and ready to use.
+========================================================================
+
+Building the Target Module
+
+In this tutorial, a sample kernel module, "buggy01", provided with 
+KernelStrider will be used. As its name implies, "buggy01" contains
+concurrency problems that we will try to reveal here using KernelStrider
+and ThreadSanitizer.
+
+The source code of the module was installed to 
+/usr/local/share/kedr/examples/buggy01 when KernelStrider was installed.
+Now you can copy it and build the module:
+
+    $ cp -r /usr/local/share/kedr/examples/buggy01 /home/user/temp
+    $ cd /home/user/temp/buggy01
+    $ make
+
+buggy01.ko will be built.
+========================================================================
+
+Building the Test Application
+
+KernelStrider also provides a simple application ("test_buggy01") that 
+forks and reads the file in debugfs maintained by "buggy01" module from
+both the child and the parent process.
+
+The source code of the application is installed to 
+/usr/local/share/kedr/examples/test_buggy01
+
+You can copy the source code and build the application as follows:
+
+    $ cp -r /usr/local/share/kedr/examples/test_buggy01 /home/user/temp
+    $ cd /home/user/temp/test_buggy01
+    $ gcc -Wall -o test_buggy01 test_buggy01.c
+========================================================================
+
+Analyzing the Target Module
+
+Note. The operations with the kernel-space parts of KernelStrider require 
+root privileges.
+
+1.
+First, load the core components of KernelStrider:
+ 
+    # /sbin/insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
+        target_name=buggy01
+    # /sbin/insmod /usr/local/lib/modules/`uname -r`/misc/kedr_func_drd.ko
+
+These components are responsible for the instrumentation of the target 
+module and for collecting the data about it in the kernel space.
+
+The name of the target module is specified via parameter "target_name" of 
+"kedr_mem_core" module.
+
+2. 
+In this tutorial, we assume that debugfs is mounted to /sys/kernel/debug. 
+If it is not, you can mount it:
+
+    # mount -t debugfs none /sys/kernel/debug
+
+3. 
+To output the data to the user space for analysis, KernelStrider provides 
+two different subsystems.
+
+One of the output subsystems (the "simple" one) allows to save the data 
+collected in the kernel ("the trace") to a file on a local machine. It is
+quite easy to use.
+
+The other output subsystem (the "professional" one) is more complex but 
+richer in features. It allows to output the trace to a file either on the
+same machine or on some other machine on the network. It also allows more
+fine-grained control over the recording of the trace.
+
+This tutorial will show how to use each of the output subsystems.
+
+3.1. Collecting Data Using the "Simple" Output Subsystem
+
+The subsystem consists of kernel-space and user-space parts. The data are 
+transferred from the former to the latter through a memory buffer. If the
+data stream is intense and the user-space part cannot keep up with the
+kernel-space part writing the data to the buffer, the information about the
+newer events in the target module will be lost. You can read the current
+count of such events from "kedr_simple_trace_recorder/events_lost" in
+debugfs.
+
+To avoid losing events, you can instruct the subsystem to use a larger 
+buffer. To do so, set "nr_data_pages" parameter of the kernel-space
+component ("kedr_simple_trace_recorder") when loading the latter.
+
+"nr_data_pages" is the number of memory pages in the ring buffer used to 
+transfer data from the kernel space to the use space. It must be a power of
+2 and it must be less than or equal to 65536. The default value is 128.
+
+For the workloads where the stream of events from the target module is not 
+very intensive, the default value of "nr_data_pages" should be acceptable.
+
+3.1.1
+Load the kernel-space part of the subsystem:
+
+    # /sbin/insmod /usr/local/lib/modules/`uname 
+-r`/misc/kedr_simple_trace_recorder.ko
+
+If you would like to set the size of the buffer used for data transfer to, 
+say, 4096 memory pages (16 megabytes on the systems with the pages of 4
+kilobytes each), you can load this part as follows instead:
+
+    # /sbin/insmod /usr/local/lib/modules/`uname 
+-r`/misc/kedr_simple_trace_recorder.ko \
+        nr_data_pages=4096
+
+3.1.2
+Load the user-space part of the system, specifying the path to the trace 
+file as an argument (requires root privileges):
+
+    # /usr/local/bin/kedr_st_recorder trace.dat &
+
+If "trace.dat" file already exists, it will be cleared automatically.
+
+3.1.3
+Now it is time to load the target module. 
+
+    # /sbin/insmod /home/user/temp/buggy01/buggy01.ko
+
+3.1.4
+The kernel modules do not have fixed load addresses. So it is recommended 
+to obtain the memory addresses at least for the loaded sections of the
+target module now, while it is loaded:
+
+    # /usr/local/bin/kedr_show_target_sections.sh \
+        buggy01 > /home/user/temp/sections.dat
+
+The information collected at this step will be used later to properly 
+resolve the addresses of the instructions in the report produced by
+ThreadSanitizer.
+
+If you like, you could save more detailed information instead, not only for 
+the sections but also for the symbols in the target module:
+
+    # /usr/local/bin/kedr_show_target_symbols.sh \
+        buggy01 > /home/user/temp/symbols.dat
+
+3.1.5
+To be able to analyze the target's code, you need to make that code execute 
+somehow. One could operate on the device that the module services, run some
+specific tests on it, etc.
+
+The target module used in this tutorial maintains a read-only file in 
+debugfs. You can use a simple application ("test_buggy01") provided with
+KernelStrider to read that file from two processes. Alternatively, you may
+just 'cat' that file a couple of times.
+    
+    # /home/user/temp/test_buggy01/test_buggy01
+
+When you are done with the target module, unload it:
+
+    # /sbin/rmmod buggy01
+
+3.1.6
+The user-space part of the output system ("kedr_st_recorder" process) 
+should stop automatically when the target is unloaded. If it fails to stop
+for some reason, send SIGINT or SIGTERM to it ('kill -INT <PID>' or 'kill
+<PID>').
+
+Check if the output system has been able to save information for all events:
+
+    # cat /sys/kernel/debug/kedr_simple_trace_recorder/events_lost
+
+If "events_lost" contains a non-zero value, you would probably want to 
+unload "kedr_simple_trace_recorder" and then retry from the step 3.1.1 with
+a greater value of "nr_data_pages" parameter.
+
+3.1.7 
+If you would like to check some other operations with the target module and 
+record the corresponding trace, you can start from step 3.1.2 (probably
+with a different file to save the trace to) and go on as described above.
+
+3.1.8
+When you have collected all the traces you wanted to, the kernel-space 
+components of KernelStrider can be unloaded.
+
+    # /sbin/rmmod kedr_simple_trace_recorder kedr_func_drd kedr_mem_core
+
+3.1.9
+Convert the saved trace to a format that ThreadSanitizer understands:
+    $ /usr/local/bin/kedr_convert_trace_to_tsan \
+        /home/user/temp/trace.dat > /home/user/temp/trace_tsan.tst
+
+trace_tsan.tst contains the trace in the needed format now.
+
+3.2. Collecting Data Using the "Professional" Output Subsystem
+
+(See output/user/README in KernelStrider sources for more details about 
+this output subsystem.)
+
+3.2.1
+Load the kernel-mode component of the output subsystem:
+    # /sbin/insmod /usr/local/lib/modules/`uname 
+-r`/misc/kedr_trace_sender.ko
+
+3.2.2
+At this step, we will instruct the output system to prepare to record the 
+trace to /home/user/temp/trace/. It is recommended to start recording trace
+to a clean directory, so remove /home/user/temp/trace if it exists before
+executing the commands below.
+
+Operations with "kedr_save_trace" do not require root privileges.
+
+    $ /usr/local/bin/kedr_save_trace --start /home/user/temp/trace/
+    $ /usr/local/bin/kedr_save_trace --init-session 127.0.0.1
+
+Here we assume the data are collected and processed on the same machine, so 
+127.0.0.1 is used as an IP address of the machine where the target module
+(as well as "kedr_trace_sender" module) operates. If the target is on a
+different machine than "kedr_save_trace", we would need to specify the IP
+address of that machine instead.
+
+Note. If "kedr_save_trace" hangs, you can kill its process, unload 
+"kedr_trace_sender" module then load it once more and execute
+"kedr_save_trace" again as described above.
+
+The next 3 steps are the same as with the "simple" output subsystem.
+
+3.2.3
+Load the target module. 
+
+    # /sbin/insmod /home/user/temp/buggy01/buggy01.ko
+
+3.2.4
+Save the addresses of the sections and/or symbols contained in the target 
+module.
+
+    # /usr/local/bin/kedr_show_target_sections.sh \
+        buggy01 > /home/user/temp/sections.dat
+
+    # /usr/local/bin/kedr_show_target_symbols.sh \
+        buggy01 > /home/user/temp/symbols.dat
+
+3.2.5
+Do something with the target module then unload it.
+
+    # /home/user/temp/test_buggy01/test_buggy01
+    # /sbin/rmmod buggy01
+
+3.2.6
+Stop recording the trace:
+
+    $ /usr/local/bin/kedr_save_trace --break-session 127.0.0.1
+    $ /usr/local/bin/kedr_save_trace --stop
+
+3.2.7 
+If you would like to check some other operations with the target module and 
+record the corresponding trace, you can start from step 3.2.2 (probably
+with a different path to save the trace to) and go on as described above.
+
+3.2.8
+When you have collected all the traces you wanted to, the kernel-space 
+components of KernelStrider can be unloaded.
+
+    # /sbin/rmmod kedr_trace_sender kedr_func_drd kedr_mem_core
+
+3.2.9
+Convert the saved trace to a format that ThreadSanitizer understands:
+    $ /usr/local/bin/kedr_trace_converter_tsan \
+        /home/user/temp/trace > /home/user/temp/trace_tsan.tst
+
+trace_tsan.tst now contains the trace in the needed format.
+
+4. Analyzing the trace
+
+Regardless of which of the output subsystems you have used above, now you 
+have the following in /home/user/temp/:
+- trace_tsan.tst - the trace in the format that ThreadSanitizer understands;
+- sections.dat and/or symbols.dat - information about the ELF sections 
+and/or symbols in the target module.
+
+Here we assume the current directory is /home/user/temp/.
+
+4.1
+Let us use ThreadSanitizer on the trace:
+    $ ts_offline  \
+        --show-pc < trace_tsan.tst 2> tsan_report_raw.txt
+
+By default, ThreadSanitizer operates in the so called "pure happens-before" 
+mode. If you would like it to operate in the "hybrid" mode instead (more
+predictable, allows to find more races but may also result in more false
+positives), execute it as follows instead:
+
+    $ ts_offline --hybrid=yes \
+        --show-pc < trace_tsan.tst 2> tsan_report_raw.txt
+
+The detailed description of these modes is available here: 
+http://code.google.com/p/data-race-test/wiki/PureHappensBeforeVsHybrid
+
+4.2
+Now tsan_report_raw.txt contains the information about the potential data 
+races found by ThreadSanitizer.
+
+At this point, only the raw memory addresses of the relevant locations in 
+the code are shown there, for example:
+
+------------------------------------
+WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
+   T2 (L{}):
+    #0  0x3ffffffa00f6060:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  0xffffffffa0005016:  
+  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
+  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
+    #0  0xffffffffa00f61d9:  
+    #1  0xffffffffa000500e:  
+   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
+}}}
+------------------------------------
+
+Note. On x86-64, ThreadSanitizer uses the higher bits of the addresses for 
+its own purposes. As a result, some of the addresses in the raw report may
+start with 0x3ff rather than 0xffff as they should. This is no problem
+because the raw reports are rarely used by themselves. The converters you
+will apply at the next steps will take care of these addresses
+automatically.
+
+4.3
+It is not very convenient to analyze the raw addresses in the report. If 
+the target kernel module contains debugging information, you can use a tool
+provided with KernelStrider to resolve the appropriate lines of the source
+code. To do this, you need the information about the target's sections
+(file "sections.dat" prepared on step 3.1.4 or 3.2.4) and the binary file
+of the target module ("buggy.ko").
+
+    $ /usr/local/bin/tsan_report_addr2line \
+        /home/user/temp/buggy01/buggy01.ko sections.dat \
+        < tsan_report_raw.txt > tsan_report.txt
+
+Note. On some systems, the debug information for the stock kernel modules 
+is available in separate files rather than in the ".ko" files of the
+modules themselves. When processing the reports for such modules with
+tsan_report_addr2line, you can try to use the path to the file with the
+debugging information for the module instead of the ".ko" file itself.
+
+The relevant part of "tsan_report.txt" should now look like this:
+
+------------------------------------
+WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
+   T2 (L{}):
+    #0  sample_open module.c:43:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  sample_init_module module.c:122:  
+  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
+  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
+    #0  kmalloc slab_def.h:159:  
+    #1  sample_init_module module.c:122:  
+   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
+}}}
+------------------------------------
+
+Now that the relevant positions in the source code of "buggy01" have been 
+found, the report should be easier to analyze.
+
+If the target module does not have debugging information, you still can use 
+the tools provided by KernelStrider to at least resolve section or symbol
+names in the report. "sections.dat" and "symbols.dat" prepared during step
+3.1.4 or 3.2.4 are needed here.
+
+    $ /usr/local/bin/kedr_symbolize_tsan_report \
+        tsan_report_raw.txt sections.dat > tsan_report_with_sections.txt
+
+Here is the corresponding fragment of "tsan_report_with_sections.txt":
+
+------------------------------------
+WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
+   T2 (L{}):
+    #0  .text+0x60 (0xffffffffa00f6060):  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  .init.text+0x16 (0xffffffffa0005016):  
+  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
+  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
+    #0  .text.unlikely+0x9 (0xffffffffa00f61d9):  
+    #1  .init.text+0xe (0xffffffffa000500e):  
+   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
+}}}
+------------------------------------
+
+You can now disassemble the target module (for example, with "objdump" 
+tool), look for the locations in the code mentioned in
+"tsan_report_with_sections.txt" in the resulting assembly listing and
+analyze what was going on. This can be less convenient than if debug
+information were available but still much better than nothing.
+
+If you would like to resolve symbol names instead of section names, just 
+use "symbols.dat" file instead of "sections.dat" in the command above.
+
+4.4
+Before you begin to analyze the report produced by ThreadSanitizer, there 
+is a couple of important points to consider.
+
+First, the number and the contents of the warnings about potential data 
+races may vary.
+
+One of the reasons is that, for simplicity, not all operations with the 
+target module are actually executed in parallel in this example.
+KernelStrider distinguishes the threads by the addresses of their
+"task_struct" objects and it can rarely detect that a thread has finished.
+When a thread finishes, the kernel releases the "task_struct" object
+associated with it. The chances are, a thread that starts after that will
+get the same memory block for its "task_struct". So, there two threads will
+look like a single thread to KernelStrider. The races that could be between
+these threads if they executed concurrently will not be detected in this
+case.
+
+Second, not all warnings describe real races. That is, false positives are 
+possible.
+
+When ThreadSanitizer is used in "pure happens-before" mode (default), a 
+common source of false positives is that not all ordering relationships
+between the different parts of the target module are known to KernelStrider
+yet. For example, if the target registers some callback function with the
+kernel proper or some other module, usually that callback cannot be called
+before it is registered. If KernelStrider does not know about this
+particular relationship, this may result in false positives. In addition,
+some synchronization primitives used in the kernel are inlined and
+difficult to detect at the level of binary code.
+
+When ThreadSanitizer is used in "hybrid" mode, the amount of false 
+positives may grow further, see
+http://code.google.com/p/data-race-test/wiki/PureHappensBeforeVsHybrid
+
+You can help KernelStrider recognize synchronization and other ordering 
+relationships in the target module by placing special annotations in it.
+
+We are working on KernelStrider for it to be able to detect ordering 
+relationships in some widely used kinds of kernel modules (e. g. networking
+and file systems). This is a work in progress and even when it is done,
+annotations will still be necessary in sometimes.
+
+We will describe below how to use dynamic annotations in the code of the 
+target module to reduce the number of the reported false positives.
+
+4.5
+Let us look at the report (tsan_report.txt). Here is one of the warnings 
+you are likely to encounter there:
+
+------------------------------------
+WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
+   T2 (L{}):
+    #0  sample_open module.c:43:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  sample_init_module module.c:122:  
+  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
+  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
+    #0  kmalloc slab_def.h:159:  
+    #1  sample_init_module module.c:122:  
+   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
+}}}
+------------------------------------
+
+ThreadSanitizer suspects there is a data race between threads T2 and T1. 
+T2 reads 4 bytes starting from address 0xffff88004b3dbda8, this happens in 
+sample_open() function in a statement that begins at the line 43 of
+"module.c" file. Here is the fragment of the source code:
+
+------------------------------------
+43  pr_info(TEST_MSG_PREFIX "Opening, count is %d.\n", 
+44      some_data->count);
+------------------------------------
+
+This is the reading of "some_data->count". 
+
+Another candidate would be reading of the value of "some_data" itself (it 
+is a global variable). However this is a 64-bit system and "some_data" is 8
+bytes in size rather than 4 mentioned in the report.
+
+"L{}" means that T2 did not hold any locks at that moment.
+
+Thread T1 writes 4 bytes to the same memory area in sample_init_module() 
+function, in the statement at module.c:122 or a bit later. Note that
+ThreadSanitizer reports the exact location in the code for the first of the
+conflicting accesses but may be less accurate with the remaining ones. For
+these, it reports the where the corresponding block of code starts ("block"
+means "a region of the binary code without function calls, backward jumps
+and some other constructs" in this case).
+
+------------------------------------
+122 some_data = kzalloc(sizeof(struct some_data), GFP_KERNEL);
+123 if (some_data == NULL) {
+124     err = -ENOMEM;
+125     goto fail0;
+126 }
+127 some_data->count = 0; //< A possibly conflicting access to "count"
+128 
+129 dir_dentry = debugfs_create_dir("buggy01", NULL);
+------------------------------------
+
+Here you can see that the conflicting access to "some_data->count" is 
+actually at line 127.
+
+The report also states, the data that were accessed belong to a structure 
+of size 16 and are located there at the offset of 8 bytes from the
+beginning. The call stack of the allocation of that structure is provided.
+This way we can confirm that the possibly conflicting operations were
+accessing "some_data->count": "*some_data" was allocated at line 122 and
+"count" is indeed at the offset of 8 bytes from the beginning of that
+structure.
+
+You can find more information about ThreadSanitizer reports here:
+http://code.google.com/p/data-race-test/wiki/UnderstandingThreadSanitizerRep
+orts
+
+So, is that a data race? Is that possible for these operations to execute 
+concurrently?
+
+In this case, the answer is "no". The read access mentioned in this report 
+happens in sample_open(), a file operation provided by "buggy01" to
+maintain its file in debugfs. But "some_data->count" is written to in the
+init function of the target module before that file is created by
+debugfs_create_file() at line 136.
+
+sample_open() cannot be called for a file before debugfs_create_file() 
+creates that file. So these two accesses to "some_data->count" never happen
+concurrently and this is a false positive.
+
+Indeed, there are at least the following facts about the file operation 
+callbacks (sample_open(), sample_read() and sample_release() in this
+example) for the files in debugfs that KernelStrider is unaware of by
+default:
+
+- no file operation callback can start before debugfs_create_file() starts 
+for the corresponding file;
+- no file operation callback can be completed later than debugfs_remove() 
+called for the corresponding file returns;
+- no file operation callback can be completed later than the exit function 
+of the target module starts.
+
+These are the examples of a so called "happens-before" (or 
+"happened-before") relation, a partial order on the events observed by
+KernelStrider in the target module.
+
+The detailed information about this relation can be found here: 
+http://en.wikipedia.org/wiki/Happened-before
+http://code.google.com/p/data-race-test/wiki/ThreadSanitizerAlgorithm
+
+4.6
+So, one needs to tell KernelStrider somehow that if the start of the 
+execution of debugfs_create_file() is observed before the start of
+execution of sample_open(), the former actually happens before the latter.
+
+To do this, you can "annotate" the relevant locations in the code with the 
+special macros KernelStrider provides, rebuild "buggy01", repeat all the
+operations with it, collect a new trace and feed it to ThreadSanitizer
+again as described above, etc. (steps 1 - 4.3).
+
+The annotated variant of "buggy01" is in 
+"/usr/local/share/kedr/examples/buggy01_annotated".
+
+The annotations are "dynamic" in a sense that they are not comments, that 
+is, they are not ignored by the compiler but rather expand to the
+appropriate code fragments and are processed by KernelStrider when the
+target module is loaded.
+
+To use these annotations, you need "kedr_annotations.c" and 
+"kedr_annotations.h" provided by KernelStrider (they are installed to
+"/usr/local/share/kedr/annotations/"). Copy these files to the directory
+where the source code of the target module is. Add
+    #include "kedr_annotations.h"
+to the source files of the target module where you would like to use the 
+annotations. #define KEDR_ANNOTATIONS_ENABLED to a non-zero value before
+these #include directives. Usually it is convenient to define it in
+"ccflags-y" in "Kbuild" file of the target module. You also need to
+instruct the build system of the target module to compile
+"kedr_annotations.c" and link the resulting object file into the target
+module.
+
+Here is "Kbuild" file for "buggy01_annotated":
+
+------------------------------------
+MODULE_NAME := buggy01
+
+ccflags-y := -DKEDR_ANNOTATIONS_ENABLED=1 -I$(src)
+obj-m := $(MODULE_NAME).o
+$(MODULE_NAME)-y := module.o kedr_annotations.o
+------------------------------------
+
+Note that a target module containing the describe here annotations can be 
+used normally even if KernelStrider is not loaded.
+
+4.7
+You also need to choose the identifiers for happens-before "links" ("arcs") 
+you are going to specify in the code with the annotations. An ID is a
+non-zero unsigned long value. Sometimes it is convenient to use the address
+of some relevant object as an ID but in this example, the plain numbers are
+used, see "enum id_happens_before" in "buggy01_annotated/module.c".
+
+KEDR_ANNOTATE_HAPPENS_BEFORE(id) and KEDR_ANNOTATE_HAPPENS_AFTER(id) define
+a happens-before arc if "id" is the same.
+
+Here is how the code of sample_open() can be annotated:
+
+------------------------------------
+static int 
+sample_open(struct inode *inode, struct file *filp)
+{
+    int ret;
+    /* The start of execution of sample_open() happens after
+     * debugfs_create_file() starts for the corresponding file.
+     * Note that this does *not* mean that sample_open() may start 
+     * right after debugfs_create_file() has started though. */
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_CREATE_HB_OPEN);
+    
+    pr_info(TEST_MSG_PREFIX "Opening, count is %d.\n", 
+        some_data->count);
+    
+    mutex_lock(&some_lock);
+    ++some_data->count;
+    snprintf(some_data->buf, strlen(some_string) + max_len, 
+        "#%d: %s\n", some_data->count, some_string);
+    filp->private_data = some_data->buf;
+    mutex_unlock(&some_lock);
+    
+    ret = nonseekable_open(inode, filp);
+    
+    /* The end of execution of sample_open() happens before
+     * debugfs_remove() starts for the corresponding file. 
+     * It also happens before the exit function of this module 
+     * starts. */
+    KEDR_ANNOTATE_HAPPENS_BEFORE(ID_OPEN_HB_REMOVE);
+    KEDR_ANNOTATE_HAPPENS_BEFORE(ID_OPEN_HB_EXIT);
+    return ret;
+}
+------------------------------------
+
+sample_read() and sample_release() are annotated in a similar way.
+
+The creation of the file in debugfs can be annotated as follows:
+
+------------------------------------
+    KEDR_ANNOTATE_HAPPENS_BEFORE(ID_CREATE_HB_OPEN);
+    KEDR_ANNOTATE_HAPPENS_BEFORE(ID_CREATE_HB_READ);
+    KEDR_ANNOTATE_HAPPENS_BEFORE(ID_CREATE_HB_RELEASE);
+    file_dentry = debugfs_create_file("data", S_IRUGO, dir_dentry, NULL, 
+        &sample_fops);
+------------------------------------
+
+Note that KEDR_ANNOTATE_HAPPENS_BEFORE() is usually placed right before the 
+operation to be annotated, KEDR_ANNOTATE_HAPPENS_AFTER() - right after the
+operation.
+
+Here is the annotated exit function of "buggy01" module:
+
+------------------------------------
+static void __exit
+sample_exit_module(void)
+{
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_OPEN_HB_EXIT);
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_READ_HB_EXIT);
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_RELEASE_HB_EXIT);
+    
+    pr_info(TEST_MSG_PREFIX "Opened %d time(s).\n", 
+        some_data->count);
+    
+    debugfs_remove(file_dentry);
+    /* The following 3 annotations are redundant because each callback
+     * finishes before the exit functions of the module starts. The 
+     * annotations with ids 'ID_*_HB_EXIT' let KernelStrider know about
+     * that. Still, leaving the annotations here makes no harm. */
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_OPEN_HB_REMOVE);
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_READ_HB_REMOVE);
+    KEDR_ANNOTATE_HAPPENS_AFTER(ID_RELEASE_HB_REMOVE);
+    
+    debugfs_remove(dir_dentry);
+    kfree(some_data->buf);
+    kfree(some_data);
+    return;
+}
+------------------------------------
+
+4.8
+There is one more thing that you might need to tell KernelStrider about. 
+Consider "struct file" object pointed to by 'filp' in the file operation
+callbacks. The memory for this object is allocated by the kernel before
+sample_open() is called and deallocated after sample_release() is called.
+KernelStrider is currently not aware of this.
+
+Suppose after a thread opened, accessed and closed the file, the memory 
+occupied by "struct file" object has been deallocated. Suppose the target
+module or some other kernel-mode component allocates a memory block of a
+suitable size after that. The chances are, it will be given the very block
+previously occupied by that "struct file" object. As a consequence, the
+accesses to these unrelated objects could be considered conflicting which
+would lead to more false positives.
+
+Another kind of annotations can be used to tell KernelStrider that memory 
+occupied by the "struct file" object appeared at the beginning of
+sample_open() and disappeared at the end of sample_release(). This is not
+quite accurate but it is enough in this case. Here they are:
+
+- KEDR_ANNOTATE_MEMORY_ACQUIRED(addr, size)
+- KEDR_ANNOTATE_MEMORY_RELEASED(addr)
+
+You can see in sample_open() and sample_release() 
+("buggy01_annotated/module.c") how these annotations are used.
+
+4.9
+Now that you have the annotated variant of "buggy01" module, you can build 
+it and perform the steps described earlier in this tutorial once again to
+get a report listing possible data races.
+
+Note that when using "tsan_report_addr2line" tool to resolve the source 
+lines in the report, the correct ".ko" file with debug information should
+be specified. This seems obvious but still it is easy to forget and use the
+old "buggy.ko" there (especially if you have several variants of the target
+module around at the same time). As a consequence, the source lines could
+be resolved incorrectly.
+
+Also note that ThreadSanitizer may report not all races between accesses to 
+a given memory area. As a result, a real race may remain missing from the
+report if there is a false positive involving the same memory location.
+When you specify the relevant happens-before arcs and object lifetimes
+(KEDR_ANNOTATE_MEMORY_ACQUIRED/RELEASED), the false positives go away and
+the real races they have been hiding are finally reported.
+
+The report you have obtained this time is likely to contain the following 3 
+warnings:
+
+------------------------------------
+[W1]
+WARNING: Possible data race during read of size 8 at 0xffff88003795ab80: {{{
+   T2 (L{L1}):
+    #0  sample_open module.c:81:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  sample_init_module module.c:203:  
+  Location 0xffff88003795ab80 is 0 bytes inside a block 
+  starting at 0xffff88003795ab80 of size 16 allocated by T1 from heap:
+    #0  kmalloc slab_def.h:159:  
+    #1  sample_init_module module.c:174:  
+  Locks involved in this report (reporting last lock sites): {L1}
+   L1 (0xffffffffa01500e0)
+    #0  sample_open module.c:79:  
+   Race verifier data: 0x3ffffffa014e0da,0xffffffffa00050c5
+}}}
+
+[W2]
+WARNING: Possible data race during write of size 1 at 0xffff8800347f6700: 
+{{{
+   T2 (L{L1}):
+    #0  sample_open module.c:81:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T1 (L{}):
+    #0  sample_init_module module.c:203:  
+  Location 0xffff8800347f6700 is 0 bytes inside a block 
+  starting at 0xffff8800347f6700 of size 38 allocated by T1 from heap:
+    #0  kmalloc slab_def.h:159:  
+    #1  sample_init_module module.c:203:  
+  Locks involved in this report (reporting last lock sites): {L1}
+   L1 (0xffffffffa01500e0)
+    #0  sample_open module.c:79:  
+   Race verifier data: 0x3ffffffa014e0e5,0xffffffffa00050c5
+}}}
+
+[W3]
+WARNING: Possible data race during read of size 4 at 0xffff88003795ab88: {{{
+   T3 (L{}):
+    #0  sample_open module.c:76:  
+  Concurrent write(s) happened at (OR AFTER) these points:
+   T2 (L{L1}):
+    #0  sample_open module.c:80:  
+  Location 0xffff88003795ab88 is 8 bytes inside a block 
+  starting at 0xffff88003795ab80 of size 16 allocated by T1 from heap:
+    #0  kmalloc slab_def.h:159:  
+    #1  sample_init_module module.c:174:  
+  Locks involved in this report (reporting last lock sites): {L1}
+   L1 (0xffffffffa01500e0)
+    #0  sample_read module.c:127:  
+   Race verifier data: 0x3ffffffa014e0a7,0xffffffffa014e0bd
+}}}
+------------------------------------
+
+Let us analyze these warnings one by one.
+
+4.9.1
+Using the information about the accessed memory location as a hint, we can 
+assume the warning [W1] is about a read from and a write to
+"some_data->buf" (the first field, i.e. the field at the offset 0, of
+"struct some_data" allocated at module.c:174).
+
+The memory is read in sample_open() at module.c:81 with lock L1 held 
+("L{L1}"):
+
+------------------------------------
+79  mutex_lock(&some_lock);
+80  ++some_data->count;
+81  snprintf(some_data->buf, strlen(some_string) + max_len, 
+82      "#%d: %s\n", some_data->count, some_string);
+------------------------------------
+
+Note that this is about reading the value of "some_data->buf" itself rather 
+than about accessing the data it points to.
+
+According to the report, the conflicting write happened in 
+sample_init_module() at or after line 203 of "module.c":
+
+------------------------------------
+203 some_data->buf = kzalloc(strlen(some_string) + max_len, 
+        GFP_KERNEL);
+------------------------------------
+
+As you can see, "some_data->buf" is indeed assigned a value at line 203.
+
+Is this actually a data race? 
+
+When looking through the code ("buggy01_annotated/module.c"), you have 
+probably noticed that "some_data->buf" is assigned a value in
+sample_init_module() *after* the file in debugfs has been created by
+debugfs_create_file() at line 194. The read from "some_data->buf" happens
+when someone opens that file.
+
+As it is common in the kernel, as soon as some facility is made available, 
+some part of the system may try to access it. In this case, as soon as the
+file in debugfs has been created, someone may try to open it and read data
+from it, even if the sample_init_module() has not finished yet.
+
+It is possible that someone tries to open "/sys/kernel/debug/buggy01/data" 
+after debugfs_create_file() has created it but before "some_data->buf" is
+assigned a meaningful value at line 203. If that happens, a kernel oops is
+likely to happen. The "time window" is very narrow but still.
+
+So, yes, this is a race. As it is often the case for the races between 
+initialization and usage of a resource, this one may have serious
+consequences.
+
+4.9.2
+The lines of the source code for the conflicting accesses in the warning 
+[W2] are the same as in [W1] but a different object is accessed there.
+Indeed, consider information about the memory location and take into
+account that the size of the area accessed concurrently is 1 byte in this
+case rather than 8 bytes in [W1].
+
+The accessed memory location is "0 bytes inside a block <...> of size 38 
+allocated by T1 from heap" in sample_init_module() at module.c:203. The
+buffer pointed to by "some_data->buf" is allocated there and the memory
+location of interest is the first byte of that buffer.
+
+The first conflicting write is in sample_open() at module.c:81:
+
+------------------------------------
+79  mutex_lock(&some_lock);
+80  ++some_data->count;
+81  snprintf(some_data->buf, strlen(some_string) + max_len, 
+82      "#%d: %s\n", some_data->count, some_string);
+------------------------------------
+
+This time, a write to the buffer by snprintf() function is considered.
+
+A conflicting write happens in sample_init_module() at or after 
+module.c:203:
+
+------------------------------------
+203 some_data->buf = kzalloc(strlen(some_string) + max_len, 
+204     GFP_KERNEL);
+205 if (some_data->buf == NULL) {
+206     err = -ENOMEM;
+207     goto fail2;
+208 }
+209 some_data->buf[0] = 0;
+------------------------------------
+
+As you can see from this code fragment, the first byte of the buffer is 
+actually accessed at line 209.
+
+This is also a real data race for the same reason as the race reported in 
+the warning [W1]. They both are the result of a fact that the memory buffer
+is initialized after it might start being used.
+
+4.9.3
+The warning [W3] concerns the accesses to "some_data->count" (the field at 
+the offset 8 of the structure "struct some_data" allocated at module.c:174).
+
+The read happens at module.c:76 without any locks held, the conflicting 
+write happens at or after module.c:80 with lock L1 held. Both accesses are
+in sample_open() called from two different threads. Here is the code
+fragment:
+
+------------------------------------
+76  pr_info(TEST_MSG_PREFIX "Opening, count is %d.\n", 
+77      some_data->count);
+78  
+79  mutex_lock(&some_lock);
+80  ++some_data->count;
+------------------------------------
+
+The conflicting accesses are the reading of "some_data->count" as an 
+argument for pr_info() and the increment at line 80.
+
+sample_open() can be executed concurrently by several threads for different 
+"struct file" objects. "some_data" structure is shared between the threads,
+so this is a real data race too.
+To avoid it, pr_info() should be moved after "mutex_lock(&some_lock)" at 
+line 79.
+========================================================================
+
+So, you have found 3 real data races in "buggy01" module with the help of 
+KernelStrider and ThreadSanitizer during this tutorial.
+========================================================================

@@ -1,13 +1,26 @@
-﻿Kernel Strider
+﻿KernelStrider
 --------------
-Kernel Strider project aims to provide the tools to collect data about the operation of Linux kernel modules (device drivers, file system modules, etc.) in runtime. Among other things, it should allow recording memory accesses and function calls that the target kernel module makes and passing the collected data to user space for further processing. 
+KernelStrider project provides the tools to collect data about the 
+operation of Linux kernel modules (device drivers, file system modules,
+etc.) in runtime. Among other things, the tools collect information about
+the memory accesses and function calls that the target kernel module makes.
+The information is passed to the user space for further processing.
 
-To achieve this, relatively lightweight binary instrumentation facilities for kernel mode code are developed. 
+To achieve this, KernelStrider implements relatively lightweight binary 
+instrumentation facilities for the kernel modules.
 
-One of many possible usage areas for Kernel Strider is providing data for offline data race detectors. This should allow detecting the concurrency issues of this kind in kernel modules. 
+One of many possible usage areas for KernelStrider is providing data for 
+offline data race detectors. This should allow detecting the concurrency
+issues of this kind in kernel modules.
 
-Currently, Kernel Strider is intended for systems with x86 architecture, both 32- and 64-bit. 
+Currently, KernelStrider is intended for systems with x86 architecture, 
+both 32- and 64-bit.
+
+See doc/tutorial.txt for a step-by-step guide on how to build, install and 
+use KernelStrider.
 
 Project site: http://code.google.com/p/kernel-strider/
 
-Some of the technologies and tools that are to be developed in this project may later be incorporated in KEDR framework (http://code.google.com/p/kedr/)
+Some of the technologies and tools that are to be developed in this project 
+may later be incorporated into KEDR framework
+(http://code.google.com/p/kedr/).
