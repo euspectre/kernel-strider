@@ -1,4 +1,4 @@
-<$if header$><$header: join(\n)$>
+<$if concat(header)$><$header: join(\n)$>
 
 #include <linux/module.h>
 <$endif$>#include <kedr/kedr_mem/functions.h>

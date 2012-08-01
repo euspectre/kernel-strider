@@ -1,0 +1,24 @@
+[group]
+operation.name = open_from_cdev
+operation.callback_name = open
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.factory = inode->i_cdev
+operation.object = filp
+
+implementation_header =>>
+/* For use state of cdev object */
+#include "cdev_model.h"
+<<
+
+operation.code.pre.external =>>
+	/* Open may be executed only after registration of character device */
+	kedr_eh_on_wait(tid, pc, CDEV_MODEL_STATE_PRE_REGISTERED(inode->i_cdev), KEDR_SWT_COMMON);
+<<

@@ -25,6 +25,7 @@ header =>>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/cdev.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/object_types.h>
@@ -40,9 +41,15 @@ header =>>
 
 #include "fs_interception.h"
 
+#include "cdev_file_operations_interceptor.h"
+#include "miscdev_file_operations_interceptor.h"
+
 #include "module_ref_model.h"
 
 #include "fill_super_interceptor.h"
+
+#include "cdev_model.h"
+#include "miscdev_model.h"
 <<
 
 object.name = fs_interception
@@ -70,7 +77,23 @@ object.name = fill_super_interceptor
 object.init = return fill_super_interceptor_init();
 object.destroy = fill_super_interceptor_destroy();
 
-################### Global functions interception ######################
+object.name = cdev_file_operations_interceptor
+object.init =>>
+	return cdev_file_operations_interceptor_init(
+		&file_operations_interceptor_factory_interceptor_create, NULL);
+<<
+object.destroy = cdev_file_operations_interceptor_destroy();
+
+
+object.name = miscdev_file_operations_interceptor
+object.init =>>
+	return miscdev_file_operations_interceptor_init(
+		&file_operations_interceptor_factory_interceptor_create, NULL);
+<<
+object.destroy = miscdev_file_operations_interceptor_destroy();
+
+
+################### Filesystem functions interception ######################
 [group]
 function.name = register_filesystem
 returnType = int
@@ -102,11 +125,50 @@ post =>>
 		file_system_type_interceptor_forget(fs);
 <<
 
+##################### Inode-related functions interception #############
 
+[group]
+
+header =>>
+/* Callback types for iget5_locked */
+typedef int (*test_inode_t)(struct inode *inode, void *data);
+typedef int (*set_inode_t)(struct inode *inode, void *data);
+<<
+
+
+function.name = iget5_locked
+
+returnType = struct inode*
+
+arg.type = struct super_block*
+arg.name = sb
+
+arg.type = unsigned long
+arg.name = hashval
+
+arg.type = test_inode_t
+arg.name = test
+
+arg.type = set_inode_t
+arg.name = set
+
+arg.type = void*
+arg.name = data
+ 
+
+pre =>>
+	/* Root inode may be created with this function. */
+	super_operations_interceptor_watch(sb);
+<<
+
+
+######### mount_*()/get_sb_*() functions interceptor ###################
 # Functions which are normally used in mount()/get_sb() file system type operation.
 
 [group]
 function.name = get_sb_nodev
+
+returnType = int
 
 arg.type = struct file_system_type*
 arg.name = fs_type
@@ -135,6 +197,8 @@ post=>>
 
 [group]
 function.name = get_sb_bdev
+
+returnType = int
 
 arg.type = struct file_system_type*
 arg.name = fs_type
@@ -166,6 +230,8 @@ post=>>
 [group]
 function.name = get_sb_single
 
+returnType = int
+
 arg.type = struct file_system_type*
 arg.name = fs_type
 
@@ -189,6 +255,92 @@ post=>>
 	/* Forget callback interception */
 	fill_super_interceptor_forget(fs_type);
 <<
+
+################ Character device functions interceptor ################
+[group]
+function.name = cdev_add
+
+returnType = int
+
+arg.type = struct cdev*
+arg.name = p
+
+arg.type = dev_t
+arg.name = dev
+
+arg.type = unsigned int
+arg.name = count
+
+
+pre=>>
+	/* Watch for the factory object - character device */
+	cdev_file_operations_interceptor_watch(p);
+	/* First part of emitting PRE_REGISTERED signal */
+	kedr_eh_on_signal_pre(tid, pc, CDEV_MODEL_STATE_PRE_REGISTERED(p),
+		KEDR_SWT_COMMON);
+<<
+
+post=>>
+	/* Last part of emitting POST_REGISTERED signal */
+	kedr_eh_on_signal_post(tid, pc, CDEV_MODEL_STATE_PRE_REGISTERED(p),
+		KEDR_SWT_COMMON);
+	
+	/* Forget about factory object on fail */
+	if(returnValue)
+		cdev_file_operations_interceptor_forget(p);
+<<
+
+[group]
+function.name = cdev_del
+
+arg.type = struct cdev*
+arg.name = p
+
+post =>>
+	/* Forget about factory object - character device */
+	cdev_file_operations_interceptor_forget(p);
+	/* This function doesn't constraint file operations execution */
+<<
+
+################ Misc device functions interceptor ################
+[group]
+function.name = misc_register
+
+returnType = int
+
+arg.type = struct miscdevice*
+arg.name = misc
+
+pre=>>
+	/* Watch for the factory object - misc device */
+	miscdev_file_operations_interceptor_watch(misc);
+	/* First part of emitting PRE_REGISTERED signal */
+	kedr_eh_on_signal_pre(tid, pc, MISCDEV_MODEL_STATE_PRE_REGISTERED(misc),
+		KEDR_SWT_COMMON);
+<<
+
+post=>>
+	/* Last part of emitting POST_REGISTERED signal */
+	kedr_eh_on_signal_post(tid, pc, MISCDEV_MODEL_STATE_PRE_REGISTERED(misc),
+		KEDR_SWT_COMMON);
+	
+	/* Forget about factory object on fail */
+	if(returnValue)
+		miscdev_file_operations_interceptor_forget(misc);
+<<
+
+[group]
+function.name = misc_deregister
+
+arg.type = struct miscdevice*
+arg.name = misc
+
+post =>>
+	/* Forget about factory object - misc device */
+	miscdev_file_operations_interceptor_forget(misc);
+	/* This function doesn't constraint file operations execution */
+<<
+
 
 ###################### Process events from core ########################
 on_target_load = fs_interception_start();

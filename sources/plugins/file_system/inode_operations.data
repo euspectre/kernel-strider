@@ -119,6 +119,8 @@ operation.arg.name = new_dentry
 
 operation.object = dir
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = unlink
 operation.returnType = int
@@ -130,6 +132,8 @@ operation.arg.type = struct dentry *
 operation.arg.name = dentry
 
 operation.object = dir
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = symlink
@@ -146,9 +150,7 @@ operation.arg.name = oldname
 
 operation.object = dir
 
-# Called by vfs_symlink
-operation.default = return -EPERM;
-
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = mkdir
@@ -165,6 +167,8 @@ operation.arg.name = mode
 
 operation.object = dir
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = rmdir
 operation.returnType = int
@@ -177,9 +181,7 @@ operation.arg.name = dentry
 
 operation.object = dir
 
-# Called by vfs_rmdir
-operation.default = return -EPERM;
-
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = mknod
@@ -198,6 +200,8 @@ operation.arg.type = dev_t
 operation.arg.name = dev
 
 operation.object = dir
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = permission
@@ -229,11 +233,9 @@ operation.arg.name = new_dir
 operation.arg.type = struct dentry *
 operation.arg.name = new_dentry
 
-operation.object = old_dentry
+operation.object = old_dir
 
-# Called by vfs_rename
-operation.default = return -EPERM;
-
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = readlink
@@ -262,6 +264,8 @@ operation.arg.name = nd
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = put_link
 
@@ -276,6 +280,8 @@ operation.arg.name = cookie
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = truncate
 
@@ -284,6 +290,7 @@ operation.arg.name = inode
 
 operation.object = inode
 
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = truncate_range
@@ -297,6 +304,10 @@ operation.arg.name = offset
 operation.arg.type = loff_t
 operation.arg.name = end
 
+operation.object = inode
+
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = setattr
 operation.returnType = int
@@ -309,8 +320,7 @@ operation.arg.name = attr
 
 operation.object = dentry->d_inode
 
-# Called from notify_change
-# Default implementation is system-depended and not easy.
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = getattr
@@ -326,6 +336,8 @@ operation.arg.type = struct kstat *
 operation.arg.name = stat
 
 operation.object = dentry->d_inode
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = setxattr
@@ -348,6 +360,8 @@ operation.arg.name = flags
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = getxattr
 operation.returnType = ssize_t
@@ -366,6 +380,8 @@ operation.arg.name = size
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = listxattr
 operation.returnType = ssize_t
@@ -381,6 +397,8 @@ operation.arg.name = size
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
 [group]
 operation.name = removexattr
 operation.returnType = int
@@ -392,6 +410,8 @@ operation.arg.type = const char *
 operation.arg.name = name
 
 operation.object = dentry->d_inode
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = fiemap
@@ -410,6 +430,8 @@ operation.arg.type = u64
 operation.arg.name = len
 
 operation.object = inode
+
+operation.state.value = INITIALIZED
 
 [group]
 operation.name = fallocate
@@ -430,3 +452,5 @@ operation.arg.name = len
 operation.object = inode
 
 operation.protection = defined(INODE_OPERATIONS_HAS_FALLOCATE)
+
+operation.state.value = INITIALIZED

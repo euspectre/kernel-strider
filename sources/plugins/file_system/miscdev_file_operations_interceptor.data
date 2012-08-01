@@ -1,0 +1,220 @@
+interceptor.name = miscdev_file_operations_interceptor_internal
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2011, Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ ======================================================================== */
+
+
+#include <linux/miscdevice.h>
+#include <linux/fs.h>
+
+/* 
+ * Until 2.6.35 there is no way for get pointer to miscdevice in
+ * open() file operation.
+ * (After 2.6.35 filp->private_data contains pointer to miscdevice).
+ *
+ * We use searching misc device corresponded with given device number
+ * for extract factory object(misdevice) for object created(file).
+ */
+
+/* 
+ * Initialize list of misc devices.
+ * 
+ * Should be called when initialize interceptor.
+ */
+int miscdev_list_init(void);
+
+/* 
+ * Destroy list of misc devices.
+ * 
+ * Should be called when destroy interceptor.
+ */
+void miscdev_list_destroy(void);
+
+
+/* 
+ * Add misc device to the list.
+ *
+ * Should be called before _watch().
+ */
+int miscdev_list_add(struct miscdevice* misc);
+	
+/*
+ * Remove misc device from the list.
+ *
+ * Should be called after _forget() or after failed _watch()
+ */
+void miscdev_list_remove(struct miscdevice* misc);
+
+/* 
+ * Find misc device with given device number.
+ *
+ * Return pointer to device with given number, or NULL if not found.
+ *
+ * Used in intermediate operation and may be used externally.
+ */
+struct miscdevice* miscdev_list_find(dev_t dev);
+
+<<
+
+factory.type = struct miscdevice
+factory.operations_field = fops
+
+object.type = struct file
+object.operations_field = f_op
+
+operations.type = struct file_operations
+
+implementation_header =>>
+#include <linux/list.h>
+#include <linux/spinlock.h>
+#include <linux/slab.h>
+
+struct miscdev_elem
+{
+	struct list_head list;
+	struct miscdevice* misc;
+};
+
+static LIST_HEAD(miscdev_list);
+
+static DEFINE_SPINLOCK(miscdev_lock);
+
+int miscdev_list_init(void)
+{
+	/* Nothing to do */
+	return 0;
+}
+
+void miscdev_list_destroy(void)
+{
+	while(!list_empty(&miscdev_list))
+	{
+		struct miscdev_elem* elem = list_first_entry(&miscdev_list, typeof(*elem), list);
+		list_del(&elem->list);
+		kfree(elem);
+	}
+}
+
+
+int miscdev_list_add(struct miscdevice* misc)
+{
+	unsigned long flags;
+	
+	struct miscdev_elem* elem_current;
+	struct miscdev_elem* elem = kmalloc(sizeof(*elem), GFP_KERNEL);
+	if(elem == NULL)
+	{
+		pr_err("Failed to allocate miscdev element structure");
+		return -ENOMEM;
+	}
+	
+	spin_lock_irqsave(&miscdev_lock, flags);
+	list_for_each_entry(elem_current, &miscdev_list, list)
+	{
+		if(elem_current->misc == misc)
+		{
+			/* Already added*/
+			spin_unlock_irqrestore(&miscdev_lock, flags);
+			kfree(elem);
+			return 0;
+		}
+	}
+	INIT_LIST_HEAD(&miscdev_list);
+	elem->misc = misc;
+	
+	list_add_tail(&elem->list, &miscdev_list);
+	spin_unlock_irqrestore(&miscdev_lock, flags);
+	
+	return 0;
+}
+	
+/*
+ * Remove misc device from the list.
+ *
+ * Should be called after _forget() or after failed _watch()
+ */
+void miscdev_list_remove(struct miscdevice* misc)
+{
+	unsigned long flags;
+	
+	struct miscdev_elem* elem;
+	
+	spin_lock_irqsave(&miscdev_lock, flags);
+	list_for_each_entry(elem, &miscdev_list, list)
+	{
+		if(elem->misc == misc)
+		{
+			list_del(&elem->list);
+			spin_unlock_irqrestore(&miscdev_lock, flags);
+			kfree(elem);
+			return;
+		}
+	}
+	/* Not found. Not an error.*/
+	spin_unlock_irqrestore(&miscdev_lock, flags);
+}
+
+/* 
+ * Find misc device with given device number.
+ *
+ * Return pointer to device with given number, or NULL if not found.
+ *
+ * Used in intermediate operation and may be used externally.
+ */
+struct miscdevice* miscdev_list_find(dev_t dev)
+{
+	unsigned long flags;
+	
+	struct miscdevice* result = NULL;
+	
+	struct miscdev_elem* elem;
+	
+	if(MAJOR(dev) != MISC_MAJOR) return NULL;
+	
+	spin_lock_irqsave(&miscdev_lock, flags);
+	list_for_each_entry(elem, &miscdev_list, list)
+	{
+		if(elem->misc->minor == MINOR(dev))
+		{
+			result = elem->misc;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&miscdev_lock, flags);
+	
+	return result;
+}
+
+
+<<
+
+[group]
+operation.name = open
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.factory = miscdev_list_find(inode->i_rdev)
+operation.object = filp
+
+operation.default = return 0;

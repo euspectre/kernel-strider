@@ -1,0 +1,39 @@
+Benign race in fuse module with getattr operation of inode object.
+
+Arch: x86
+Kernel version: 2.6.32-41 (with Ubuntu patches)
+Module: fuse
+
+Scenario:
+In sshfs filesystem(based on fuse) create and remove any file.
+
+
+Description:
+
+fuse_getattr() calls (indirectly) fuse_change_attributes_common(),
+which, beside other work, clear sticky bit (S_ISVTX) in inode mode
+(inode->i_mode):
+
+inode.c: 
+
+176:	fi->orig_i_mode = inode->i_mode;
+177:	if (!(fc->flags & FUSE_DEFAULT_PERMISSIONS))
+178:		inode->i_mode &= ~S_ISVTX;
+
+Some others inode operations check inode mode for other properties.
+E.g., fuse_permission() check inode for being regular file:
+
+
+dir.c:
+
+996:	if ((fc->flags & FUSE_DEFAULT_PERMISSIONS) ||
+997:	    ((mask & MAY_EXEC) && S_ISREG(inode->i_mode))) {
+998:		err = fuse_update_attributes(inode, NULL, NULL, &refreshed);
+999:		if (err)
+1000:			return err;
+1001:	}
+
+Race on inode->i_imode field.
+
+Really, race is benign, because writing of the field is performed in
+atomic manner, and bit S_ISVTX, which is set, is never checked by fuse.

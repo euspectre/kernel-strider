@@ -227,9 +227,9 @@ operation.arg.name = filp
 
 operation.object = filp
 
-operation.pre_state.value =
-operation.post_state.value = INITIALIZED
-operation.post_state.condition = (returnValue == 0)
+operation.state.transition.pre_value =
+operation.state.transition.post_value = INITIALIZED
+operation.state.transition.condition = (returnValue == 0)
 
 operation.code.pre.external =>>
 	kedr_eh_on_alloc(tid, pc, sizeof(struct file), (unsigned long)filp);
@@ -272,9 +272,9 @@ operation.arg.name = filp
 
 operation.object = filp
 
-operation.pre_state.value = INITIALIZED
-operation.post_state.value = 
-operation.post_state.condition = (returnValue == 0)
+operation.state.transition.pre_value = INITIALIZED
+operation.state.transition.post_value = 
+operation.state.transition.condition = (returnValue == 0)
 
 operation.code.post.external =>>
 	if(returnValue == 0)

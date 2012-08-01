@@ -17,6 +17,5 @@ if(KEDR_COI_INSTALL_DIR)
     set(interceptor_templates_dir ${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates)
 
     # Plugins themselves
-    add_subdirectory(cdev)
     add_subdirectory(file_system)
 endif(KEDR_COI_INSTALL_DIR)

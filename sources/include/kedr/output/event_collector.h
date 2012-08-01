@@ -587,5 +587,4 @@ int execution_event_collector_init(
 void execution_event_collector_destroy(
     struct execution_event_collector* event_collector);
 
-
 #endif /* EVENT_COLLECTOR_H */

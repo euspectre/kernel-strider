@@ -28,6 +28,14 @@ kbuild_add_module(${plugin_name}
     "inode_operations_interceptor.c"
     "dentry_operations_interceptor.c"
     
+    "cdev_file_operations_interceptor.c"
+    "cdev_file_operations_interceptor.h"
+    
+    "miscdev_file_operations_interceptor.h"
+    
+    "miscdev_file_operations_interceptor_internal.c"
+    "miscdev_file_operations_interceptor_internal.h"
+    
     "file_operations_model.c"
     "file_operations_model.h"
     "inode_operations_model.c"
@@ -36,6 +44,9 @@ kbuild_add_module(${plugin_name}
     "super_operations_model.h"
     "file_system_type_model.c"
     "file_system_type_model.h"
+    
+    "cdev_model.h"
+    "miscdev_model.h"
     
     "fill_super_interceptor.c"
     "fill_super_interceptor.h"
@@ -70,6 +81,29 @@ rule_copy_file("inode_operations_interceptor.c"
 rule_copy_file("dentry_operations_interceptor.c"
     "${interceptors_dir}/dentry_operations_interceptor.c")
 
+# Interception for file operations from character device
+rule_generate_file("cdev_file_operations_interceptor.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cdev_file_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_factory_interceptor.c")
+
+rule_generate_file("cdev_file_operations_interceptor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cdev_file_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_factory_interceptor.h")
+
+# Interception for file operations from misc device(internal)
+rule_generate_file("miscdev_file_operations_interceptor_internal.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/miscdev_file_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_factory_interceptor.c")
+
+rule_generate_file("miscdev_file_operations_interceptor_internal.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/miscdev_file_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_factory_interceptor.h")
+
+
+rule_copy_file("fs_interception.c"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/examples/file_access_counter/fs_interception.c")
+rule_copy_file("fs_interception.h"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/examples/file_access_counter/fs_interception.h")
 
 
 
@@ -81,15 +115,26 @@ rule_generate_file("file_operations_model.h"
     "${CMAKE_CURRENT_BINARY_DIR}/file_operations_all.data"
     "${model_templates_dir}/operations_model.h")
 
+
+# Rule for concatenation files in one.
+# In the future may be in cmake_useful.cmake
+function(rule_concat_files target_file source1)
+    to_abs_path(source_files ${source1} ${ARGN})
+    add_custom_command(OUTPUT ${target_file}
+        COMMAND cat ${source_files} > ${target_file}
+    DEPENDS ${source_files})
+endfunction(rule_concat_files target_file source1)
+
 # Combine data of file operations itself and their connection with inode
-# object into one datafile.
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/file_operations_all.data"
-    COMMAND cat "${CMAKE_CURRENT_SOURCE_DIR}/../cdev/file_operations.data"
-        "${CMAKE_CURRENT_SOURCE_DIR}/inode_file_operations.data"
-        > "${CMAKE_CURRENT_BINARY_DIR}/file_operations_all.data"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../cdev/file_operations.data"
-        "${CMAKE_CURRENT_SOURCE_DIR}/inode_file_operations.data"
-)
+# and cdev objects into one datafile.
+# 
+# In the future connections will use different templates
+rule_concat_files("file_operations_all.data"
+    "file_operations.data"
+    "inode_file_operations.data"
+    "cdev_file_operations.data"
+    "miscdev_file_operations.data")
+
 
 rule_generate_file("inode_operations_model.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/inode_operations.data"

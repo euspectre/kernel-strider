@@ -1,0 +1,30 @@
+[group]
+operation.name = open_from_miscdev
+operation.callback_name = open
+
+operation.returnType = int
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct file *
+operation.arg.name = filp
+
+operation.factory = misc_for_file(filp)
+operation.object = filp
+
+implementation_header =>>
+#include "miscdev_file_operations_interceptor.h"
+/* For use state of miscdevice object */
+#include "miscdev_model.h"
+<<
+
+operation.code.pre.external =>>
+	struct miscdevice* misc = misc_for_file(filp);
+	if(misc)
+	{
+		/* Open may be executed only after registration of character device */
+		kedr_eh_on_wait(tid, pc,
+			MISCDEV_MODEL_STATE_PRE_REGISTERED(misc), KEDR_SWT_COMMON);
+	}
+<<

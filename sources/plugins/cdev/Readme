@@ -1,5 +1,0 @@
-﻿Plugin module which implements model of character device from the sence
-of serialization mechanizms.
-
-The plugin requires KEDR Callback Operations Interception installed
-before it can be builded.
