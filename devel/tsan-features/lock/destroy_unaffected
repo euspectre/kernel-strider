@@ -1,0 +1,34 @@
+# Lockset is not affected by lock_create/lock_destroy on lock(no race here)
+
+# In pure happens-before tsan terminates with assertion on any lock using
+# after lock_destroy(with same address).
+
+# When comment lock/unlock in second thread, race will be reported but
+# tsan failed to determine lock acquire operation for thread 1.
+#
+# When comment lock/unlock in first thread, race will be reported correctly.
+
+THR_START 0 0 0 0
+
+THR_START 1 0 0 0
+THR_START 2 0 0 0
+
+LOCK_CREATE   1 1000 20000 0
+
+WRITER_LOCK   1 1000 20000 0
+SBLOCK_ENTER  1 1010 0     0
+WRITE         1 1010 10000 4
+UNLOCK        1 1020 20000 0
+
+LOCK_DESTROY  1 1050 20000 0
+
+
+
+LOCK_CREATE   2 2000 20000 0
+
+WRITER_LOCK   2 2000 20000 0
+SBLOCK_ENTER  2 2010 0     0
+WRITE         2 2010 10000 4
+UNLOCK        2 2020 20000 0
+
+LOCK_DESTROY  2 2050 20000 0

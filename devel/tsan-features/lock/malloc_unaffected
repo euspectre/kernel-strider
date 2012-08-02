@@ -1,0 +1,26 @@
+# Lockset is not affected by malloc/free at lock address(no race here)
+
+THR_START 0 0 0 0
+
+THR_START 1 0 0 0
+THR_START 2 0 0 0
+
+MALLOC        1 1000 20000 20
+
+WRITER_LOCK   1 1000 20000 0
+SBLOCK_ENTER  1 1010 0     0
+WRITE         1 1010 10000 4
+UNLOCK        1 1020 20000 0
+
+FREE          1 1060 20000 20
+
+
+
+MALLOC        2 2000 20000 20
+
+WRITER_LOCK   2 2000 20000 0
+SBLOCK_ENTER  2 2010 0     0
+WRITE         2 2010 10000 4
+UNLOCK        2 2020 20000 0
+
+FREE          2 2060 20000 20

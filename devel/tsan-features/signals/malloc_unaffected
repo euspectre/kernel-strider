@@ -1,0 +1,21 @@
+# Signal-wait relation does not affected by malloc/free on signal object address.
+# (no race here).
+
+THR_START 0 0 0 0
+
+MALLOC         0 30   10000 40
+
+THR_START      1 0    0     0
+MALLOC         1 1000 20000 10
+SBLOCK_ENTER   1 1010 0     0
+WRITE          1 1010 10000 4
+SIGNAL         1 1020 20000 1
+FREE           1 1030 20000 0
+
+THR_START      2 0    0     0
+MALLOC         2 2000 20000 10
+SBLOCK_ENTER   2 2010 0     0
+WAIT           2 2010 20000 1
+WRITE          2 2010 10000 4
+
+FREE           2 2030 20000 0

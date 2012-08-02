@@ -1,0 +1,16 @@
+# Memory accesses are not race if they interleaved by malloc which allocate
+# addresses range which accessed(no race here).
+
+THR_START 0 0 0 0
+
+THR_START 1 0 0 0
+MALLOC 1 1000 10000 10
+SBLOCK_ENTER 1 1010 0 0
+WRITE 1 1020 10000 4
+FREE 1 1000 10000 0
+
+THR_START 2 0 0 0
+MALLOC 2 2000 10000 10
+SBLOCK_ENTER 2 1010 0 0
+WRITE 2 1020 10000 4
+FREE 2 1000 10000 0

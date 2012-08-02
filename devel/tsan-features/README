@@ -1,0 +1,4 @@
+Investigation of some ThreadSanitizer event types(in offline trace) and
+conclusions.
+
+Tsan traces are grouped by event type under investigate.

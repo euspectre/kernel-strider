@@ -1,0 +1,31 @@
+# MALLOC cancel BENING_RACE effect on corresponded addresses range.
+
+THR_START 0 0 0 0
+# Here size(4th number) is meaningful:
+# accesses are performed on near addresses.
+BENIGN_RACE 0 0 10000 4
+
+THR_START 1 0 0 0
+
+SBLOCK_ENTER 1 1000 0 0
+WRITE 1 1000 10002 2
+
+THR_START 2 0 0 0
+SBLOCK_ENTER 2 2000 0 0
+WRITE 2 2000 10002 2
+
+THR_START 3 0 0 0
+SBLOCK_ENTER 3 3000 0 0
+READ 3 3000 10002 2
+
+# MALLOC on any existed TID cancel BENING_RACE on corresponded addresses.
+MALLOC 3 110 FFF0 15
+
+SBLOCK_ENTER 1 1100 0 0
+WRITE 1 1100 10000 4
+
+SBLOCK_ENTER 2 2100 0 0
+WRITE 2 2100 10000 4
+
+SBLOCK_ENTER 3 3100 0 0
+READ 3 3100 10000 4

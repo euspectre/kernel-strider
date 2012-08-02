@@ -1,0 +1,18 @@
+# BENIGN_RACE - mark races for accesses to that address(range of addresses)
+# as normal, so tsan doesn't report them.
+
+THR_START 0 0 0 0
+THR_START 1 0 0 0
+# First number: any existed TID(otherwise event will be ignored)
+# Second number: any
+# Third number : address of access
+# Fourth number: any non-zero size
+BENIGN_RACE 0 0 10000 4
+SBLOCK_ENTER 1 1000 0 0
+WRITE 1 1000 10000 4
+THR_START 2 0 0 0
+SBLOCK_ENTER 2 2000 0 0
+WRITE 2 2000 10000 4
+THR_START 3 0 0 0
+SBLOCK_ENTER 3 3000 0 0
+READ 3 3000 10000 4
