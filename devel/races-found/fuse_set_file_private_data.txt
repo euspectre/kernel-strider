@@ -1,0 +1,68 @@
+Race when set file->private_data to created fuse connection and read
+it in file operations.
+
+Arch: x86
+Kernel version: 2.6.32-41 (with Ubuntu patches)
+Module: fuse
+
+Scenario:
+In sshfs filesystem(based on fuse) create and remove any file.
+
+fuse_fill_super() which is called from get_sb() callback of
+file_system_type operations create new connection. Then this connection
+is set as private data for file, which id is passed via mount options.
+
+inode.c:
+
+1016	list_add_tail(&fc->entry, &fuse_conn_list);
+1017	sb->s_root = root_dentry;
+1018	fc->connected = 1;
+1019	file->private_data = fuse_conn_get(fc);
+1020	mutex_unlock(&fuse_mutex);
+1021	/*
+1022	 * atomic_dec_and_test() in fput() provides the necessary
+1023	 * memory barrier for file->private_data to be visible on all
+1024	 * CPUs after this
+1025	 */
+1026	fput(file);
+1027
+1028	fuse_send_init(fc, init_req);
+
+This file is opened by user-space program, which implement filesystem.
+When that program read file, fuse_dev_read() extract connection from
+private data, and, after check that it is non-NULL, work this connection:
+
+dev.c:
+
+757     struct fuse_conn *fc = fuse_get_conn(file);
+758 	if (!fc)
+759		return -EPERM;
+760
+761    restart:
+762 	spin_lock(&fc->lock);
+763 	err = -EAGAIN;
+764 	if ((file->f_flags & O_NONBLOCK) && fc->connected &&
+765 	    !request_pending(fc))
+766 		goto err_unlock;
+
+Accesses to private_data of file are raced.
+
+Really, that race is hardy to affect program behaviour:
+
+1) fuse_conn_get() contain atomic_inc() instruction, which contains write
+barrier, so write to private_data is something similar to volatile write.
+
+2) After reading and checking connection from private_data, spin_lock()
+is called, which contains read barrier. So, read from private_data is
+something similar to volatile read.
+
+The only thing - spin_lock() is called on object at extracted pointer.
+On x86 that is similar to rcu_dereference() so write/read may be considered
+as rcu_assign()/rcu_dereference(), but on alpha...
+
+
+In any case, comment in inode.c after assigning private_data doesn't
+describe consistency of connection created. fput_file() is only garantees
+that assigned private_data is visible on release() call.
+
+ALSO: similar raced read exists in fuse_dev_write().
