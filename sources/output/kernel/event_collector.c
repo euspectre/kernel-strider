@@ -23,7 +23,7 @@ int execution_event_collector_init(
     }
     
     event_collector->buffer_critical
-        = ring_buffer_alloc(buffer_critical_size, 0);
+        = ring_buffer_alloc(buffer_critical_size, RB_FL_OVERWRITE);
     if(event_collector->buffer_critical == NULL)
     {
         pr_err("Failed to allocate ring buffer for critical messages.");

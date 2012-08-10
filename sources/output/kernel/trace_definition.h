@@ -72,6 +72,8 @@ struct execution_event_packet_context
     uint64_t timestamp_end;
     /* Packet count inside stream */
     uint32_t stream_packet_count;
+    /* Events lost since stream starts */
+    uint32_t lost_events_total;
     uint16_t content_size;/* Size of packet in bits*/
     uint16_t packet_size;/* Size of packet in bits, including padding */
     CTF_STRUCT_END

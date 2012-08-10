@@ -993,8 +993,25 @@ int main(int argc, char** argv)
         }
         return 0;
     }
+    
+    const CTFVarInt* lost_events_total_var = NULL;
+    {
+        const CTFVar* var = traceReader.findVar("stream.packet.context.lost_events_total");
+        if(var != NULL)
+        {
+            lost_events_total_var = static_cast<const CTFVarInt*>(var);
+            //debug
+            std::cerr << "Trace has lost message counter." << std::endl;
+        }
+    }
+    
     for(KEDRTraceReader::EventIterator iter(traceReader); iter; ++iter)
     {
+        if(lost_events_total_var && lost_events_total_var->getInt32(*iter))
+        {
+            std::cerr << "WARNING: There are events lost." << std::endl;
+            lost_events_total_var = NULL;
+        }
         eventPrinter.print(*iter, std::cout);
     }
     

@@ -35,6 +35,12 @@ struct kedr_trace
     int current_packets_rest;
     /* Number of packets which has been formed before */
     int packets_formed;
+    /* 
+     * For each subbuffer store number of events lost since buffer is
+     * start.
+     */
+    unsigned long normal_events_lost_total[NR_CPUS];
+    unsigned long critical_events_lost_total[NR_CPUS];
 };
 
 /*

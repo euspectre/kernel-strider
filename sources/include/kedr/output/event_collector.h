@@ -30,7 +30,7 @@ typedef unsigned long addr_t;
  * Because some architecture has atomics with low bits number, counter
  * may not be used for order all messages.
  * It should be used only for messages, which are 'near' to each other
- * accorging to their timestamps.
+ * according to their timestamps.
  * 
  * This macro make 'near' conception clear:
  * if abs(ts1 - ts2) > KEDR_CLOCK_PRECISION, then messages are ordered
