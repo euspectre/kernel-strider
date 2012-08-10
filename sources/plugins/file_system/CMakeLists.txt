@@ -28,6 +28,13 @@ kbuild_add_module(${plugin_name}
     "inode_operations_interceptor.c"
     "dentry_operations_interceptor.c"
     
+    "vma_operations_interceptor.c"
+    "vma_operations_interceptor.h"
+    "vma_operations_interceptor_internal.c"
+    "vma_operations_interceptor_internal.h"
+    "vma_operations_clone_interceptor.c"
+    "vma_operations_clone_interceptor.h"
+    
     "cdev_file_operations_interceptor.c"
     "cdev_file_operations_interceptor.h"
     
@@ -40,10 +47,15 @@ kbuild_add_module(${plugin_name}
     "file_operations_model.h"
     "inode_operations_model.c"
     "inode_operations_model.h"
+    "dentry_operations_model.c"
+    "dentry_operations_model.h"
     "super_operations_model.c"
     "super_operations_model.h"
     "file_system_type_model.c"
     "file_system_type_model.h"
+    
+    "vma_operations_model.c"
+    "vma_operations_model.h"
     
     "cdev_model.h"
     "miscdev_model.h"
@@ -80,6 +92,25 @@ rule_copy_file("inode_operations_interceptor.c"
     "${interceptors_dir}/inode_operations_interceptor.c")
 rule_copy_file("dentry_operations_interceptor.c"
     "${interceptors_dir}/dentry_operations_interceptor.c")
+
+# Interception for vma operations(internal)
+rule_generate_file("vma_operations_interceptor_internal.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_interceptor.c")
+
+rule_generate_file("vma_operations_interceptor_internal.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_interceptor.h")
+
+# Interception for vma operations as cloned(internal)
+rule_generate_file("vma_operations_clone_interceptor.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations_clone_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_creation_interceptor.c")
+
+rule_generate_file("vma_operations_clone_interceptor.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations_clone_interceptor.data"
+    "${KEDR_COI_INSTALL_DIR}/share/kedr-coi/templates/kedr_coi_creation_interceptor.h")
+
 
 # Interception for file operations from character device
 rule_generate_file("cdev_file_operations_interceptor.c"
@@ -136,6 +167,15 @@ rule_concat_files("file_operations_all.data"
     "miscdev_file_operations.data")
 
 
+rule_generate_file("dentry_operations_model.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dentry_operations.data"
+    "${model_templates_dir}/operations_model.c")
+
+rule_generate_file("dentry_operations_model.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dentry_operations.data"
+    "${model_templates_dir}/operations_model.h")
+
+
 rule_generate_file("inode_operations_model.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/inode_operations.data"
     "${model_templates_dir}/operations_model.c")
@@ -143,7 +183,6 @@ rule_generate_file("inode_operations_model.c"
 rule_generate_file("inode_operations_model.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/inode_operations.data"
     "${model_templates_dir}/operations_model.h")
-
 
 rule_generate_file("super_operations_model.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/super_operations.data"
@@ -160,6 +199,15 @@ rule_generate_file("file_system_type_model.c"
 
 rule_generate_file("file_system_type_model.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/file_system_type.data"
+    "${model_templates_dir}/operations_model.h")
+
+
+rule_generate_file("vma_operations_model.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations.data"
+    "${model_templates_dir}/operations_model.c")
+
+rule_generate_file("vma_operations_model.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vma_operations.data"
     "${model_templates_dir}/operations_model.h")
 
 

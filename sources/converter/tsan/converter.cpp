@@ -1382,9 +1382,12 @@ void KEDREventProcessorStandard<T>::processThreadJoin(
         cerr << "Join on thread which wasn't started.\n";
         throw logic_error("Incorrect KEDR trace.");
     }
-
+    eventProcessor.processThreadStop(childThreadInfo);
+    
     eventProcessor.processThreadJoin(getThreadInfo(iter),
         Addr<T>(TCAVarPC, *iter), childThreadInfo);
+
+    threads.remove(childTidAddr);
 }
 
 
@@ -2143,10 +2146,10 @@ public:
                 EventProcessorTransform<T>::processLMAUpdate(thread, pc, addr, size);
             break;
             }
-//#ifdef KEDR_DEBUG
+#ifdef KEDR_DEBUG
             cerr << "Memory access at " << pc
                 << " has been transformed into locked access." << endl;
-//#endif
+#endif
         }
         else
         {

@@ -15,6 +15,33 @@ header =>>
 
 
 #include <linux/fs.h>
+
+// TODO: Lock types are correct?(rw_semaphore)
+static inline void s_umount_down_write(unsigned long tid, unsigned long pc,
+	struct super_block* s)
+{
+	kedr_eh_on_lock(tid, pc, (unsigned long)&s->s_umount, KEDR_LT_WLOCK);
+}
+static inline void s_umount_up_write(unsigned long tid, unsigned long pc,
+	struct super_block* s)
+{
+	kedr_eh_on_unlock(tid, pc, (unsigned long)&s->s_umount, KEDR_LT_WLOCK);
+}
+
+static inline void s_umount_down_read(unsigned long tid, unsigned long pc,
+	struct super_block* s)
+{
+	kedr_eh_on_lock(tid, pc, (unsigned long)&s->s_umount, KEDR_LT_RLOCK);
+}
+
+static inline void s_umount_up_read(unsigned long tid, unsigned long pc,
+	struct super_block* s)
+{
+	kedr_eh_on_unlock(tid, pc, (unsigned long)&s->s_umount, KEDR_LT_RLOCK);
+}
+
+
+
 <<
 
 implementation_header =>>
@@ -104,6 +131,17 @@ operation.object = sb
 operation.state.transition.pre_value = INITIALIZED
 operation.state.transition.post_value = BEFORE_KILL
 
+# For make state transition be modelled even in case of default operation
+operation.code.pre.external = {}
+
+operation.code.pre =>>
+	s_umount_down_write(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_write(tid, pc, sb);
+<<
+
 [group]
 operation.name = write_super
 
@@ -113,6 +151,15 @@ operation.arg.name = sb
 operation.object = sb
 
 operation.state.value = INITIALIZED
+
+operation.code.pre =>>
+	s_umount_down_read(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_read(tid, pc, sb);
+<<
+
 
 [group]
 operation.name = sync_fs
@@ -128,6 +175,14 @@ operation.object = sb
 
 operation.state.value = INITIALIZED
 
+operation.code.pre =>>
+	s_umount_down_read(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_read(tid, pc, sb);
+<<
+
 [group]
 operation.name = freeze_fs
 operation.returnType = int
@@ -139,6 +194,15 @@ operation.object = sb
 
 operation.state.value = INITIALIZED
 
+operation.code.pre =>>
+	s_umount_down_read(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_read(tid, pc, sb);
+<<
+
+
 [group]
 operation.name = unfreeze_fs
 operation.returnType = int
@@ -149,6 +213,15 @@ operation.arg.name = sb
 operation.object = sb
 
 operation.state.value = INITIALIZED
+
+operation.code.pre =>>
+	s_umount_down_read(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_read(tid, pc, sb);
+<<
+
 
 [group]
 operation.name = statfs
@@ -163,6 +236,8 @@ operation.arg.name = buf
 operation.object = dentry->d_sb
 
 operation.state.value = INITIALIZED
+
+# Called with lock only by ustat(2), "but that's an accident of bad API".
 
 [group]
 operation.name = remount_fs
@@ -183,6 +258,15 @@ operation.object = sb
 operation.state.transition.pre_value = INITIALIZED
 operation.state.transition.post_value = INITIALIZED
 
+operation.code.pre =>>
+	s_umount_down_write(tid, pc, sb);
+<<
+
+operation.code.post =>>
+	s_umount_up_write(tid, pc, sb);
+<<
+
+
 [group]
 operation.name = umount_begin
 
@@ -192,6 +276,8 @@ operation.arg.name = sb
 operation.object = sb
 
 operation.state.value = INITIALIZED
+
+# Called without lock
 
 [group]
 operation.name = show_options
@@ -207,6 +293,8 @@ operation.object = mnt->mnt_sb
 
 operation.state.value = INITIALIZED
 
+# Called without lock
+
 [group]
 operation.name = show_stats
 operation.returnType = int
@@ -220,6 +308,8 @@ operation.arg.name = mnt
 operation.object = mnt->mnt_sb
 
 operation.state.value = INITIALIZED
+
+# Locking policy doesn't documented.
 
 [group]
 operation.name = bdev_try_to_free_page
@@ -237,6 +327,8 @@ operation.arg.name = wait
 operation.object = sb
 
 operation.state.value = INITIALIZED
+
+# Called from ->releasepage handler of the block device inode.
 
 [group]
 operation.name = write_inode_with_wbc
@@ -256,6 +348,8 @@ operation.protection = SUPER_OPERATIONS_WRITE_INODE_ACCEPT_WBC != 0
 
 operation.state.value = INITIALIZED
 
+#Called without locks
+
 [group]
 operation.name = write_inode_with_sync
 operation.callback_name = write_inode
@@ -274,6 +368,8 @@ operation.protection = SUPER_OPERATIONS_WRITE_INODE_ACCEPT_WBC == 0
 
 operation.state.value = INITIALIZED
 
+# Called without lock
+
 [group]
 operation.name = show_path
 operation.returnType = int
@@ -290,6 +386,8 @@ operation.protection = defined(SUPER_OPERATIONS_HAS_SHOW_PATH)
 
 operation.state.value = INITIALIZED
 
+# Locking rules are not documented
+
 [group]
 operation.name = show_devname
 operation.returnType = int
@@ -305,6 +403,8 @@ operation.object = mnt->mnt_sb
 operation.protection = defined(SUPER_OPERATIONS_HAS_SHOW_DEVNAME)
 
 operation.state.value = INITIALIZED
+
+# Locking rules are not documented
 
 [group]
 operation.name = drop_inode_return_int
@@ -327,6 +427,11 @@ operation.external.state.transition.pre_value = INITIALIZED
 operation.external.state.transition.post_value = ALLOCATED
 operation.external.state.transition.condition = 1
 
+# For make state transition be modelled even with default operation.
+operation.code.pre = {}
+
+# Called without lock
+
 [group]
 operation.name = drop_inode
 operation.callback_name = drop_inode
@@ -346,6 +451,11 @@ operation.external.state.transition.pre_value = INITIALIZED
 operation.external.state.transition.post_value = ALLOCATED
 operation.external.state.transition.condition = 1
 
+# For make state transition be modelled even with default operation.
+operation.code.pre = {}
+
+# Called without lock
+
 [group]
 operation.name = dirty_inode_with_flags
 operation.callback_name = dirty_inode
@@ -362,6 +472,8 @@ operation.protection = SUPER_OPERATIONS_DIRTY_INODE_ACCEPT_FLAGS != 0
 
 operation.state.value = INITIALIZED
 
+# Called without lock
+
 [group]
 operation.name = dirty_inode
 operation.callback_name = dirty_inode
@@ -375,6 +487,8 @@ operation.protection = SUPER_OPERATIONS_DIRTY_INODE_ACCEPT_FLAGS == 0
 
 operation.state.value = INITIALIZED
 
+# Called without lock
+
 [group]
 operation.name = delete_inode
 
@@ -387,6 +501,8 @@ operation.protection = defined(SUPER_OPERATIONS_HAS_DELETE_INODE)
 
 operation.state.value = INITIALIZED
 
+# Called without lock
+
 [group]
 operation.name = clear_inode
 
@@ -398,3 +514,5 @@ operation.object = inode->i_sb
 operation.protection = defined(SUPER_OPERATIONS_HAS_CLEAR_INODE)
 
 operation.state.value = INITIALIZED
+
+# Locking rules are not documented.

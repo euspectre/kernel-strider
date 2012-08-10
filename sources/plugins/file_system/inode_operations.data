@@ -3,30 +3,45 @@ sw_id.prefix = INODE_MODEL_STATE
 
 header =>>
 /* ========================================================================
- * Copyright (C) 2011, Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
  *
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
  ======================================================================== */
 
 
 #include <linux/fs.h>
+
+
+/* 
+ * Wrappers for modelling operations with inode mutex
+ * (see Linux kernel Documentation/filesystems/Locking).
+ */
+static inline void i_mutex_lock(unsigned long tid, unsigned long pc,
+	struct inode* inode)
+{
+	kedr_eh_on_lock(tid, pc, (unsigned long)&inode->i_mutex,
+		KEDR_LT_MUTEX);
+}
+
+static inline void i_mutex_unlock(unsigned long tid, unsigned long pc,
+	struct inode* inode)
+{
+	kedr_eh_on_unlock(tid, pc, (unsigned long)&inode->i_mutex,
+		KEDR_LT_MUTEX);
+}
+
 <<
 
 implementation_header=>>
 /* Only need for define macros, which affects on operations existence */
 #include <kedr-coi/interceptors/inode_operations_interceptor.h>
+/* States of dentry */
+#include "dentry_operations_model.h"
 <<
 
 object.type = struct inode
@@ -65,12 +80,32 @@ operation.object = dir
 
 operation.state.value = INITIALIZED
 
+
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# Default implementation doesn't change state, but there is no template
+# of state transition without external interception.
+
 # State transition of inode created
 operation.external.state.transition.prefix = INODE_MODEL_STATE
 operation.external.state.transition.object = dentry->d_inode
 operation.external.state.transition.pre_value = 
 operation.external.state.transition.post_value = INITIALIZED
 operation.external.state.transition.condition = returnValue == 0
+
+# State transition of dentry on which inode is created
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = NEGATIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = returnValue == 0
+
 
 [group]
 operation.name = lookup
@@ -89,6 +124,22 @@ operation.object = inode
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	/* 
+	 * Called with dentry which is just allocated.
+	 */
+	kedr_eh_on_alloc(tid, pc, sizeof(struct dentry), (unsigned long)dentry);
+
+	i_mutex_lock(tid, pc, inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, inode);
+	
+	if(IS_ERR(returnValue))
+		kedr_eh_on_free(tid, pc, (unsigned long)dentry);
+<<
+
 # State transition of inode found
 operation.external.state.transition.prefix = INODE_MODEL_STATE
 operation.external.state.transition.object = dentry->d_inode
@@ -101,6 +152,21 @@ operation.external.state.transition.prefix = INODE_MODEL_STATE
 operation.external.state.transition.object = returnValue->d_inode
 operation.external.state.transition.pre_value = 
 operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = returnValue && !IS_ERR(returnValue) && returnValue->d_inode
+
+
+# State transition of dentry on which inode is found
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = !returnValue && dentry->d_inode
+
+# State transition of dentry on which new inode is found
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = returnValue
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = POSITIVE
 operation.external.state.transition.condition = returnValue && !IS_ERR(returnValue) && returnValue->d_inode
 
 
@@ -121,6 +187,33 @@ operation.object = dir
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+	/* Also lock inode for which link is created */
+	i_mutex_lock(tid, pc, old_dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, old_dentry->d_inode);
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# State transition of link inode created
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = new_dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = !returnValue
+
+
+# State transition of dentry on which link is created
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = new_dentry
+operation.external.state.transition.pre_value = NEGATIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = !returnValue
+
+
 [group]
 operation.name = unlink
 operation.returnType = int
@@ -134,6 +227,28 @@ operation.arg.name = dentry
 operation.object = dir
 
 operation.state.value = INITIALIZED
+
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+	/* Also lock inode deleted */
+	i_mutex_lock(tid, pc, dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dentry->d_inode);
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+
+# State transition of dentry from which inode is deleted
+# Really, inode is not deleted here, but operation shouldn't be concurrent
+# with others.
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = POSITIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = 1
+
 
 [group]
 operation.name = symlink
@@ -152,6 +267,30 @@ operation.object = dir
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# State transition of symlink inode created
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = !returnValue
+
+
+# State transition of dentry on which symlink is created
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = NEGATIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = !returnValue
+
+
 [group]
 operation.name = mkdir
 operation.returnType = int
@@ -169,6 +308,31 @@ operation.object = dir
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# State transition of directory inode created
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = !returnValue
+
+
+# State transition of dentry on which directory is created
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = NEGATIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = !returnValue
+
+
+
 [group]
 operation.name = rmdir
 operation.returnType = int
@@ -182,6 +346,27 @@ operation.arg.name = dentry
 operation.object = dir
 
 operation.state.value = INITIALIZED
+
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+	/* Also lock inode deleted */
+	i_mutex_lock(tid, pc, dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dentry->d_inode);
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# State transition of dentry from which inode is deleted
+# Really, inode is not deleted here, but operation shouldn't be concurrent
+# with others.
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = POSITIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = 1
+
 
 [group]
 operation.name = mknod
@@ -203,6 +388,31 @@ operation.object = dir
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dir);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dir);
+<<
+
+# State transition of node inode created
+operation.external.state.transition.prefix = INODE_MODEL_STATE
+operation.external.state.transition.object = dentry->d_inode
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = !returnValue
+
+
+# State transition of dentry on which node is created
+operation.external.state.transition.prefix = DENTRY_MODEL_STATE
+operation.external.state.transition.object = dentry
+operation.external.state.transition.pre_value = NEGATIVE
+operation.external.state.transition.post_value = POSITIVE
+operation.external.state.transition.condition = !returnValue
+
+
+
 [group]
 operation.name = permission
 operation.returnType = int
@@ -216,6 +426,8 @@ operation.arg.name = mask
 operation.object = inode
 
 operation.state.value = INITIALIZED
+
+# Called without locks
 
 [group]
 operation.name = rename
@@ -237,6 +449,9 @@ operation.object = old_dir
 
 operation.state.value = INITIALIZED
 
+#TODO: locks
+#TODO: dentry and inode state transition
+
 [group]
 operation.name = readlink
 operation.returnType = int
@@ -252,6 +467,10 @@ operation.arg.name = buflen
 
 operation.object = dentry->d_inode
 
+operation.state.value = INITIALIZED
+
+# Called without locks
+
 [group]
 operation.name = follow_link
 operation.returnType = void*
@@ -265,6 +484,8 @@ operation.arg.name = nd
 operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
+
+# Called without locks
 
 [group]
 operation.name = put_link
@@ -282,6 +503,8 @@ operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
 
+# Called without locks
+
 [group]
 operation.name = truncate
 
@@ -291,6 +514,9 @@ operation.arg.name = inode
 operation.object = inode
 
 operation.state.value = INITIALIZED
+
+# May be only be called from setattr, which already aquire lock.
+# Call may be indirect, via vmtruncate()(deprecated)
 
 [group]
 operation.name = truncate_range
@@ -308,6 +534,8 @@ operation.object = inode
 
 operation.state.value = INITIALIZED
 
+# Locking scheme is not documented. Is it like truncate()?
+
 [group]
 operation.name = setattr
 operation.returnType = int
@@ -321,6 +549,14 @@ operation.arg.name = attr
 operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
+
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dentry->d_inode);
+<<
 
 [group]
 operation.name = getattr
@@ -338,6 +574,8 @@ operation.arg.name = stat
 operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
+
+# Called without locks
 
 [group]
 operation.name = setxattr
@@ -362,6 +600,14 @@ operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
 
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dentry->d_inode);
+<<
+
 [group]
 operation.name = getxattr
 operation.returnType = ssize_t
@@ -382,6 +628,8 @@ operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
 
+# Called without locks
+
 [group]
 operation.name = listxattr
 operation.returnType = ssize_t
@@ -399,6 +647,8 @@ operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
 
+# Called without locks
+
 [group]
 operation.name = removexattr
 operation.returnType = int
@@ -412,6 +662,15 @@ operation.arg.name = name
 operation.object = dentry->d_inode
 
 operation.state.value = INITIALIZED
+
+operation.code.pre=>>
+	i_mutex_lock(tid, pc, dentry->d_inode);
+<<
+
+operation.code.post=>>
+	i_mutex_unlock(tid, pc, dentry->d_inode);
+<<
+
 
 [group]
 operation.name = fiemap
@@ -432,6 +691,8 @@ operation.arg.name = len
 operation.object = inode
 
 operation.state.value = INITIALIZED
+
+# Called without locks
 
 [group]
 operation.name = fallocate
@@ -454,3 +715,5 @@ operation.object = inode
 operation.protection = defined(INODE_OPERATIONS_HAS_FALLOCATE)
 
 operation.state.value = INITIALIZED
+
+# Locking scheme is not documented.

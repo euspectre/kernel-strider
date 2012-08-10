@@ -1,0 +1,104 @@
+interceptor.name = vma_operations_interceptor_internal
+interceptor.operations_prefix = vma_operations
+interceptor.use_copy = yes
+
+header =>>
+#include <linux/mm.h>
+<<
+
+object.type = struct vm_area_struct
+object.operations_field = vm_ops
+
+operations.type = struct vm_operations_struct
+
+[group]
+operation.name = open
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = vma
+
+# Called, e.g., from __split_vma, dup_mmap. Do not call after mmap(!)
+operation.default = return;
+
+[group]
+operation.name = close
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = vma
+
+# Called, e.g., from __split_vma
+operation.default = return;
+
+[group]
+operation.name = fault
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = struct vm_fault *
+operation.arg.name = vmf
+
+operation.object = vma
+
+# Checked in follow_page, then called from __do_fault.
+
+# It is better to not intercept default operation: errors in case of
+# absence of fault() handler and in case when this handler exists but
+# returns error may be interpreted differently by the kernel.
+#
+# If default interception is really be needed, check VM_FAULT_ERROR or
+# VM_FAULT_NOPAGE as returned values.
+#
+
+[group]
+operation.name = page_mkwrite
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = struct vm_fault *
+operation.arg.name = vmf
+
+operation.object = vma
+
+# Called from __di_fault and do_wp_page.
+
+# It is better to not intercept default operation: errors in case of
+# absence of fault() handler and in case when this handler exists but
+# returns error may be interpreted differently by the kernel.
+#
+# If default interception is really be needed, check VM_FAULT_ERROR or
+# VM_FAULT_NOPAGE as returned values.
+#
+
+[group]
+operation.name = access
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = unsigned long
+operation.arg.name = addr
+
+operation.arg.type = void *
+operation.arg.name = buf
+
+operation.arg.type = int
+operation.arg.name = len
+
+operation.arg.type = int
+operation.arg.name = write
+
+operation.object = vma
+
+# Called from __access_remote_vm.
+operation.default = return -EFAULT;
+
+# NUMA-related operations will be added if needed.

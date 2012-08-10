@@ -1,0 +1,130 @@
+model.name = vma_operations_model
+sw_id.prefix = VMA_MODEL_STATE
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+#include <linux/mm.h>
+
+#include <linux/fs.h>
+<<
+
+implementation_header =>>
+#include "file_operations_model.h"
+<<
+
+object.type = struct vm_area_struct
+object.operations_field = vm_ops
+
+operations.type = struct vm_operations_struct
+
+object.state.value = INITIALIZED
+object.state.pre_id = obj->vm_ops
+object.state.post_id = &obj->vm_file
+
+[group]
+operation.name = open
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = vma
+
+operation.state.transition.pre_value = 
+operation.state.transition.post_value = INITIALIZED
+operation.state.transition.condition = 1
+
+operation.code.pre.external =>>
+	kedr_eh_on_alloc(tid, pc, sizeof(struct vm_area_struct), (unsigned long)vma);
+<<
+
+# May be called only when file exist.
+# TODO: really should be organized after mmap of first vm_area_struct,
+# but how to do this?
+
+operation.external.state.prefix = FILE_MODEL_STATE
+operation.external.state.object = vma->vm_file
+operation.external.state.value = INITIALIZED
+
+[group]
+operation.name = close
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = vma
+
+operation.state.transition.pre_value = INITIALIZED
+operation.state.transition.post_value =
+operation.state.transition.condition = 1
+
+operation.code.post.external =>>
+	kedr_eh_on_free(tid, pc, (unsigned long)vma);
+	
+	/* File cannot be released until all mmaping for it is destroyed. */
+	kedr_eh_on_signal(tid, pc, FILE_MODEL_STATE_POST_INITIALIZED(vma->vm_file),
+		KEDR_SWT_COMMON);
+<<
+
+[group]
+operation.name = fault
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = struct vm_fault *
+operation.arg.name = vmf
+
+operation.object = vma
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = page_mkwrite
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = struct vm_fault *
+operation.arg.name = vmf
+
+operation.object = vma
+
+operation.state.value = INITIALIZED
+
+[group]
+operation.name = access
+operation.returnType = int
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.arg.type = unsigned long
+operation.arg.name = addr
+
+operation.arg.type = void *
+operation.arg.name = buf
+
+operation.arg.type = int
+operation.arg.name = len
+
+operation.arg.type = int
+operation.arg.name = write
+
+operation.object = vma
+
+operation.state.value = INITIALIZED
+
+# Model for NUMA-related operations will be added if needed.
+

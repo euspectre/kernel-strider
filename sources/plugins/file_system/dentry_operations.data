@@ -1,0 +1,367 @@
+model.name = dentry_operations_model
+sw_id.prefix = DENTRY_MODEL_STATE
+
+header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+#include <linux/fs.h>
+<<
+
+implementation_header=>>
+/* Only need for define macros, which affects on operations existence */
+#include <kedr-coi/interceptors/dentry_operations_interceptor.h>
+
+/* Pre- and post- code which require concrete state depended on ->d_inode field */
+static inline void dentry_op_common_pre(unsigned long tid, unsigned long pc,
+	const struct dentry* dentry)
+{
+	/* Operation starts in POSITIVE or NEGATIVE state of dentry correspondingly */
+	kedr_eh_on_wait(tid, pc, dentry->d_inode
+		? DENTRY_MODEL_STATE_PRE_POSITIVE((struct dentry*)dentry)
+		: DENTRY_MODEL_STATE_PRE_NEGATIVE((struct dentry*)dentry),
+		KEDR_SWT_COMMON);
+}
+
+static inline void dentry_op_common_post(unsigned long tid, unsigned long pc,
+	const struct dentry* dentry)
+{
+	/* Operation ends in POSITIVE or NEGATIVE state of dentry correspondingly */
+	kedr_eh_on_signal(tid, pc, dentry->d_inode
+		? DENTRY_MODEL_STATE_POST_POSITIVE((struct dentry*)dentry)
+		: DENTRY_MODEL_STATE_POST_NEGATIVE((struct dentry*)dentry),
+		KEDR_SWT_COMMON);
+}
+
+
+<<
+
+object.type = struct dentry
+object.operations_field = d_op
+
+operations.type = struct dentry_operations
+
+# Positive dentry contains inode, negative doesn't.
+object.state.value = POSITIVE
+
+object.state.pre_id = &obj->d_sb
+object.state.post_id = &obj->d_op
+
+object.state.value = NEGATIVE
+
+object.state.pre_id = &obj->d_parent
+object.state.post_id = &obj->d_name
+
+
+# Dentry is allocated before lookup() inode callback operation and freed
+# after d_release() callback operation of dentry operations.
+
+[group]
+operation.name = d_revalidate
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct nameidata *
+operation.arg.name = nd
+
+operation.object = dentry
+
+# State transition is complex. Also cannot use external handler.
+# So perform state transition by hand.
+# Default implementation doesn't perform state transition.
+
+# Operation should be performed in positive or negative state, depended
+# on ->d_inode. But should be performed exclusively.
+#
+
+operation.code.pre =>>
+	/* Operation starts in POSITIVE/NEGATIVE state of dentry */
+	kedr_eh_on_wait(tid, pc, dentry->d_inode
+		? DENTRY_MODEL_STATE_PRE_POSITIVE(dentry)
+		: DENTRY_MODEL_STATE_PRE_NEGATIVE(dentry),
+		KEDR_SWT_COMMON);
+	/* Operation should be executed exclusively, so should start
+	 * after all operations performed in that state.
+	 */
+	kedr_eh_on_wait(tid, pc,
+		dentry->d_inode
+		? DENTRY_MODEL_STATE_POST_POSITIVE(dentry)
+		: DENTRY_MODEL_STATE_POST_NEGATIVE(dentry),
+		KEDR_SWT_COMMON);
+<<
+
+operation.code.post =>>
+	kedr_eh_on_signal(tid, pc,
+		dentry->d_inode
+		? DENTRY_MODEL_STATE_POST_POSITIVE(dentry)
+		: DENTRY_MODEL_STATE_POST_NEGATIVE(dentry),
+		KEDR_SWT_COMMON);
+<<
+
+
+[group]
+operation.name = d_release
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.object = dentry
+
+operation.state.transition.pre_value = NEGATIVE
+operation.state.transition.post_value =
+operation.state.transition.condition = 1
+
+operation.code.post.external =>>
+	/* Dentry will be freed just after this operation. */
+	kedr_eh_on_free(tid, pc, (unsigned long)dentry);
+<<
+
+[group]
+operation.name = d_iput
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct inode *
+operation.arg.name = inode
+
+operation.object = dentry
+
+operation.state.transition.pre_value = POSITIVE
+operation.state.transition.post_value = NEGATIVE
+operation.state.transition.condition = 1
+
+# For make state transition be modelled even in case of default operation
+operation.code.pre.external = {}
+
+
+[group]
+operation.name = d_dname
+operation.returnType = char *
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = char *
+operation.arg.name = buf
+
+operation.arg.type = int
+operation.arg.name = buflen
+
+operation.object = dentry
+
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry);
+<<
+
+[group]
+operation.name = d_automount
+operation.returnType = struct vfsmount *
+
+operation.arg.type = struct path *
+operation.arg.name = path
+
+operation.object = path->dentry
+
+operation.protection = defined(DENTRY_OPERATIONS_HAS_D_AUTOMOUNT)
+
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, path->dentry);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, path->dentry);
+<<
+
+[group]
+operation.name = d_compare
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry1
+
+operation.arg.type = struct qstr *
+operation.arg.name = qstr1
+
+operation.arg.type = struct qstr *
+operation.arg.name = qstr2
+
+operation.object = dentry1
+
+operation.protection = DENTRY_OPERATIONS_D_COMPARE_ACCEPT_INODE == 0
+
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry1);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry1);
+<<
+
+[group]
+operation.name = d_compare_with_inode
+operation.callback_name = d_compare
+
+operation.returnType = int
+
+operation.arg.type = const struct dentry *
+operation.arg.name = dentry1
+
+operation.arg.type = const struct inode *
+operation.arg.name = inode1
+
+operation.arg.type = const struct dentry *
+operation.arg.name = dentry2
+
+operation.arg.type = const struct inode *
+operation.arg.name = inode2
+
+operation.arg.type = unsigned int
+operation.arg.name = len1
+
+operation.arg.type = const char *
+operation.arg.name = str1
+
+operation.arg.type = const struct qstr *
+operation.arg.name = qstr2
+
+# dentry1 and inode1 are parent dentry and inodes,
+# dentry2 and inode2 are child ones.
+operation.object = dentry2
+
+operation.protection = DENTRY_OPERATIONS_D_COMPARE_ACCEPT_INODE != 0
+
+# TODO: States for other objects?
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry2);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry2);
+<<
+
+[group]
+operation.name = d_delete
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.object = dentry
+
+# Called from dput; checked in d_set_d_op
+
+operation.protection = DENTRY_OPERATIONS_D_DELETE_CONST == 0
+
+operation.state.value = NEGATIVE
+
+[group]
+operation.name = d_delete_const
+operation.callback_name = d_delete
+
+operation.returnType = int
+
+operation.arg.type = const struct dentry *
+operation.arg.name = dentry
+
+# Remove constant attribute, otherwise templates will compile with warnings
+operation.object = (struct dentry*)dentry
+
+# Called from dput; checked in d_set_d_op
+
+operation.protection = DENTRY_OPERATIONS_D_DELETE_CONST != 0
+
+operation.state.value = NEGATIVE
+
+[group]
+operation.name = d_hash
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = struct qstr *
+operation.arg.name = qstr
+
+operation.object = dentry
+
+# Called from link_path_walk; checked in d_set_d_op
+
+operation.protection = DENTRY_OPERATIONS_D_HASH_ACCEPT_INODE == 0
+
+# TODO: Really, operation doesn't require state to not changed.
+# but it should be after alloc and before free.
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry);
+<<
+
+[group]
+operation.name = d_hash_with_inode
+operation.callback_name = d_hash
+
+operation.returnType = int
+
+operation.arg.type = const struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = const struct inode *
+operation.arg.name = inode
+
+operation.arg.type = struct qstr *
+operation.arg.name = qstr
+
+operation.object = dentry
+
+# Called from link_path_walk; checked in d_set_d_op
+
+operation.protection = DENTRY_OPERATIONS_D_HASH_ACCEPT_INODE != 0
+
+# TODO: Really, operation doesn't require state to not changed.
+# but it should be after alloc and before free.
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry);
+<<
+
+[group]
+operation.name = d_manage
+operation.returnType = int
+
+operation.arg.type = struct dentry *
+operation.arg.name = dentry
+
+operation.arg.type = bool
+operation.arg.name = mounting_here
+
+operation.object = dentry
+
+operation.protection = defined(DENTRY_OPERATIONS_HAS_D_MANAGE)
+
+operation.code.pre =>>
+	dentry_op_common_pre(tid, pc, dentry);
+<<
+
+operation.code.post =>>
+	dentry_op_common_post(tid, pc, dentry);
+<<

@@ -36,8 +36,13 @@ header =>>
 
 #include "file_operations_model.h"
 #include "inode_operations_model.h"
+#include "dentry_operations_model.h"
 #include "super_operations_model.h"
 #include "file_system_type_model.h"
+
+#include "vma_operations_interceptor.h"
+
+#include "vma_operations_model.h"
 
 #include "fs_interception.h"
 
@@ -64,6 +69,11 @@ object.name = inode_operations_model
 object.init = return inode_operations_model_connect(&inode_operations_interceptor_payload_register);
 object.destroy = inode_operations_model_disconnect(&inode_operations_interceptor_payload_unregister);
 
+object.name = dentry_operations_model
+object.init = return dentry_operations_model_connect(&dentry_operations_interceptor_payload_register);
+object.destroy = dentry_operations_model_disconnect(&dentry_operations_interceptor_payload_unregister);
+
+
 object.name = super_operations_model
 object.init = return super_operations_model_connect(&super_operations_interceptor_payload_register);
 object.destroy = super_operations_model_disconnect(&super_operations_interceptor_payload_unregister);
@@ -71,6 +81,21 @@ object.destroy = super_operations_model_disconnect(&super_operations_interceptor
 object.name = file_system_type_model
 object.init = return file_system_type_model_connect(&file_system_type_interceptor_payload_register);
 object.destroy = file_system_type_model_disconnect(&file_system_type_interceptor_payload_unregister);
+
+
+object.name = vma_operations_interceptor
+object.init =>>
+	return vma_operations_interceptor_connect(
+		&file_operations_interceptor_payload_register);
+<<
+object.destroy =>>
+	vma_operations_interceptor_disconnect(
+		&file_operations_interceptor_payload_unregister);
+<<
+
+object.name = vma_operations_model
+object.init = return vma_operations_model_connect(&vma_operations_interceptor_payload_register);
+object.destroy = vma_operations_model_disconnect(&vma_operations_interceptor_payload_unregister);
 
 
 object.name = fill_super_interceptor

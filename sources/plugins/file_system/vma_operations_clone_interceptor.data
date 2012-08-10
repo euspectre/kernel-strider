@@ -1,0 +1,23 @@
+interceptor.name = vma_operations_clone_interceptor
+
+header =>>
+#include <linux/mm.h>
+<<
+
+id.type = struct vm_area_struct*
+tie.type = struct file*
+object.type = struct vm_area_struct
+
+operations.type = struct vm_operations_struct
+
+[group]
+operation.name = open
+
+operation.arg.type = struct vm_area_struct *
+operation.arg.name = vma
+
+operation.object = vma
+operation.tie = vma->vm_file
+
+# Called, e.g., from __split_vma, dup_mmap. Do not call after mmap(!)
+operation.default = return;

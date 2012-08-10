@@ -28,6 +28,7 @@ implementation_header =>>
 #include <kedr-coi/interceptors/file_operations_interceptor.h>
 
 #include "module_ref_model.h"
+#include "vma_operations_model.h"
 <<
 
 object.type = struct file
@@ -215,6 +216,23 @@ operation.object = filp
 
 operation.state.value = INITIALIZED
 
+# Same model for vma_area_struct as in open() vma operation.
+operation.external.state.transition.prefix = VMA_MODEL_STATE
+operation.external.state.transition.object = vma
+operation.external.state.transition.pre_value = 
+operation.external.state.transition.post_value = INITIALIZED
+operation.external.state.transition.condition = returnValue == 0
+
+operation.code.pre =>>
+	kedr_eh_on_alloc(tid, pc, sizeof(struct vm_area_struct), (unsigned long)vma);
+<<
+
+operation.code.post =>>
+	if(returnValue)
+		kedr_eh_on_free(tid, pc, (unsigned long)vma);
+<<
+
+
 [group]
 operation.name = open
 operation.returnType = int
@@ -277,14 +295,18 @@ operation.state.transition.post_value =
 operation.state.transition.condition = (returnValue == 0)
 
 operation.code.post.external =>>
-	if(returnValue == 0)
-	{
-		if(filp->f_op->owner)
-			kedr_eh_on_signal(tid, pc,
-				MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
-				KEDR_SWT_COMMON);
-		kedr_eh_on_free(tid, pc, (unsigned long)filp);
-	}
+	if(filp->f_op->owner)
+		kedr_eh_on_signal(tid, pc,
+			MODULE_MODEL_STATE_POST_INITIALIZED(filp->f_op->owner),
+			KEDR_SWT_COMMON);
+	kedr_eh_on_free(tid, pc, (unsigned long)filp);
+	/* 
+	 * Same effect for inode, which cannot be destroyed while file is opened.
+	 * These automatically order other file operations before inode destroying.
+	 */
+	kedr_eh_on_signal(tid, pc,
+			INODE_MODEL_STATE_POST_INITIALIZED(inode),
+			KEDR_SWT_COMMON);
 <<
 
 [group]

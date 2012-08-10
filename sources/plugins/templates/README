@@ -1,0 +1,313 @@
+Description of templates.
+
+				Model which comes from object operations.
+
+Template directories: operations_model.c and operations_model.h.
+
+Template allow to set pre- and post- handlers, which may be used for
+describe sync model, for object operations.
+
+Parameters:
+
+-  object.type
+
+	type of object, which operations should be intercepted.
+
+-  operations.type
+	
+	type of operations struct, which contain pointers to operations
+	callbacks.
+	Object contains pointer to that struct.
+
+	If object itself contains pointers to operations callbacks, this
+	parameter should be not defined.
+
+ - model.name
+ 
+	prefix for functions, with which model may be used.
+	
+	This function are declared in header file, which generated from
+	operations_model.h template directory.
+	
+	Next functions are exported:
+	
+	- int <$model.name$>_register(struct kedr_coi_interceptor* interceptor)
+	
+		Register payload(s), which describe model, for given interceptor.
+		Interceptor should be of corresponded type(same object type and operations).
+		
+		NOTE: at any moment model may be registered at most for one interceptor.
+	
+	- int <$model.name$>_unregister(struct kedr_coi_interceptor* interceptor)
+		Unregister payload(s), which describe model, for given interceptor.
+		Interceptor should be same as passed for _register() function.
+	
+	
+	int <$model.name$>_connect(int (*payload_register)(struct kedr_coi_payload* payload));
+	
+		Register payload(s), which describe model, using 'payload_register'
+		function. This function is analogue for _register(), but work
+		with interceptors created using KEDR COI templates.
+		
+	int <$model.name$>_disconnect(int (*payload_unregister)(struct kedr_coi_payload* payload));
+	
+		Unregister payload(s), which describe model, using 'payload_unregister'
+		function. This function is analogue for _unregister(), but work
+		with interceptors created using KEDR COI templates.
+
+
+Interception of every operation describe in [group]
+
+For each operation, which should be intercepted for model, next parameters
+should be given:
+
+- operation.name
+
+	Usually name of operation in operations struct(in object itself for direct interception).
+	
+	Should be unique in datafile.
+
+- operation.returnType
+	
+	Return type of operation. If operation doesn't return value should
+	be not defined(empty).
+
+- operation.arg.type, operation.arg.name
+
+	type and name of each parameter of operation, in order.
+
+Model for operation may be given in several ways.
+
+The most flexible way - one can determine pre- and/or post- handlers for
+operation.
+
+- operation.code.pre
+
+	code for pre-handler(internal).
+
+- operation.code.post
+
+	code for post-handler(internal).
+
+- operation.code.pre.external
+
+	code for external pre-handler.
+
+- operation.code.post.external
+
+	code for external post-handler.
+
+In any handler 'tid' may be used as thread identificator for
+kedr_eh_* functions, 'pc' may be used as program counter.
+
+'call_info' is pointer to 'kedr_coi_operations_call_info' structure.
+
+Post-handlers may use 'returnValue' as value returned by the operation
+(if operation return value).
+
+
+Another way of decribing operations sync model, which is usually simplier,
+is state-transition model.
+Firstly, states should be defined for object.
+
+Each state is decribed using next parameters:
+
+- object.state.value
+
+	name of the state.
+	
+	Should be unique for object. Usually in appercase: 'INITIALIZED'
+
+- object.state.pre_id, object.state.post_id
+
+    Identificators, which will be used for signal-wait events for given state.
+    For distinguish identificators for different instances, 'obj' may be
+    used as pointer to the instance.
+    
+    Normally, adresses of of object fields may be used as identificator.
+    E.g., '&obj->f_op' may be used for file object.
+
+Also, next parameter should be defined(globally):
+
+- sw_id.prefix
+
+	prefix for signal-wait identificators, used for state-transition model.
+	
+	For each state next functions will be exported:
+	
+	unsigned long <$sw_id.prefix$>_PRE_<$object.state.value$>(<$object.type$>* obj)
+	unsigned long <$sw_id.prefix$>_POST_<$object.state.value$>(<$object.type$>* obj)
+	
+	Function return corresponded identificator for signal-wait events
+	for corresponded state.
+
+
+There are several constructions for use states in models for operation.
+
+
+If operation change state of object from 'state1' to 'state2', next
+parameters should be defined:
+
+- operation.state.transition.pre_value
+	
+	state at which operation starts. In given example, 'state1'.
+
+- operation.state.transition.post_value
+
+	state at which operation ends. In given example, 'state2'.
+
+- operation.state.transition.condition
+
+	condition, when given state transition is performed. If condition
+	is failed, it is interpreted as if state doesn't change(remains 'state1').
+	'returnValue' may be used in that condition.
+	
+Also, for use states of object, next parameter should be defined:
+
+- operation.object
+
+	pointer to the object instance.
+
+
+Operations with state transition is interpreted as exclusive operation,
+that is no other operations which require some object state cannot be
+execute concurrently with it.
+
+For state-transition next signal-wait events are generated:
+
+Before operation:
+	wait(POST_<PRE_STATE>)
+	wait(PRE_<PRE_STATE>)
+
+After operation:
+	signal(PRE_<POST_STATE>)
+	
+PRE_ identificators are used for serialize consequent state-transitions.
+
+POST_<PRE_STATE> and PRE_<POST_STATE> are used for serialize state-transition
+with previouse and next operations, which are performed in concrete state
+(see below).
+
+If object is created in operation or created just before operation,
+'operation.state.transition.pre_value' parameter may be empty(but should
+be defined!). In that case unnecessary signal-wait events are not generated.
+
+Similarly, 'operation.state.transition.post_value' may be empty if object
+is destroyed just after operation.
+
+
+If operation should be performed in state 'state' of object, next
+parameter should be defined(beside from 'operation.object'):
+
+- operation.state.value
+
+	state of object in which operation should be performed.
+
+Such operation isn't interpreted as exclusive operation: operations which
+work with object in same state state may be performed concurrently with it.
+
+Next signal-wait events are generated:
+
+Before operation:
+	wait(PRE_<STATE>)
+
+After operation:
+	signal(POST_<STATE>)
+
+These events serialize the operation with state-transition operations.
+
+
+Operation may use state-transition model not only for owner object,
+but for any other objects, involved into operation. Below such objects
+are referred as 'external', which means that it is not an owner of operation.
+
+If operation perform state transition of some external object,
+next parameters should be defined:
+
+ - operation.external.state.transition.pre_value
+
+	object's state at which operation starts.
+
+ - operation.external.state.transition.post_value
+
+	object's state at which operation ends.
+
+ - operation.external.state.transition.condition
+
+	condition of final state.
+	
+These parameters have same meaning as ones in 'operation.state.transition'
+tree.
+
+Additionally, when define state-transition of external object(not owner),
+next parameters should be defined:
+
+ - operation.external.state.transition.object
+
+	pointer to the object which change state.
+
+ - operation.external.state.transition.prefix
+
+	signal-wait identificator prefix for object.
+	It is same as given	in 'sw_id.prefix' parameter in datafile for
+	operations model for that object.
+	
+Similary, when operation require concrete state of external object, next
+parameters should be defined:
+
+ - operation.external.state.value
+ - operation.external.state.object
+ - operation.external.state.prefix
+
+
+When use several types of model for one operation, models become nested:
+
+state_transition(external_handlers(state(internal_handlers)))
+
+That is, pre-handlers which describe object's state transition are called
+first.
+Then, pre-handlers from 'operation.code.pre.external' parameters are called.
+Then, pre-handlers which describe requirement of object's state are called.
+Finally, pre-handlers from 'operation.code.pre' parameters are called.
+
+Post-handlers are called in reversed order.
+
+
+If no code for external handlers, state-model related handlers are internal.
+Otherwise, them are external.
+Last feature allows to use state model for serialize(in produced trace)
+cross-object operations.
+
+
+Existence of some operations may depend on kernel version or configuration.
+For state, that concrete operation with parameters exists only in case of
+some macro combination, next parameter may be used:
+
+ - operation.protection
+ 
+   Use model for that operation only if value of that parameter is
+   evaluates as true. One can consider that protection as conditional
+   compilation:
+  
+#if <$operation.protection$>
+	/* Use model for operation */
+#endif
+
+Several protections are combined via AND("&&").
+
+If signature of operation is depends on kernel version or configuration,
+for each variant of signature different [group] should be created.
+That case, beside from 'operation.protection' parameter, have next specific:
+
+'operation.name' parameters should be different. So, both of them cannot
+be equal to field name in operations structure.
+Instead, next parameter should be used:
+
+ - operation.callback_name
+ 
+   If set, means name of the field in operations structure corresponded
+   given parameter. In that case, 'operation.name' may be any(but unique).
+   
+   If this parameter is not set, 'operation.name' parameter should contain
+   precise name of field in operations structure.
+

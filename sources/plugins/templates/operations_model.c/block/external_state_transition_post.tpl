@@ -7,7 +7,7 @@
      */
     if(<$operation.external.state.transition.condition$>)
     {
-        kedr_eh_on_signal(tid, pc,    <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
+        kedr_eh_on_signal(tid, pc, <$operation.external.state.transition.prefix$>_PRE_<$operation.external.state.transition.post_value$>(<$operation.external.state.transition.object$>),
             KEDR_SWT_COMMON);
     }
     else

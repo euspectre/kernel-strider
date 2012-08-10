@@ -10,10 +10,16 @@
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/object_types.h>
 
-/* Protection against including header for itself, which define states */
+/* "As if" include header file. */
+#ifndef <$model.name$>_INCLUDE_H
 #define <$model.name$>_INCLUDE_H
 
 <$header: join(\n)$>
+
+<$if concat(object.state.value)$><$state_ids: join(\n)$>
+<$endif$>
+
+#endif /* <$model.name$>_INCLUDE_H */
 
 <$implementation_header: join(\n)$>
 
@@ -31,9 +37,6 @@ MODULE_LICENSE("GPL");
 #define CHECK_OPERATION_TYPE(operation_name, type) \
 BUILD_BUG_ON_ZERO(!__builtin_types_compatible_p(typeof(((<$operations_type$>*)0)->operation_name), type))
 
-
-<$if concat(object.state.value)$><$state_ids: join(\n)$>
-<$endif$>
 
 #define SELF_STATE(name) <$sw_id.prefix$>_##name
 
