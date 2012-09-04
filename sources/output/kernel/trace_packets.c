@@ -29,15 +29,19 @@
  * Peek message from the buffer.
  */
 static inline struct execution_message_base* message_peek(
-    struct ring_buffer* buffer, int cpu, size_t* msg_len, uint64_t* ts)
+    struct event_collector_buffer* buffer, int cpu, size_t* msg_len, uint64_t* ts)
 {
     struct execution_message_base* message;
     
     uint64_t ts_rb;/* Timestamp used only for call ring buffer functions */
-    struct ring_buffer_event* event = ring_buffer_peek(buffer, cpu,
-        &ts_rb LOST_EVENTS_ARG);
+    struct ring_buffer_event* event = 
+#if defined(RING_BUFFER_CONSUME_HAS_4_ARGS)    
+        ring_buffer_peek(buffer->rbuffer, cpu, &ts_rb, NULL);
+#else
+        ring_buffer_peek(buffer->rbuffer, cpu, &ts_rb);
+#endif
     if(event == NULL) return NULL;
-    
+
     if(msg_len) *msg_len = ring_buffer_event_length(event);
     message = ring_buffer_event_data(event);
     if(ts) *ts = message->ts;
@@ -48,24 +52,34 @@ static inline struct execution_message_base* message_peek(
 /* 
  * Skip current message from buffer(e.g., after processing by peek).
  * 
- * Also update 'lost_events_total' parameter, if it set, to the total
+ * Also set 'lost_events_total' parameter, if it is not NULL, to the total
  * number of events lost since buffer is start.
+ * 
+ * NB: Events lost - either failed to write or dropped(e.g. due to overwrite).
+ * 
+ * NOTE: Caller should check previously that event is not NULL.
  */
-static inline void message_skip(struct ring_buffer* buffer, int cpu,
-    unsigned long* lost_events_total)
+static inline void message_skip(struct event_collector_buffer* buffer,
+    int cpu, unsigned long* lost_events_total)
 {
+    struct ring_buffer_event* event;
+    struct execution_message_base* message;
     uint64_t ts_rb;/* Timestamp used only for call ring buffer functions */
 #if defined(RING_BUFFER_CONSUME_HAS_4_ARGS)
-    unsigned long lost_events = 0;
-    ring_buffer_consume(buffer, cpu, &ts_rb, lost_events_total? &lost_events : NULL);
-    if(lost_events_total)
-        *lost_events_total += lost_events;
+    unsigned long lost_events;
+    event = ring_buffer_consume(buffer->rbuffer, cpu, &ts_rb, &lost_events);
+    buffer->dropped_events[cpu] += lost_events;
 #else
-    ring_buffer_consume(buffer, cpu, &ts_rb);
-    if(lost_events_total)
-        *lost_events_total = ring_buffer_overrun_cpu(buffer, cpu)
-            + ring_buffer_commit_overrun_cpu(buffer, cpu);
+    event = ring_buffer_consume(buffer->rbuffer, cpu, &ts_rb);
+    buffer->dropped_events[cpu] = ring_buffer_overrun_cpu(buffer->rbuffer, cpu)
+        + ring_buffer_commit_overrun_cpu(buffer->rbuffer, cpu);
 #endif
+    BUG_ON(event == NULL);
+    
+    message = ring_buffer_event_data(event);
+    
+    if(lost_events_total)
+        *lost_events_total = buffer->dropped_events[cpu] + message->missed_events;
 }
 
 /******************KEDR trace initialization/finalization**************/
@@ -73,7 +87,6 @@ static inline void message_skip(struct ring_buffer* buffer, int cpu,
 int kedr_trace_init(struct kedr_trace* trace,
     size_t buffer_normal_size, size_t buffer_critical_size)
 {
-    int i;
     int result = execution_event_collector_init(&trace->event_collector,
         buffer_normal_size, buffer_critical_size);
     if(result < 0) return result;
@@ -81,14 +94,6 @@ int kedr_trace_init(struct kedr_trace* trace,
     generate_uuid(trace->uuid);
     
     trace->current_packets_rest = 0;
-    
-    trace->packets_formed = 0;
-    
-    for(i = 0; i < NR_CPUS; i++)
-    {
-        trace->normal_events_lost_total[i] = 0;
-        trace->critical_events_lost_total[i] = 0;
-    }
     
     return 0;
 }
@@ -99,8 +104,9 @@ void kedr_trace_destroy(struct kedr_trace* trace)
 }
 
 /* Helper for search oldest message */
-static void oldest_message_in_buffer(struct ring_buffer* buffer,
-    struct ring_buffer** last_buffer_p, int* last_cpu_p, uint64_t* last_ts_p)
+static void oldest_message_in_buffer(struct event_collector_buffer* buffer,
+    struct event_collector_buffer** last_buffer_p,
+    int* last_cpu_p, uint64_t* last_ts_p)
 {
     int cpu;
 
@@ -148,17 +154,17 @@ static int kedr_trace_update_subbuffer(struct kedr_trace* trace)
      * 
      * N <= k * rate_max + C1 = C2.
      */
-    struct ring_buffer* last_buffer = NULL;/* NULL -  not found*/
+    struct event_collector_buffer* last_buffer = NULL;/* NULL -  not found*/
     int last_cpu = 0;
     uint64_t last_ts = 0;
     /* Firstly check buffer with normal messages */
-    oldest_message_in_buffer(trace->event_collector.buffer_normal,
+    oldest_message_in_buffer(&trace->event_collector.buffer_normal,
         &last_buffer, &last_cpu, &last_ts);
     /* 
      * Then check buffer with critical messages -
      * less chance of empty subbuffers.
      */
-    oldest_message_in_buffer(trace->event_collector.buffer_critical,
+    oldest_message_in_buffer(&trace->event_collector.buffer_critical,
         &last_buffer, &last_cpu, &last_ts);
 
     
@@ -208,7 +214,7 @@ static ssize_t kedr_trace_begin_packet(struct kedr_trace* trace,
     packet_header->magic = CTF_MAGIC;
     memcpy(packet_header->uuid, trace->uuid, 16);
     packet_header->stream_type = (trace->current_buffer
-        == trace->event_collector.buffer_critical)
+        == &trace->event_collector.buffer_critical)
         ? execution_stream_type_critical
         : execution_stream_type_normal;
     packet_header->cpu = trace->current_cpu;
@@ -246,7 +252,7 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
     do
     {
         int is_first_event = 1;
-        unsigned long* lost_events_total_p;
+        unsigned long lost_events_total = 0;
         
         if(trace->current_packets_rest == 0)
         {
@@ -258,11 +264,6 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
             trace->current_packets_rest = PACKETS_BETWEEN_RECHECK_BUFFERS;
         }
         
-        lost_events_total_p =
-            (trace->current_buffer == trace->event_collector.buffer_normal)
-            ? &trace->normal_events_lost_total[trace->current_cpu]
-            : &trace->critical_events_lost_total[trace->current_cpu];
-
         result = kedr_trace_begin_packet(trace, builder, &packet_context);
         if(result < 0) return result;
         
@@ -282,7 +283,7 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
             if(result < 0) break;
 
             message_skip(trace->current_buffer, trace->current_cpu,
-                lost_events_total_p);
+                &lost_events_total);
             
             if(result == 0)
             {
@@ -319,12 +320,12 @@ ssize_t kedr_trace_next_packet(struct kedr_trace* trace,
         //pr_info("Size of packet formed is %d, content size is %d.",
         //    packet_context->packet_size, packet_context->content_size);
         
-        packet_context->stream_packet_count = trace->packets_formed;
+        packet_context->lost_events_total = lost_events_total;
+        
+        packet_context->stream_packet_count =
+            trace->current_buffer->packet_counters[trace->current_cpu]++;
         
         trace->current_packets_rest--;
-        trace->packets_formed++;
-
-        packet_context->lost_events_total = *lost_events_total_p;
         
         return size;
     } while(1);

@@ -19,6 +19,15 @@ typedef unsigned long addr_t;
 
 #include <linux/ring_buffer.h> /* ring buffers */
 
+//#include <linux/local.h> /* local counters */
+#include <linux/percpu.h> /* per-cpu counter for missed events */
+
+/* Since 2.6.33 __percpu attribute is used for per cpu variables. */
+#ifndef __percpu
+#define __percpu
+#endif
+
+
 
 /*
  * For some reason, standard clock for ring buffer is not sufficient
@@ -42,10 +51,42 @@ typedef unsigned long addr_t;
 #define KEDR_CLOCK_PRECISION 100000
 
 
+struct event_collector_buffer
+{
+    struct ring_buffer* rbuffer;
+
+    /* 
+     * Counters for events which was failed to write in the given stream.
+     * 
+     * These counters are updated and used only when write event.
+     * So them may be precpu.
+     * 
+     * When extract events, each event contains its own copy of counter.
+     */
+    local_t __percpu* missed_events;
+
+    /* 
+     * Counters for events which has been dropped before one which will
+     * be read next.
+     * 
+     * This counters are updated and used when extract events, so them
+     * shouldn't be per-cpu.
+     * 
+     * NB: Use dinamically allocated array instead of static one for
+     * cache issues - ring buffer will be used with message_counter
+     * from collector.
+     */
+    uint32_t* dropped_events;
+    /*
+     * Counters for packets which has been send for corresponded stream.
+     */
+    uint32_t* packet_counters;
+};
+
 struct execution_event_collector
 {
     /*
-     * Ring buffers contained messages about read/writes and sync.
+     * Buffers contains events about read/writes and sync.
      * 
      * 'buffer_normal' is for messages, which may be lost without
      * affecting on interpretation of others,
@@ -53,12 +94,12 @@ struct execution_event_collector
      * undesirable.
      * 
      * Currently, normal buffer contains only messages about read/writes
-     * (without locks), critical buffer containes all other messages.
+     * (non-locked), critical buffer containes all other messages.
      */
 
-    struct ring_buffer* buffer_normal;
-    struct ring_buffer* buffer_critical;
-    /* Message counter. See description above. */
+    struct event_collector_buffer buffer_normal;
+    struct event_collector_buffer buffer_critical;
+    /* Message counter. See description at the top of the header. */
     atomic_t message_counter;
 };
 
@@ -120,9 +161,17 @@ enum execution_message_type
 /* Beginning of every message */
 struct execution_message_base
 {
+    /* Our timestamp */
+    uint64_t ts;
+    /* Copy of counter corresponded to this event. Used for order near
+     * events from different CPUs. */
+    uint32_t counter;
+    /*
+     * Copy of missed_events counter, corresponded to this event.
+     */
+    uint32_t missed_events;
+    
     tid_t tid;
-    uint64_t ts;/* Own timestamp */
-    uint16_t counter;
     char type;
 };
 

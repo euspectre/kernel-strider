@@ -18,9 +18,9 @@ struct kedr_trace
     
     struct execution_event_collector event_collector;
     /* 
-     * Ring buffer from which currently send events.
+     * Buffer from which currently send events.
      */
-    struct ring_buffer* current_buffer;
+    struct event_collector_buffer* current_buffer;
     /*
      * CPU number from whith currently send events.
      */
@@ -33,14 +33,6 @@ struct kedr_trace
      * sub-buffer is empty.
      */
     int current_packets_rest;
-    /* Number of packets which has been formed before */
-    int packets_formed;
-    /* 
-     * For each subbuffer store number of events lost since buffer is
-     * start.
-     */
-    unsigned long normal_events_lost_total[NR_CPUS];
-    unsigned long critical_events_lost_total[NR_CPUS];
 };
 
 /*

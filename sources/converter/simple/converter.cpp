@@ -976,7 +976,7 @@ int main(int argc, char** argv)
     KEDRTraceReader traceReader(argv[1]);
     
     EventPrinter eventPrinter(traceReader);
-    
+
     if(argc > 2)
     {
         /* Output content of one stream instead of full trace */
@@ -993,26 +993,22 @@ int main(int argc, char** argv)
         }
         return 0;
     }
-    
-    const CTFVarInt* lost_events_total_var = NULL;
+    /* Normal mode. Output full trace. */
+
+    try
     {
-        const CTFVar* var = traceReader.findVar("stream.packet.context.lost_events_total");
-        if(var != NULL)
+        traceReader.exceptions(KEDRTraceReader::eventsLostBit);
+        
+        for(KEDRTraceReader::EventIterator iter(traceReader); iter; ++iter)
         {
-            lost_events_total_var = static_cast<const CTFVarInt*>(var);
-            //debug
-            std::cerr << "Trace has lost message counter." << std::endl;
+            eventPrinter.print(*iter, std::cout);
         }
     }
-    
-    for(KEDRTraceReader::EventIterator iter(traceReader); iter; ++iter)
+    catch(KEDRTraceReader::LostEventsException&)
     {
-        if(lost_events_total_var && lost_events_total_var->getInt32(*iter))
-        {
-            std::cerr << "WARNING: There are events lost." << std::endl;
-            lost_events_total_var = NULL;
-        }
-        eventPrinter.print(*iter, std::cout);
+        std::cerr << "Error: Detected that events lost in the trace."
+            << std::endl;
+        return 1;
     }
     
     return 0;

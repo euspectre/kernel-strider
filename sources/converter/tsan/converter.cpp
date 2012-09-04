@@ -1327,67 +1327,73 @@ template<class T>
 void KEDREventProcessorStandard<T>::processThreadCreateBefore(
     const KEDRTraceReader::EventIterator& iter)
 {
-    ThreadInfo<T>* threadInfo = getThreadInfo(iter);
+    (void)iter;
+// Temporary disable
+    //ThreadInfo<T>* threadInfo = getThreadInfo(iter);
     
-    KEDRTraceReader::EventIterator iterClone = iter.clone();
-    ++iterClone;
+    //KEDRTraceReader::EventIterator iterClone = iter.clone();
+    //++iterClone;
     
-    Addr<T> childThreadAddr = childTidFinder.findChildTid(iterClone,
-        threadInfo->addr);
+    //Addr<T> childThreadAddr = childTidFinder.findChildTid(iterClone,
+        //threadInfo->addr);
     
-    if(childThreadAddr == 0) return;/* Thread creation will fail.*/
+    //if(childThreadAddr == 0) return;/* Thread creation will fail.*/
 
-    ThreadInfo<T>* childThreadInfo = threads.find(childThreadAddr);
-    if(childThreadInfo)
-    {
-        eventProcessor.processThreadStop(childThreadInfo);
-        childThreadInfo->isStarted = false;
-        threads.remove(childThreadAddr);
-    }
-    childThreadInfo = threads.add(childThreadAddr);
+    //ThreadInfo<T>* childThreadInfo = threads.find(childThreadAddr);
+    //if(childThreadInfo)
+    //{
+        //eventProcessor.processThreadStop(childThreadInfo);
+        //childThreadInfo->isStarted = false;
+        //threads.remove(childThreadAddr);
+    //}
+    //childThreadInfo = threads.add(childThreadAddr);
 
-    eventProcessor.processThreadCreateBefore(threadInfo,
-        Addr<T>(TCBVarPC, *iter));
+    //eventProcessor.processThreadCreateBefore(threadInfo,
+        //Addr<T>(TCBVarPC, *iter));
     
-    eventProcessor.processThreadStart(childThreadInfo, threadInfo);
-    childThreadInfo->isStarted = true;
+    //eventProcessor.processThreadStart(childThreadInfo, threadInfo);
+    //childThreadInfo->isStarted = true;
 }
 
 template<class T>
 void KEDREventProcessorStandard<T>::processThreadCreateAfter(
     const KEDRTraceReader::EventIterator& iter)
 {
-    Addr<T> childTidAddr(TCAVarTid, *iter);
+    (void)iter;
+// Temporary disable
+    //Addr<T> childTidAddr(TCAVarTid, *iter);
 
-    ThreadInfo<T>* childThreadInfo = threads.find(childTidAddr);
-    if(childThreadInfo == NULL)
-    {
-        cerr << "'thread create after' without previous 'thread create before'.\n";
-        throw logic_error("Incorrect KEDR trace.");
-    }
+    //ThreadInfo<T>* childThreadInfo = threads.find(childTidAddr);
+    //if(childThreadInfo == NULL)
+    //{
+        //cerr << "'thread create after' without previous 'thread create before'.\n";
+        //throw logic_error("Incorrect KEDR trace.");
+    //}
 
-    eventProcessor.processThreadCreateAfter(getThreadInfo(iter),
-        Addr<T>(TCAVarPC, *iter), childThreadInfo);
+    //eventProcessor.processThreadCreateAfter(getThreadInfo(iter),
+        //Addr<T>(TCAVarPC, *iter), childThreadInfo);
 }
 
 template<class T>
 void KEDREventProcessorStandard<T>::processThreadJoin(
     const KEDRTraceReader::EventIterator& iter)
 {
-    Addr<T> childTidAddr(TCAVarTid, *iter);
+    (void)iter;
+// Temporary disable
+    //Addr<T> childTidAddr(TCAVarTid, *iter);
 
-    ThreadInfo<T>* childThreadInfo = threads.find(childTidAddr);
-    if(childThreadInfo == NULL)
-    {
-        cerr << "Join on thread which wasn't started.\n";
-        throw logic_error("Incorrect KEDR trace.");
-    }
-    eventProcessor.processThreadStop(childThreadInfo);
+    //ThreadInfo<T>* childThreadInfo = threads.find(childTidAddr);
+    //if(childThreadInfo == NULL)
+    //{
+        //cerr << "Join on thread which wasn't started.\n";
+        //throw logic_error("Incorrect KEDR trace.");
+    //}
+    //eventProcessor.processThreadStop(childThreadInfo);
     
-    eventProcessor.processThreadJoin(getThreadInfo(iter),
-        Addr<T>(TCAVarPC, *iter), childThreadInfo);
+    //eventProcessor.processThreadJoin(getThreadInfo(iter),
+        //Addr<T>(TCAVarPC, *iter), childThreadInfo);
 
-    threads.remove(childTidAddr);
+    //threads.remove(childTidAddr);
 }
 
 
@@ -2499,8 +2505,9 @@ KEDREventProcessor* createEventProcessor(const KEDRTraceReader& traceReader,
     }
     
     /* Wraps tsan processor into PC-restoring processor */
-    eventProcessorIntermediate = new EventProcessorRestorePC<T>(
-        eventProcessorIntermediate);
+    //Temporary disable
+    //eventProcessorIntermediate = new EventProcessorRestorePC<T>(
+    //    eventProcessorIntermediate);
     
     if(options.fixLock)
     {
@@ -2551,8 +2558,17 @@ int main(int argc, char** argv)
         return 1;
     }
     
-    traceProcessor.process(*eventProcessor);
-    
+    try
+    {
+        traceReader.exceptions(KEDRTraceReader::eventsLostBit);
+        traceProcessor.process(*eventProcessor);
+    }
+    catch(KEDRTraceReader::LostEventsException&)
+    {
+        cerr << "Events lost in the trace" << endl;
+        delete eventProcessor;
+        return 1;
+    }
     delete eventProcessor;
     
     return 0;

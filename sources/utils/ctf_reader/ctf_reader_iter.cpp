@@ -145,20 +145,7 @@ CTFReader::Event::~Event(void)
     free(map);
 }
 
-CTFReader::Event* CTFReader::Event::nextInPacket(void)
-{
-    if(tryNextInPacket())
-    {
-        return this;
-    }
-    else
-    {
-        unref();
-        return NULL;
-    }
-}
-
-bool CTFReader::Event::tryNextInPacket(void)
+bool CTFReader::Event::nextInPacket(void)
 {
     int nextEventStartOffset = rootVar->eventLastVar->getEndOffset(*this);
     
@@ -184,11 +171,11 @@ bool CTFReader::Event::tryNextInPacket(void)
 }
 
 
-CTFReader::Event* CTFReader::Event::next(void)
+bool CTFReader::Event::next(void)
 {
-    if(tryNextInPacket())
+    if(nextInPacket())
     {
-        return this;
+        return true;
     }
     else
     {
@@ -198,16 +185,15 @@ CTFReader::Event* CTFReader::Event::next(void)
          * Last event in the packet. Advance packet,
          * then extract first event from it.
          */
-        if(packet->tryNext())
+        if(packet->next())
         {
             beginPacket();
-            return this;
+            return true;
         }
         else
         {
             /* Packet is last */
-            unref();
-            return NULL;
+            return false;
         }
     }
 }
@@ -341,20 +327,7 @@ CTFReader::Packet::~Packet(void)
     free(mapStart);
 }
 
-CTFReader::Packet* CTFReader::Packet::next(void)
-{
-    if(tryNext())
-    {
-        return this;
-    }
-    else
-    {
-        unref();
-        return NULL;
-    };
-}
-
-bool CTFReader::Packet::tryNext(void)
+bool CTFReader::Packet::next(void)
 {
     int packetSize = packetSizeVar->getInt32(*this);
     if(packetSize % 8)
@@ -537,7 +510,7 @@ CTFReader::MetaPacket::~MetaPacket(void)
 	free(metadata);
 }
 
-CTFReader::MetaPacket* CTFReader::MetaPacket::next(void)
+bool CTFReader::MetaPacket::next(void)
 {
 	uint32_t packetSize = getPacketSize();
 	uint32_t contentSize = getContentSize();
@@ -559,14 +532,13 @@ CTFReader::MetaPacket* CTFReader::MetaPacket::next(void)
 	
 	if(isStreamEnds(s, streamMapStartNew))
 	{
-		unref();
-		return NULL;
+		return false;
 	}
 	else
 	{
 		streamMapStart = streamMapStartNew;
 		setupMetaPacket();
-		return this;
+		return true;
 	}
 }
 

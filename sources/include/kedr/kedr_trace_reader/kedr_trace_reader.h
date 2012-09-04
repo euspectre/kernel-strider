@@ -7,30 +7,67 @@
 
 #include <kedr/ctf_reader/ctf_reader.h>
 
+#include <stdexcept>
+
 class KEDRTraceReader : public CTFReader
 {
 public:
+	/* Exception about lost events */
+	class LostEventsException;
 	/* Read trace from given directory */
 	KEDRTraceReader(const std::string& dirname);
 	
 	/* Iterator through events */
 	class EventIterator;
 	
+	/* State of the trace*/
+	typedef int TraceState;
+
+	/* Normal state */
+	static const TraceState goodBit = 0;
+	/* Detected that events has lost */
+	static const TraceState eventsLostBit = 1;
+
+	bool eventsLost(void) const {return state & eventsLostBit;}
+
+	/* Return mask for exceptions concerning state. Default is goodBit. */
+	TraceState exceptions(void) const {return stateMask;}
+	/* Set mask for exceptions concerning state */
+	void exceptions(TraceState except);
+
 	//TODO: getters for common parameters/variable values
 private:
 	const std::string dirname;
-	/* Standard filestream with refcount support. Used in event iterator */
-	class KEDRStream;
 	
 	/* Taken from the corresponded trace parameter */
 	uint64_t time_precision;
 
+	TraceState state;
+	
+	TraceState stateMask;
+	
+	/* Events-ordering related variables */
+	const CTFVarInt* timestampVar;
+	const CTFVarInt* counterVar;
+	/* Variables for check events lost */
+	const CTFVarInt* lostEventsTotalVar;
+	const CTFVarInt* packetCountVar;
+
 	/* 
 	 * Return true if event1 from stream1 is older
-	 * than event2 from stream2. */
-	static bool isEventOlder(Event& event1, KEDRStream& stream1,
-		Event& event2, KEDRStream& stream2);
+	 * than event2 from stream2.
+	 */
+	bool isEventOlder(Event& event1, Event& event2) const;
+	/* Set 'eventsLostBit' in state. Should be called with bit cleared.*/
+	void setEventsLost(void);
 };
+
+class KEDRTraceReader::LostEventsException: public std::runtime_error
+{
+public:	
+	LostEventsException(void): std::runtime_error("Lost events") {}
+};
+
 
 class KEDRTraceReader::EventIterator
 {
@@ -38,7 +75,7 @@ public:
     /* Create past-the-end iterator*/
     EventIterator();
     /* Create iterator points to the first event in the trace */
-    EventIterator(const KEDRTraceReader& traceReader);
+    EventIterator(KEDRTraceReader& traceReader);
     
     EventIterator(const EventIterator& eventIterator);
     
@@ -65,18 +102,31 @@ public:
 		{ return !streamEvents.empty();}
 
     reference_type operator*(void) const
-		{return *streamEvents.back().first;}
+		{return *streamEvents.back().event;}
     pointer_type operator->(void) const
-		{return streamEvents.back().first;}
+		{return streamEvents.back().event;}
 
     EventIterator& operator++(void);
 
 private:
+	KEDRTraceReader* traceReader;
+	/* All information about stream which is needed. */
+	struct StreamInfo
+	{
+		/* Standard filestream with refcount support */
+		class RefStream;
+
+		RefStream* refStream;
+		CTFReader::Event* event;
+		
+		/* Packet counter for the stream */
+		uint32_t packetCounter;
+	};
 	/* 
-	 * Current events from each stream, ordered by timestamps
+	 * Informations about all streams ordered by timestamps
 	 * (last is the oldest one).
 	 */
-    std::vector<std::pair<Event*, KEDRStream*> > streamEvents;
+    std::vector<struct StreamInfo> streamEvents;
     
     /* 
      * Reorder last element, if needed.

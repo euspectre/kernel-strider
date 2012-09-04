@@ -4,33 +4,101 @@
  * Use per-cpu variable for store state in
  * execution_event_memory_accesses_begin().
  */
-#include <linux/percpu.h> 
+#include <linux/percpu.h>
 
 #include <linux/module.h> /* Export functions for write message */
 
 #include <linux/hrtimer.h> /* high resolution timer for clock*/
 
+/* Whether to use overwrite mode for ring buffers */
+#define USE_OVERWRITE_MODE 0
+
+static int event_collector_buffer_init(
+    struct event_collector_buffer* buffer, size_t buffer_size)
+{
+    int cpu;
+    
+    buffer->rbuffer = ring_buffer_alloc(buffer_size,
+        USE_OVERWRITE_MODE ? RB_FL_OVERWRITE : 0);
+    if(buffer->rbuffer == NULL)
+    {
+        pr_err("Failed to allocate ring buffer.");
+        goto err_alloc_rbuffer;
+    }
+
+    buffer->missed_events = alloc_percpu(local_t);
+    if(buffer->missed_events == NULL)
+    {
+        pr_err("Failed to allocate counters for missed events in buffer.");
+        goto err_alloc_missed_events;
+    }
+
+    buffer->dropped_events
+     = kmalloc(sizeof(*buffer->dropped_events) * NR_CPUS, GFP_KERNEL);
+    if(buffer->dropped_events == NULL)
+    {
+        pr_err("Failed to allocate counters for dropped events in buffer.");
+        goto err_alloc_dropped_events;
+    }
+
+    buffer->packet_counters
+     = kmalloc(sizeof(*buffer->packet_counters) * NR_CPUS, GFP_KERNEL);
+    if(buffer->packet_counters == NULL)
+    {
+        pr_err("Failed to allocate counters of packets in buffer.");
+        goto err_alloc_packet_counters;
+    }
+
+    for_each_possible_cpu(cpu)
+    {
+        local_set(per_cpu_ptr(buffer->missed_events, cpu), 0);
+    }
+
+    memset(buffer->dropped_events, 0, sizeof(*buffer->dropped_events) * NR_CPUS);
+    memset(buffer->packet_counters, 0, sizeof(*buffer->packet_counters) * NR_CPUS);
+    
+    return 0;
+    
+err_alloc_packet_counters:
+    kfree(buffer->dropped_events);
+err_alloc_dropped_events:
+    free_percpu(buffer->missed_events);
+err_alloc_missed_events:    
+    ring_buffer_free(buffer->rbuffer);
+err_alloc_rbuffer:
+    return -ENOMEM;
+}
+
+static void event_collector_buffer_destroy(
+    struct event_collector_buffer* buffer)
+{
+    kfree(buffer->packet_counters);
+    kfree(buffer->dropped_events);
+    free_percpu(buffer->missed_events);
+    ring_buffer_free(buffer->rbuffer);
+}
+
 int execution_event_collector_init(
     struct execution_event_collector* event_collector,
     size_t buffer_normal_size, size_t buffer_critical_size)
 {
-    event_collector->buffer_normal
-        = ring_buffer_alloc(buffer_normal_size, 0);
-    if(event_collector->buffer_normal == NULL)
+    int result = event_collector_buffer_init(
+        &event_collector->buffer_normal, buffer_normal_size);
+    if(result)
     {
-        pr_err("Failed to allocate ring buffer for normal messages.");
-        return -ENOMEM;
+        pr_err("Failed to initialize buffer for normal messages.");
+        return result;
     }
     
-    event_collector->buffer_critical
-        = ring_buffer_alloc(buffer_critical_size, RB_FL_OVERWRITE);
-    if(event_collector->buffer_critical == NULL)
+    result = event_collector_buffer_init(
+        &event_collector->buffer_critical, buffer_critical_size);
+    if(result)
     {
-        pr_err("Failed to allocate ring buffer for critical messages.");
-        ring_buffer_free(event_collector->buffer_normal);
-        return -ENOMEM;
+        pr_err("Failed to initialize buffer for critical messages.");
+        event_collector_buffer_destroy(&event_collector->buffer_normal);
+        return result;
     }
-
+    
     atomic_set(&event_collector->message_counter, 0);
 
     return 0;
@@ -39,8 +107,8 @@ int execution_event_collector_init(
 void execution_event_collector_destroy(
     struct execution_event_collector* event_collector)
 {
-    ring_buffer_free(event_collector->buffer_normal);
-    ring_buffer_free(event_collector->buffer_critical);
+    event_collector_buffer_destroy(&event_collector->buffer_normal);
+    event_collector_buffer_destroy(&event_collector->buffer_critical);
 }
 
 /* 
@@ -65,6 +133,7 @@ struct ma_key
     struct ring_buffer_event* event;
     /* Pointer to the subevent which should be written at 'next' call */
     struct execution_message_ma_subevent* current_subevent;
+    unsigned long flags;
 };
 
 /* 
@@ -73,7 +142,8 @@ struct ma_key
  * We use notion about ring_buffer that between 'write_lock' and
  * 'write_unlock' cpu is fixed.
  * 
- * So, per-cpu variables is sufficient to be used as such callback data.
+ * So, per-cpu variables is sufficient to be used as such callback data,
+ * if also disable interrupts.
  * 
  * Even when several collectors exists, them may use global data,
  * because two collectors may not execute critical section on same cpu
@@ -85,7 +155,7 @@ void execution_event_memory_accesses_begin(
     struct execution_event_collector* collector,
     tid_t tid, int n_accesses, void** key)
 {
-    struct ring_buffer* buffer = collector->buffer_normal;
+    struct ring_buffer* buffer = collector->buffer_normal.rbuffer;
     struct ma_key* key_real;
     struct execution_message_ma* message_ma;
     struct ring_buffer_event* event = ring_buffer_lock_reserve(buffer,
@@ -93,18 +163,28 @@ void execution_event_memory_accesses_begin(
         + n_accesses * sizeof(struct execution_message_ma_subevent));
     if(event == NULL)
     {
+        local_inc(per_cpu_ptr(collector->buffer_normal.missed_events,
+            smp_processor_id()));
         *key = NULL;
         return;
     }
+    
     message_ma = ring_buffer_event_data(event);
     
     message_ma->base.type = execution_message_type_ma;
     message_ma->base.tid = tid;
     message_ma->base.ts = kedr_clock();
-    message_ma->base.counter = atomic_inc_return(&collector->message_counter);
+    message_ma->base.counter =
+        atomic_inc_return(&collector->message_counter);
+    message_ma->base.missed_events = local_read(
+        per_cpu_ptr(collector->buffer_normal.missed_events,
+            smp_processor_id()));
     message_ma->n_subevents = n_accesses;
 
     key_real = &(__get_cpu_var(kedr_ma_keys));
+
+    /* Disable interrupts before use per-cpu key. */
+    local_irq_save(key_real->flags);
     key_real->event = event;
     key_real->current_subevent = message_ma->subevents;
 
@@ -118,7 +198,10 @@ void execution_event_memory_accesses_end(
     struct ma_key* key_real = (struct ma_key*)key;
     if(key_real)
     {
-        ring_buffer_unlock_commit(collector->buffer_normal, key_real->event);
+        /* Before enabling interrupts extract all information from the key. */
+        struct ring_buffer_event* event = key_real->event;
+        local_irq_restore(key_real->flags);
+        ring_buffer_unlock_commit(collector->buffer_normal.rbuffer, event);
     }
 }
 EXPORT_SYMBOL(execution_event_memory_accesses_end);
@@ -156,16 +239,23 @@ void execution_event_memory_access_one(
 EXPORT_SYMBOL(execution_event_memory_access_one);
 
 #define WRITE_CRITICAL_MESSAGE_BEGIN(struct_suffix, type_suffix)        \
-struct ring_buffer* buffer = collector->buffer_critical;                \
+struct ring_buffer* buffer = collector->buffer_critical.rbuffer;        \
 struct execution_message_##struct_suffix* message_##struct_suffix;      \
 struct ring_buffer_event* event = ring_buffer_lock_reserve(buffer,      \
     sizeof(struct execution_message_##struct_suffix));                  \
-if(event == NULL) return;                                               \
+if(event == NULL)                                                       \
+{                                                                       \
+    local_inc(per_cpu_ptr(collector->buffer_critical.missed_events,     \
+        smp_processor_id()));                                           \
+    return;                                                             \
+}                                                                       \
 message_##struct_suffix = ring_buffer_event_data(event);                \
 message_##struct_suffix->base.type = execution_message_type_##type_suffix;  \
 message_##struct_suffix->base.tid = tid;                                \
 message_##struct_suffix->base.ts = kedr_clock();                        \
-message_##struct_suffix->base.counter = atomic_inc_return(&collector->message_counter);
+message_##struct_suffix->base.counter = atomic_inc_return(&collector->message_counter); \
+message_##struct_suffix->base.missed_events = local_read(               \
+    per_cpu_ptr(collector->buffer_critical.missed_events, smp_processor_id()))
 
 /* Between macros message_##struct_suffix contains pointer to typed message. */
 

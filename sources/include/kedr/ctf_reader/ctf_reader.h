@@ -126,11 +126,11 @@ public:
     Packet(const Packet& packet);
     ~Packet();
     /*
-     * Move to the next packet in the stream and return it.
+     * Move to the next packet in the stream.
      * 
-     * If packet is last in the stream, return NULL and destroy(unref) packet.
+     * Return true on success and false if current packet is last in the stream.
      */
-    Packet* next(void);
+    bool next(void);
 
     /* Return size(in bits) of the packet */
     uint32_t getPacketSize(void);
@@ -161,11 +161,6 @@ private:
     const CTFVarInt* contentSizeVar;
     
     friend class CTFReader::Event;
-    /* 
-     * Like next(), but in case of the last packet
-     * return false instead of calling unref().
-     */
-    bool tryNext(void);
 };
 
 class CTFReader::Event: public CTFContext
@@ -177,18 +172,19 @@ public:
     Event(const Event& event);
     ~Event();
 
+    Packet& getPacket(void) const {return *packet;}
     /* 
-     * Move to the next event in the stream and return it. 
+     * Move to the next event in the stream. 
      * 
-     * If given event is last in stream, return NULL and destroy(unref) event.
+     * Return true on success and false if given event is last in the stream.
      */
-    Event* next(void);
+    bool next(void);
     /* 
-     * Move to the next event in the packet and return it. 
+     * Move to the next event in the packet. 
      * 
-     * If given event is last in packet, return NULL and destroy(unref) event.
+     * Return true on success and false if given event is last in the packet.
      */
-    Event* nextInPacket(void);
+    bool nextInPacket(void);
 
 	void ref(void) {refs++;}
 	void unref(void) {if(--refs == 0) delete this;}
@@ -215,11 +211,6 @@ private:
     Packet* packet;
     
     void beginPacket(void);
-    /* 
-     * Like next(), but in case of the last event in the packet
-     * return false instead of calling unref().
-     */
-    bool tryNextInPacket(void);
 };
 
 
@@ -270,7 +261,7 @@ public:
         { return packet;}
 
     PacketIterator& operator++(void)
-        {packet = packet->next(); return *this;}
+        {if(!packet->next()) {packet->unref(); packet = NULL;} return *this;}
 private:
     Packet* packet;
     friend class CTFReader::EventIterator;
@@ -322,7 +313,7 @@ public:
     pointer_type operator->(void) const { return event;}
 
     PacketEventIterator& operator++(void)
-        {event = event->nextInPacket(); return *this;}
+        {if(!event->nextInPacket()) {event->unref(); event = NULL;} return *this;}
 private:
     Event* event;
 };
@@ -379,14 +370,10 @@ public:
     pointer_type operator->(void) const
         { return event;}
 
-    EventIterator& operator++(void) {event = event->next(); return *this;}
+    EventIterator& operator++(void)
+        {if(!event->next()) {event->unref(); event = NULL;} return *this;}
 private:
     Event* event;
-};
-
-
-struct CTFMetadata
-{
 };
 
 
@@ -412,11 +399,11 @@ public:
     const UUID* getUUID(void) const;
 
     /* 
-     * Move to the next metapacket in the stream and return packet.
+     * Move to the next metapacket in the stream.
      * 
-     * If it was last packet in the stream, destroy packet(unref) and return NULL.
+     * Return true on success and false if packet is last in the stream.
      */
-    MetaPacket* next(void);
+    bool next(void);
 
     /* Header of metadata; from CTF specification "as is" */
     struct Header
@@ -502,7 +489,7 @@ public:
         { return metaPacket;}
 
     MetaPacketIterator& operator++(void)
-        {metaPacket = metaPacket->next(); return *this;}
+        {if(!metaPacket->next()) {metaPacket->unref(); metaPacket = NULL;} return *this;}
 private:
     MetaPacket* metaPacket;
 };
