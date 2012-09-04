@@ -1,0 +1,47 @@
+diff -r 39d4307d6b28 sources/core/CMakeLists.txt
+--- a/sources/core/CMakeLists.txt	Fri Aug 10 20:06:35 2012 +0400
++++ b/sources/core/CMakeLists.txt	Tue Sep 04 10:15:02 2012 +0400
+@@ -90,6 +90,9 @@
+ 	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
+ 	"${TOP_INCLUDE_DIR}/kedr_mem/block_info.h"
+ 	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
++
++# For debug event collector
++	"event_handlers_splitter.c"
+ )
+ 
+ # Generate the table with the information about the machine instructions
+diff -r 39d4307d6b28 sources/core/module.c
+--- a/sources/core/module.c	Fri Aug 10 20:06:35 2012 +0400
++++ b/sources/core/module.c	Tue Sep 04 10:15:02 2012 +0400
+@@ -391,7 +391,7 @@
+ }
+ 
+ int 
+-kedr_register_event_handlers(struct kedr_event_handlers *eh)
++kedr_register_event_handlers_internal(struct kedr_event_handlers *eh)
+ {
+ 	int ret = 0;
+ 	BUG_ON(eh == NULL || eh->owner == NULL);
+@@ -427,10 +427,10 @@
+ 	mutex_unlock(&target_mutex);
+ 	return ret;
+ }
+-EXPORT_SYMBOL(kedr_register_event_handlers);
++//EXPORT_SYMBOL(kedr_register_event_handlers);
+ 
+ void 
+-kedr_unregister_event_handlers(struct kedr_event_handlers *eh)
++kedr_unregister_event_handlers_internal(struct kedr_event_handlers *eh)
+ {
+ 	BUG_ON(eh == NULL || eh->owner == NULL);
+ 	
+@@ -466,7 +466,7 @@
+ 	mutex_unlock(&target_mutex);
+ 	return;
+ }
+-EXPORT_SYMBOL(kedr_unregister_event_handlers);
++//EXPORT_SYMBOL(kedr_unregister_event_handlers);
+ 
+ struct kedr_event_handlers *
+ kedr_get_event_handlers(void)

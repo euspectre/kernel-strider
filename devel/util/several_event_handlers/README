@@ -1,0 +1,16 @@
+Patch to 'core' subsystem of KernelStrider which allows to register several events handlers instead of only one.
+
+It may be useful in debugging of 'output' subsystem for compare its results with ones of simple recorder(utils/simple_recorder).
+
+
+				How to apply patch
+
+1)add 'event_handlers_splitter.c' into 'sources/core'.
+
+2)apply 'patch' for CMakeLists.txt and module.c files under 'sources/core' directory.
+  Or that files may be changed by hand.
+  
+
+NOTE: With patched 'core' subsystem all tests are passed except
+      'mem_core.register.02' and 'mem_core.register.03': these tests are failed
+      because them assume that only one event handler may be registered at once.
