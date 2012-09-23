@@ -10,6 +10,10 @@
 
 #include <linux/hrtimer.h> /* high resolution timer for clock*/
 
+#include <linux/slab.h>
+
+#include <asm/local.h> /* local_t */
+
 /* Whether to use overwrite mode for ring buffers */
 #define USE_OVERWRITE_MODE 0
 

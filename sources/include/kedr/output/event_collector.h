@@ -19,8 +19,9 @@ typedef unsigned long addr_t;
 
 #include <linux/ring_buffer.h> /* ring buffers */
 
-//#include <linux/local.h> /* local counters */
 #include <linux/percpu.h> /* per-cpu counter for missed events */
+
+#include <asm/local.h> /* local_t */
 
 /* Since 2.6.33 __percpu attribute is used for per cpu variables. */
 #ifndef __percpu
