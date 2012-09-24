@@ -35,6 +35,9 @@
 #include "annot_impl.h"
 /* ====================================================================== */
 
+static void ifunc_destroy(struct kedr_ifunc *func);
+/* ====================================================================== */
+
 /* Returns non-zero if the function should not be instrumented even if it
  * would be otherwise eligible for instrumentation.
  * Currently, this applies to the annotation functions only. 
@@ -62,7 +65,7 @@ remove_ignored_funcs(struct kedr_i13n *i13n)
 	list_for_each_entry_safe(pos, tmp, &i13n->ifuncs, list) {
 		if (should_be_ignored(pos, i13n)) {
 			list_del(&pos->list);
-			kfree(pos);
+			ifunc_destroy(pos);
 			--i13n->num_ifuncs;
 		}
 	}
@@ -430,7 +433,7 @@ remove_aliases_and_small_funcs(struct kedr_i13n *i13n)
 	list_for_each_entry_safe(pos, tmp, &i13n->ifuncs, list) {
 		if (pos->size < KEDR_SIZE_JMP_REL32) {
 			list_del(&pos->list);
-			kfree(pos);
+			ifunc_destroy(pos);
 			--i13n->num_ifuncs;
 		}
 	}
