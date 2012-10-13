@@ -195,9 +195,9 @@ root privileges.
 1.
 First, load the core components of KernelStrider:
  
-    # /sbin/insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
         target_name=buggy01
-    # /sbin/insmod /usr/local/lib/modules/`uname -r`/misc/kedr_func_drd.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_func_drd.ko
 
 These components are responsible for the instrumentation of the target 
 module and for collecting the data about it in the kernel space.
@@ -250,14 +250,14 @@ very intensive, the default value of "nr_data_pages" should be acceptable.
 3.1.1
 Load the kernel-space part of the subsystem:
 
-    # /sbin/insmod /usr/local/lib/modules/`uname 
+    # insmod /usr/local/lib/modules/`uname 
 -r`/misc/kedr_simple_trace_recorder.ko
 
 If you would like to set the size of the buffer used for data transfer to, 
 say, 4096 memory pages (16 megabytes on the systems with the pages of 4
 kilobytes each), you can load this part as follows instead:
 
-    # /sbin/insmod /usr/local/lib/modules/`uname 
+    # insmod /usr/local/lib/modules/`uname 
 -r`/misc/kedr_simple_trace_recorder.ko \
         nr_data_pages=4096
 
@@ -272,7 +272,7 @@ If "trace.dat" file already exists, it will be cleared automatically.
 3.1.3
 Now it is time to load the target module. 
 
-    # /sbin/insmod /home/user/temp/buggy01/buggy01.ko
+    # insmod /home/user/temp/buggy01/buggy01.ko
 
 3.1.4
 The kernel modules do not have fixed load addresses. So it is recommended 
@@ -306,7 +306,7 @@ just 'cat' that file a couple of times.
 
 When you are done with the target module, unload it:
 
-    # /sbin/rmmod buggy01
+    # rmmod buggy01
 
 3.1.6
 The user-space part of the output system ("kedr_st_recorder" process) 
@@ -331,7 +331,7 @@ with a different file to save the trace to) and go on as described above.
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # /sbin/rmmod kedr_simple_trace_recorder kedr_func_drd kedr_mem_core
+    # rmmod kedr_simple_trace_recorder kedr_func_drd kedr_mem_core
 
 3.1.9
 Convert the saved trace to a format that ThreadSanitizer understands:
@@ -347,7 +347,7 @@ this output subsystem.)
 
 3.2.1
 Load the kernel-mode component of the output subsystem:
-    # /sbin/insmod /usr/local/lib/modules/`uname 
+    # insmod /usr/local/lib/modules/`uname 
 -r`/misc/kedr_trace_sender.ko
 
 3.2.2
@@ -376,7 +376,7 @@ The next 3 steps are the same as with the "simple" output subsystem.
 3.2.3
 Load the target module. 
 
-    # /sbin/insmod /home/user/temp/buggy01/buggy01.ko
+    # insmod /home/user/temp/buggy01/buggy01.ko
 
 3.2.4
 Save the addresses of the sections and/or symbols contained in the target 
@@ -392,7 +392,7 @@ module.
 Do something with the target module then unload it.
 
     # /home/user/temp/test_buggy01/test_buggy01
-    # /sbin/rmmod buggy01
+    # rmmod buggy01
 
 3.2.6
 Stop recording the trace:
@@ -409,7 +409,7 @@ with a different path to save the trace to) and go on as described above.
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # /sbin/rmmod kedr_trace_sender kedr_func_drd kedr_mem_core
+    # rmmod kedr_trace_sender kedr_func_drd kedr_mem_core
 
 3.2.9
 Convert the saved trace to a format that ThreadSanitizer understands:

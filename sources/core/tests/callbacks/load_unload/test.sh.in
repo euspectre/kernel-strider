@@ -13,6 +13,9 @@
 # details.
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -44,17 +47,17 @@ cleanupAll()
     
     lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
-        /sbin/rmmod "${TARGET_MODULE_NAME}"
+        rmmod "${TARGET_MODULE_NAME}"
     fi
     
     lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
-        /sbin/rmmod "${TEST_MODULE_NAME}"
+        rmmod "${TEST_MODULE_NAME}"
     fi
     
     lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
-        /sbin/rmmod "${CORE_MODULE_NAME}"
+        rmmod "${CORE_MODULE_NAME}"
     fi
 }
 
@@ -96,11 +99,11 @@ checkIndicators()
 ########################################################################
 doTest()
 {
-    /sbin/insmod "${CORE_MODULE}" \
+    insmod "${CORE_MODULE}" \
     	target_name="${TARGET_MODULE_NAME}" \
     	umh_dir="@KEDR_UMH_DIR@" || exit 1
 
-    /sbin/insmod "${TEST_MODULE}"
+    insmod "${TEST_MODULE}"
     if test $? -ne 0; then
         printf "Failed to load the test module: ${TEST_MODULE_NAME}\n"
         cleanupAll
@@ -119,7 +122,7 @@ doTest()
     checkIndicators 0 0
 
     printf "Checking \"target_loaded\" event...\n"
-    /sbin/insmod "${TARGET_MODULE}"
+    insmod "${TARGET_MODULE}"
     if test $? -ne 0; then
         printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
         cleanupAll
@@ -131,7 +134,7 @@ doTest()
     
     # OK, now unload the target...
     printf "Checking \"target_about_to_unload\" event...\n"
-    /sbin/rmmod "${TARGET_MODULE_NAME}"
+    rmmod "${TARGET_MODULE_NAME}"
     if test $? -ne 0; then
         printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
         cleanupAll
@@ -141,14 +144,14 @@ doTest()
     # 'called_load_cb' should be 0, 'called_unload_cb' should be 1
     checkIndicators 0 1
     
-    /sbin/rmmod "${TEST_MODULE_NAME}"
+    rmmod "${TEST_MODULE_NAME}"
     if test $? -ne 0; then
         printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
         cleanupAll
         exit 1
     fi
 
-    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+    rmmod "${CORE_MODULE_NAME}" || exit 1
 }
 
 ########################################################################

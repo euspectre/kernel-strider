@@ -8,6 +8,9 @@
 #   sh test_err.sh <short_target_function_name>
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -39,17 +42,17 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${ACCESSOR_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${ACCESSOR_MODULE_NAME}"
+		rmmod "${ACCESSOR_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -58,18 +61,18 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
-	/sbin/insmod "${ACCESSOR_MODULE}" target_function="${TARGET_FUNCTION}"
+	insmod "${ACCESSOR_MODULE}" target_function="${TARGET_FUNCTION}"
 	if test $? -ne 0; then
 		printf "Failed to load the accessor module\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/insmod "${TARGET_MODULE}"
+	insmod "${TARGET_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -107,21 +110,21 @@ doTest()
 	fi
 	
 	# Unload the modules, they are no longer needed
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${ACCESSOR_MODULE_NAME}"
+	rmmod "${ACCESSOR_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the test module: ${ACCESSOR_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 }
 
 ########################################################################

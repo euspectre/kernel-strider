@@ -11,6 +11,9 @@
 #   sh test.sh
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -72,12 +75,12 @@ cleanupAll()
 	
 	lsmod | grep "${OUTPUT_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${OUTPUT_MODULE_NAME}"
+		rmmod "${OUTPUT_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${EVENT_GEN_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${EVENT_GEN_MODULE_NAME}"
+		rmmod "${EVENT_GEN_MODULE_NAME}"
 	fi
 }
 
@@ -86,7 +89,7 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${EVENT_GEN_MODULE}" || exit 1
+	insmod "${EVENT_GEN_MODULE}" || exit 1
 
 	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
 	if test $? -ne 0; then
@@ -95,7 +98,7 @@ doTest()
 		exit 1
 	fi
 
-	/sbin/insmod "${OUTPUT_MODULE}" nr_data_pages=2		
+	insmod "${OUTPUT_MODULE}" nr_data_pages=2		
 	if test $? -ne 0; then
 		printf "Failed to load the kernel-space part of the output system.\n"
 		cleanupAll
@@ -160,14 +163,14 @@ doTest()
 	fi	
 	
 	# Unload the modules, they are no longer needed
-	/sbin/rmmod "${OUTPUT_MODULE_NAME}"
+	rmmod "${OUTPUT_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload module: ${OUTPUT_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/rmmod "${EVENT_GEN_MODULE_NAME}"
+	rmmod "${EVENT_GEN_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload module: ${EVENT_GEN_MODULE_NAME}\n"
 		cleanupAll

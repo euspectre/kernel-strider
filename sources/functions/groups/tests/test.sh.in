@@ -8,6 +8,9 @@
 #   sh test.sh <target_function>
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -44,22 +47,22 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 
 	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${REPORTER_MODULE_NAME}"
+		rmmod "${REPORTER_MODULE_NAME}"
 	fi
 
 	lsmod | grep "${FH_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${FH_MODULE_NAME}"
+		rmmod "${FH_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -68,11 +71,11 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
-	/sbin/insmod "${REPORTER_MODULE}" \
+	insmod "${REPORTER_MODULE}" \
 		target_function="trigger_${TARGET_FUNCTION}" \
 		report_calls=1 report_mem=1 report_block_enter=0 \
 		resolve_symbols=0
@@ -82,14 +85,14 @@ doTest()
 		exit 1
 	fi
 	
-	/sbin/insmod "${FH_MODULE}"
+	insmod "${FH_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the module: ${FH_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/insmod "${TARGET_MODULE}" target_function=${TARGET_FUNCTION}
+	insmod "${TARGET_MODULE}" target_function=${TARGET_FUNCTION}
 	if test $? -ne 0; then
 		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -97,7 +100,7 @@ doTest()
 	fi
 	
 	# Unload the target.
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -123,21 +126,21 @@ doTest()
 	umount "${TEST_DEBUGFS_DIR}"
 	
 	# Unload the remaining modules, they are no longer needed
-	/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	rmmod "${REPORTER_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the module: ${REPORTER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/rmmod "${FH_MODULE_NAME}"
+	rmmod "${FH_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the module: ${FH_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 	
 	cat "${TEST_TRACE_FILE}" | tr -d '\n' | grep -E '@TEST_MATCH_EXPR@' > /dev/null
 	if test $? -ne 0; then

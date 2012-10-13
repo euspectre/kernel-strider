@@ -11,6 +11,9 @@
 #   sh test_shallow.sh
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -42,7 +45,7 @@ cleanupAll()
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -54,7 +57,7 @@ doTest()
 	# 'sampling_rate' is 1 simply to make the relevant parts of the core
 	# execute, including the assignment of thread indexes, etc. Note that
 	# sampling itself is not checked in this test.
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" sampling_rate=1 || exit 1
 
@@ -91,7 +94,7 @@ doTest()
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 }
 
 ########################################################################

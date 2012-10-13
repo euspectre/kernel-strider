@@ -14,6 +14,9 @@
 #   sh test.sh [no_lookup]
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -50,22 +53,22 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 
 	lsmod | grep "${CHECKER_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CHECKER_MODULE_NAME}"
+		rmmod "${CHECKER_MODULE_NAME}"
 	fi
 
 	lsmod | grep "${CB_USER_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CB_USER_MODULE_NAME}"
+		rmmod "${CB_USER_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -98,26 +101,26 @@ checkParam()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" \
 		lookup_func_info=${DO_LOOKUP_FI} || exit 1
 
-	/sbin/insmod "${CB_USER_MODULE}"
+	insmod "${CB_USER_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the \"callback user\" module: ${CB_USER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/insmod "${CHECKER_MODULE}"
+	insmod "${CHECKER_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the \"checker\" module: ${CHECKER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/insmod "${TARGET_MODULE}"
+	insmod "${TARGET_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -143,7 +146,7 @@ doTest()
 	umount "${TEST_DEBUGFS_DIR}"
 	
 	# Unload the target.
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -157,21 +160,21 @@ doTest()
 	checkParam "second_post_ok" "${EXPECTED_SECOND_POST}"
 	
 	# Unload the remaining modules, they are no longer needed
-	/sbin/rmmod "${CHECKER_MODULE_NAME}"
+	rmmod "${CHECKER_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the module: ${CHECKER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/rmmod "${CB_USER_MODULE_NAME}"
+	rmmod "${CB_USER_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the module: ${CB_USER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 }
 ########################################################################
 # main

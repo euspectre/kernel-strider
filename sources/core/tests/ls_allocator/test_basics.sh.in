@@ -7,6 +7,9 @@
 #   sh test_basics.sh 
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -33,12 +36,12 @@ cleanupAll()
     
     lsmod | grep "${TEST_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
-        /sbin/rmmod "${TEST_MODULE_NAME}"
+        rmmod "${TEST_MODULE_NAME}"
     fi
     
     lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
     if test $? -eq 0; then
-        /sbin/rmmod "${CORE_MODULE_NAME}"
+        rmmod "${CORE_MODULE_NAME}"
     fi
 }
 
@@ -47,9 +50,9 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-    /sbin/insmod "${CORE_MODULE}" target_name="unused" || exit 1
+    insmod "${CORE_MODULE}" target_name="unused" || exit 1
 
-    /sbin/insmod "${TEST_MODULE}"
+    insmod "${TEST_MODULE}"
     if test $? -ne 0; then
         printf "Failed to load the test module\n"
         cleanupAll
@@ -66,14 +69,14 @@ doTest()
     # Save the result to be analyzed below
     TEST_FAILED=$(cat "${OUT_PARAM_FILE}")
 
-    /sbin/rmmod "${TEST_MODULE_NAME}"
+    rmmod "${TEST_MODULE_NAME}"
     if test $? -ne 0; then
         printf "Failed to unload the test module: ${TEST_MODULE_NAME}\n"
         cleanupAll
         exit 1
     fi
 
-    /sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+    rmmod "${CORE_MODULE_NAME}" || exit 1
     
     # Check the saved result
     printf "Test result (0 - passed, other value - failed): ${TEST_FAILED}\n"

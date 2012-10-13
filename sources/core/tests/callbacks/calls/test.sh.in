@@ -14,6 +14,9 @@
 #   sh test.sh <target_function_short_name>
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -51,17 +54,17 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${REPORTER_MODULE_NAME}"
+		rmmod "${REPORTER_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -70,11 +73,11 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
-	/sbin/insmod "${REPORTER_MODULE}" \
+	insmod "${REPORTER_MODULE}" \
         target_function="${TARGET_FUNCTION}" \
         report_calls=1 report_mem=0 report_block_enter=0 \
         resolve_symbols=1
@@ -84,7 +87,7 @@ doTest()
 		exit 1
 	fi
 	
-	/sbin/insmod "${TARGET_MODULE}"
+	insmod "${TARGET_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -94,7 +97,7 @@ doTest()
 	# Unload the target. The test functions will be called from the 
 	# cleanup function of the target module and will produce the events
 	# to be analyzed later.
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -134,14 +137,14 @@ doTest()
 	fi
 	
 	# Unload the remaining modules, they are no longer needed
-	/sbin/rmmod "${REPORTER_MODULE_NAME}"
+	rmmod "${REPORTER_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the test module: ${REPORTER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 	
 	# Compare the obtained and the expected data
 	sh "${COMPARE_SCRIPT}" "${EXPECTED_TRACE_FILE}" "${TEST_TRACE_FILE}"

@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 trace_sender_module="@trace_sender_module_dir@/@trace_sender_module_name@.ko"
 trace_receiver_control=@trace_receiver_control_test_dir@/@trace_receiver_control_test_name@
 
@@ -14,31 +17,31 @@ trace_dir=@CMAKE_CURRENT_BINARY_DIR@/trace
 unload_all()
 {
     ${trace_receiver_control} --stop
-    /sbin/rmmod "$test_module"
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$test_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
 }
 
 # Clear trace from previous executions
 rm -rf ${trace_dir}
 
 # Initialize
-if ! /sbin/insmod "$core_stub_module"; then
+if ! insmod "$core_stub_module"; then
     printf "Cannot load core stub module.\n"
     exit 1
 fi
 
 
-if ! /sbin/insmod "$trace_sender_module"; then
+if ! insmod "$trace_sender_module"; then
     printf "Cannot load trace sender module.\n"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
 if ! ${trace_receiver_control} --start ${trace_dir}; then
     printf "Failed to start trace receiver.\n"
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
@@ -46,17 +49,17 @@ fi
 if ! ${trace_receiver_control} --init-session 127.0.0.1; then
     printf "Trace receiver has failed to initialize session with trace sender.\n"
     ${trace_receiver_control} --stop
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
 # Test
-if ! /sbin/insmod "$test_module"; then
+if ! insmod "$test_module"; then
     printf "Cannot load test module or error occures during test.\n"
     ${trace_receiver_control} --stop
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
@@ -67,7 +70,7 @@ if ! ${trace_receiver_control} --start-trace; then
 fi
 
 
-if ! /sbin/rmmod "$test_module"; then
+if ! rmmod "$test_module"; then
     printf "Cannot unload test module.\n"
     exit 1
 fi
@@ -75,8 +78,8 @@ fi
 if ! ${trace_receiver_control} --stop-trace; then
     printf "Trace receiver has failed to wait until trace sending is stopped.\n"
     ${trace_receiver_control} --stop
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
@@ -84,25 +87,25 @@ fi
 if ! ${trace_receiver_control} --break-session 127.0.0.1; then
     printf "Trace receiver has failed to wait until session with trace sender is broken.\n"
     ${trace_receiver_control} --stop
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
 if ! ${trace_receiver_control} --stop; then
     printf "Error occures while stop trace receiver.\n"
-    /sbin/rmmod "$trace_sender_module"
-    /sbin/rmmod "$core_stub_module"
+    rmmod "$trace_sender_module"
+    rmmod "$core_stub_module"
     exit 1
 fi
 
-if ! /sbin/rmmod "$trace_sender_module"; then
+if ! rmmod "$trace_sender_module"; then
     printf "Cannot unload trace sender module.\n"
     exit 1
 fi
 
 
-if ! /sbin/rmmod "$core_stub_module"; then
+if ! rmmod "$core_stub_module"; then
     printf "Cannot unload core stub module.\n"
     exit 1
 fi

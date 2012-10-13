@@ -10,6 +10,9 @@
 # The target module is expected to be <target_dir_path>/<target_name>.ko
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -41,17 +44,17 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${ALLOCATOR_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${ALLOCATOR_MODULE_NAME}"
+		rmmod "${ALLOCATOR_MODULE_NAME}"
 	fi
 	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${CORE_MODULE_NAME}"
+		rmmod "${CORE_MODULE_NAME}"
 	fi
 }
 
@@ -60,18 +63,18 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${CORE_MODULE}" \
+	insmod "${CORE_MODULE}" \
 		target_name="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
-	/sbin/insmod "${ALLOCATOR_MODULE}"
+	insmod "${ALLOCATOR_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the allocator module\n"
 		cleanupAll
 		exit 1
 	fi
 	
-	/sbin/insmod "${TARGET_MODULE}"
+	insmod "${TARGET_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -79,21 +82,21 @@ doTest()
 	fi
 
 	# Unload the modules
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${ALLOCATOR_MODULE_NAME}"
+	rmmod "${ALLOCATOR_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the allocator module: ${ALLOCATOR_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
 	fi
 
-	/sbin/rmmod "${CORE_MODULE_NAME}" || exit 1
+	rmmod "${CORE_MODULE_NAME}" || exit 1
 }
 
 ########################################################################

@@ -10,6 +10,9 @@
 #   sh test.sh
 ########################################################################
 
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
 ########################################################################
 # A function to check prerequisites: whether the necessary files exist,
 # etc.
@@ -31,7 +34,7 @@ cleanupAll()
 	
 	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
-		/sbin/rmmod "${TARGET_MODULE_NAME}"
+		rmmod "${TARGET_MODULE_NAME}"
 	fi
 }
 
@@ -40,7 +43,7 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-	/sbin/insmod "${TARGET_MODULE}"
+	insmod "${TARGET_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
@@ -67,7 +70,7 @@ doTest()
 	umount "${TEST_DEBUGFS_DIR}"
 	
 	# Unload the target, its is no longer needed
-	/sbin/rmmod "${TARGET_MODULE_NAME}"
+	rmmod "${TARGET_MODULE_NAME}"
 	if test $? -ne 0; then
 		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
 		cleanupAll
