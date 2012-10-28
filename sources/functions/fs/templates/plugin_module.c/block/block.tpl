@@ -14,3 +14,10 @@ static <$if returnType$><$returnType$><$else$>void<$endif$> <$function.name$>_re
 <$endif$>#undef pc
 #undef tid
 }
+
+static struct kedr_fh_handlers handlers_<$function.name$> = {
+	.orig = &<$function.name$>,
+	.pre = NULL,
+	.post = NULL,
+	.repl = &<$function.name$>_repl
+};

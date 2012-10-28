@@ -5,49 +5,50 @@
 
 <$if concat(block)$><$block: join(\n)$>
 
-//#define REPLACEMENT_PAIR(orig, repl) {&orig, &repl + 
 // BUILD_BUG_ON_ZERO(!__builtin_types_compatible_p(typeof(&orig), typeof(&repl)))}
-#define REPLACEMENT_PAIR(orig, repl) {&orig, &repl}
 
-static struct kedr_repl_pair rp[] =
-{
-    <$replacement_pair: join(,\n\t)$>
+static struct kedr_fh_handlers *handlers[] = {
+	<$if concat(handlers_item)$><$handlers_item: join(,\n\t)$>,
+	<$endif$>NULL
 };
 
 <$endif$><$if on_target_load$>
-static void on_target_load(struct module* m)
+static void on_init_pre(struct kedr_fh_plugin *fh, struct module *m)
 {
-    (void)m;
-    {
-    <$on_target_load$>
-    }
+	(void)fh;
+	(void)m;
+	{
+	<$on_target_load$>
+	}
 }
 <$endif$><$if on_target_unload$>
-static void on_target_unload(struct module* m)
+static void on_exit_post(struct kedr_fh_plugin *fh, struct module *m)
 {
-    (void)m;
-    {
-    <$on_target_unload$>
-    }
+	(void)fh;
+	(void)m;
+	{
+	<$on_target_unload$>
+	}
 }
 <$endif$><$if on_before_exit$>
-static void on_before_exit(struct module* m)
+static void on_exit_pre(struct kedr_fh_plugin *fh, struct module *m)
 {
 #define pc ((unsigned long)m->exit)
 #define tid (kedr_get_thread_id())
-    (void)m;
-    {
-    <$on_before_exit$>
-    }
+	(void)fh;
+	(void)m;
+	{
+	<$on_before_exit$>
+	}
 #undef pc
 #undef tid
 }
 <$endif$>struct kedr_fh_plugin fh_plugin = {
 	.owner = THIS_MODULE,
-<$if on_target_load$>    .on_target_loaded = on_target_load,
-<$endif$><$if on_target_unload$>    .on_target_about_to_unload = on_target_unload,
-<$endif$><$if on_before_exit$>    .on_before_exit_call = on_before_exit,
-<$endif$><$if concat(block)$>    .repl_pairs = rp,
+<$if on_target_load$>    .on_init_pre = on_init_pre,
+<$endif$><$if on_target_unload$>    .on_exit_post = on_exit_post,
+<$endif$><$if on_before_exit$>    .on_exit_pre = on_exit_pre,
+<$endif$><$if concat(block)$>    .handlers = &handlers[0],
 <$endif$>};
 
 <$if concat(object.name)$><$object_init_function: join(\n)$>

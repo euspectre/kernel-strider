@@ -1,0 +1,14 @@
+﻿This plugin implements models for file system operations, character device
+operations and more.
+
+Most of these models require interception of callbacks, so KEDR COI is used 
+here to achieve that. Details on KEDR COI:
+
+http://code.google.com/p/kedr-callback-operations-interception/
+
+To build the plugin, "KEDR_COI_INSTALL_DIR" parameter should be passed
+to CMake at configuration stage. This parameter should contain the path 
+where KEDR COI is installed (or will be installed before building the 
+plugin). In particular, if KEDR COI itself was configured to install to the 
+default location (/usr/local), you just need to specify 
+-DKEDR_COI_INSTALL_DIR=/usr/local when you call CMake for KernelStrider.

@@ -1,5 +1,5 @@
 # Model for character devices.
-set(plugin_name "kedr_plugin_file_system")
+set(plugin_name "kedr_fh_drd_file_system")
 
 kbuild_include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 kbuild_include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
@@ -9,9 +9,6 @@ kbuild_use_symbols("${KEDR_COI_INSTALL_DIR}/lib/modules/${KBUILD_VERSION_STRING}
 
 kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
 kbuild_add_dependencies("kedr_mem_core")
-
-kbuild_use_symbols("${CMAKE_BINARY_DIR}/functions/Module.symvers")
-kbuild_add_dependencies("kedr_func_drd")
 
 kbuild_add_module(${plugin_name}
     "plugin.c"

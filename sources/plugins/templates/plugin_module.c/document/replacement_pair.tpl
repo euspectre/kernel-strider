@@ -1,1 +1,0 @@
-REPLACEMENT_PAIR(<$function.name$>, <$function.name$>_repl)
