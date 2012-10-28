@@ -8,6 +8,13 @@
 
 struct module;
 
+/* An opaque structure that identifies an analysis session for the target
+ * module. 
+ * A session starts when the target module is loaded but before our system
+ * begins to instrument it. The session stops, when the target is about to 
+ * unload and "target unload" event has been processed. */
+struct kedr_session;
+
 /* The meaning of the arguments:
  *	eh - the pointer passed during registration
  *	target_module - the target module

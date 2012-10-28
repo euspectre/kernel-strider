@@ -28,20 +28,18 @@
 	struct kedr_cdev_hb_id *item;
 	struct kedr_data_cdev_del *data = 
 		(struct kedr_data_cdev_del *)ls->data;
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long pc;
 	unsigned long tid;
 	
 	pc = info->pc;
 	tid = ls->tid;
-	eh = kedr_get_event_handlers();
 	
 	/* The cdev structure could have been altered by now,
 	 * it is safer to use the data saved in the pre handler. */
 	if (data != NULL) {
 		for (i = 0; i < data->count; ++i) {
-			item = kedr_find_ids_for_cdev(data->mj, 
+			item = find_ids_for_cdev(data->mj, 
 				data->mn + i);
 			if (item == NULL) {
 				pr_warning(KEDR_MSG_PREFIX 
@@ -49,7 +47,7 @@
 					data->mj, data->mn + i);
 				continue;
 			}
-			kedr_trigger_end_exit_wait_events(eh, tid, pc, item);	
+			trigger_end_exit_wait_events(tid, pc, item);	
 		}
 		kfree(data);
 	}

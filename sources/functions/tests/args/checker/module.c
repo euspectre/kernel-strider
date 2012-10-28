@@ -417,51 +417,42 @@ test_arg_func_post_va_list(struct kedr_local_storage *ls)
 	test_failed = 0;
 }
 
-static unsigned long target_funcs[] = {
-	[0] = (unsigned long)&kedr_test_arg_func,
-	[1] = (unsigned long)&kedr_test_arg_func_va,
-	[2] = (unsigned long)&kedr_test_arg_func_va_list
+static struct kedr_fh_handlers handlers_normal = {
+	.orig = &kedr_test_arg_func,
+	.pre = test_arg_func_pre,
+	.post = test_arg_func_post
 };
 
-static void (*pre_handlers[])(struct kedr_local_storage *) = {
-	[0] = test_arg_func_pre,
-	[1] = test_arg_func_pre_va,
-	[2] = test_arg_func_pre_va_list
+static struct kedr_fh_handlers handlers_va = {
+	.orig = &kedr_test_arg_func_va,
+	.pre = test_arg_func_pre_va,
+	.post = test_arg_func_post_va
 };
 
-static void (*post_handlers[])(struct kedr_local_storage *) = {
-	[0] = test_arg_func_post,
-	[1] = test_arg_func_post_va,
-	[2] = test_arg_func_post_va_list
+static struct kedr_fh_handlers handlers_va_list = {
+	.orig = &kedr_test_arg_func_va_list,
+	.pre = test_arg_func_pre_va_list,
+	.post = test_arg_func_post_va_list
 };
-/* ====================================================================== */
 
-static void
-fill_call_info(struct kedr_function_handlers *fh, 
-	struct kedr_call_info *call_info)
-{
-	if (call_info->target != target_funcs[test_mode])
-		/* process the requested function only */
-		return;
-	
-	/* We do not need a replacement. */
-	call_info->repl = call_info->target;
-	
-	/* Found appropriate handlers */
-	call_info->pre_handler = pre_handlers[test_mode];
-	call_info->post_handler = post_handlers[test_mode];
-}
+static struct kedr_fh_handlers * handlers_by_mode[] = {
+	[0] = &handlers_normal,
+	[1] = &handlers_va,
+	[2] = &handlers_va_list,
+};
 
-static struct kedr_function_handlers fh = {
+static struct kedr_fh_handlers *handlers[] = {NULL, NULL};
+
+static struct kedr_fh_plugin fh = {
 	.owner = THIS_MODULE,
-	.fill_call_info = fill_call_info,
+	.handlers = &handlers[0],
 };
 /* ====================================================================== */
 
 static void __exit
 test_cleanup_module(void)
 {
-	kedr_set_function_handlers(NULL);
+	kedr_fh_plugin_unregister(&fh);
 }
 
 static int __init
@@ -477,7 +468,8 @@ test_init_module(void)
 		return -EINVAL;
 	}
 	
-	ret = kedr_set_function_handlers(&fh);
+	fh.handlers[0] = handlers_by_mode[test_mode];
+	ret = kedr_fh_plugin_register(&fh);
 	return ret;
 }
 

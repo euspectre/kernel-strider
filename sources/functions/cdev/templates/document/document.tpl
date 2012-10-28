@@ -1,8 +1,37 @@
-# The common header, to be used both for the main C file of the module
-# and for the C file for this group of functions.
-header =>>
+/* ========================================================================
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin <spectre@ispras.ru>
+ *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/errno.h>
+#include <linux/kernel.h>
+#include <linux/string.h>
+#include <linux/list.h>
+
 #include <linux/cdev.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
+#include <linux/spinlock.h>
+
+#include <kedr/kedr_mem/core_api.h>
+#include <kedr/kedr_mem/local_storage.h>
+#include <kedr/kedr_mem/functions.h>
+#include <kedr/object_types.h>
+/* ====================================================================== */
+
+#define KEDR_MSG_PREFIX "[kedr_fh_drd_cdev] "
+/* ====================================================================== */
+
+MODULE_AUTHOR("Eugene A. Shatokhin");
+MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
 /* Types of the file operation callbacks for character devices. Other 
@@ -37,13 +66,6 @@ struct kedr_cdev_hb_id
 	unsigned long ids_end_exit[KEDR_CB_CDEV_COUNT];
 };
 /* ====================================================================== */
-<<
-
-# This header will be inserted only into the main C file of the module
-# somewhere after the common header.
-header.main =>>
-#include <linux/slab.h>
-#include <linux/spinlock.h>
 
 /* The list of the IDs of happens-before arcs used for the character
  * devices. */
@@ -55,8 +77,8 @@ static DEFINE_SPINLOCK(cdev_ids_lock);
 /* Searches for the IDs corresponding to the device with the given major and
  * minor numbers ('mj' and 'mn', respectively). Returns the ID structure if 
  * found, NULL if not. */
-struct kedr_cdev_hb_id *
-kedr_find_ids_for_cdev(unsigned int mj, unsigned int mn)
+static struct kedr_cdev_hb_id *
+find_ids_for_cdev(unsigned int mj, unsigned int mn)
 {
 	struct kedr_cdev_hb_id *pos;
 	unsigned long flags;
@@ -77,8 +99,8 @@ kedr_find_ids_for_cdev(unsigned int mj, unsigned int mn)
  * if successful, NULL otherwise. 
  * The function does not check if an ID structure already exists for the 
  * given device. */
-struct kedr_cdev_hb_id *
-kedr_create_ids_for_cdev(unsigned int mj, unsigned int mn)
+static struct kedr_cdev_hb_id *
+create_ids_for_cdev(unsigned int mj, unsigned int mn)
 {
 	struct kedr_cdev_hb_id *item;
 	unsigned long flags;
@@ -103,7 +125,7 @@ kedr_create_ids_for_cdev(unsigned int mj, unsigned int mn)
 	spin_lock_irqsave(&cdev_ids_lock, flags);
 	/* If a device with the same major and minor numbers is created
 	 * more than once, the item for the most recently created device
-	 * will be found by kedr_find_ids_for_cdev() because list_add()
+	 * will be found by find_ids_for_cdev() because list_add()
 	 * adds it to the head of the list. */
 	list_add(&item->list, &cdev_hb_ids);
 	spin_unlock_irqrestore(&cdev_ids_lock, flags);
@@ -111,50 +133,31 @@ kedr_create_ids_for_cdev(unsigned int mj, unsigned int mn)
 }
 
 /* Trigger an event for each possible type of a callback. */
-void
-kedr_trigger_reg_start_signal_events(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids)
+static void
+trigger_reg_start_signal_events(unsigned long tid, unsigned long pc, 
+	struct kedr_cdev_hb_id *ids)
 {
 	unsigned long id = 0;
 	unsigned int cbtype;
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_reg_start[cbtype];	
-		if (eh->on_signal_pre != NULL)
-			eh->on_signal_pre(eh, tid, pc, id, KEDR_SWT_COMMON);
-		
-		if (eh->on_signal_post != NULL)
-			eh->on_signal_post(eh, tid, pc, id, KEDR_SWT_COMMON);
+		kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
 	}
 }
 
-void
-kedr_trigger_end_exit_wait_events(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids)
+static void
+trigger_end_exit_wait_events(unsigned long tid, unsigned long pc, 
+	struct kedr_cdev_hb_id *ids)
 {
 	unsigned long id = 0;
 	unsigned int cbtype;
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_end_exit[cbtype];	
-		if (eh->on_wait_pre != NULL)
-			eh->on_wait_pre(eh, tid, pc, id, KEDR_SWT_COMMON);
-		
-		if (eh->on_wait_post != NULL)
-			eh->on_wait_post(eh, tid, pc, id, KEDR_SWT_COMMON);
+		kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
 	}
 }
-<<
-
-# This header will be inserted only into the C file for this group of 
-# functions somewhere after the common header.
-header.group =>>
-#include <linux/slab.h>
-
-struct kedr_cdev_hb_id *
-kedr_find_ids_for_cdev(unsigned int mj, unsigned int mn);
-struct kedr_cdev_hb_id *
-kedr_create_ids_for_cdev(unsigned int mj, unsigned int mn);
 
 /* This structure is needed to pass the data from the pre- to the post
  * handler for cdev_del(). */
@@ -174,20 +177,14 @@ fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 {
 	unsigned long id;
 	struct kedr_cdev_hb_id *item;
-	struct kedr_event_handlers *eh;
 	unsigned long tid;
 	
-	eh = kedr_get_event_handlers();
 	tid = kedr_get_thread_id();
 	
-	item = kedr_find_ids_for_cdev(imajor(inode), iminor(inode));
+	item = find_ids_for_cdev(imajor(inode), iminor(inode));
 	if (item != NULL) {
 		id = item->ids_reg_start[cb_type];
-		if (eh->on_wait_pre != NULL)
-			eh->on_wait_pre(eh, tid, pc, id, KEDR_SWT_COMMON);
-		
-		if (eh->on_wait_post != NULL)
-			eh->on_wait_post(eh, tid, pc, id, KEDR_SWT_COMMON);
+		kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -201,11 +198,7 @@ fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 	 * open() and deallocated after release(). But it is OK for now to
 	 * assume for simplicity that it is allocated before entry to a 
 	 * given callback and deallocated after the callback completes. */
-	if (eh->on_alloc_pre != NULL) 
-		eh->on_alloc_pre(eh, tid, pc, sizeof(*filp));
-	if (eh->on_alloc_post != NULL)
-		eh->on_alloc_post(eh, tid, pc, sizeof(*filp), 
-			(unsigned long)filp);
+	kedr_eh_on_alloc(tid, pc, sizeof(*filp), (unsigned long)filp);
 }
 
 /* Use this function in the post handlers for file operations having 
@@ -217,30 +210,19 @@ fop_common_post(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 {
 	unsigned long id;
 	struct kedr_cdev_hb_id *item;
-	struct kedr_event_handlers *eh;
 	unsigned long tid;
 	
-	eh = kedr_get_event_handlers();
 	tid = kedr_get_thread_id();
 	
 	/* Specify that the struct file instance pointed to by 'filp' is
 	 * no longer available ("memory released"). */
-	if (eh->on_free_pre != NULL)
-		eh->on_free_pre(eh, tid, pc, (unsigned long)filp);
-	if (eh->on_free_post != NULL)
-		eh->on_free_post(eh, tid, pc, (unsigned long)filp);
+	kedr_eh_on_free(tid, pc, (unsigned long)filp);
 	
 	/* HB relation */
-	item = kedr_find_ids_for_cdev(imajor(inode), iminor(inode));
+	item = find_ids_for_cdev(imajor(inode), iminor(inode));
 	if (item != NULL) {
 		id = item->ids_end_exit[cb_type];
-		if (eh->on_signal_pre != NULL)
-			eh->on_signal_pre(eh, tid, pc, id, 
-				KEDR_SWT_COMMON);
-		
-		if (eh->on_signal_post != NULL)
-			eh->on_signal_post(eh, tid, pc, id, 
-				KEDR_SWT_COMMON);
+		kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -405,11 +387,64 @@ set_callback_handlers(struct cdev *p)
 		spin_unlock_irqrestore(&fi->handler_lock, flags);
 	}
 }
+/* ====================================================================== */
 
-void
-kedr_trigger_reg_start_signal_events(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids);
-void
-kedr_trigger_end_exit_wait_events(struct kedr_event_handlers *eh, 
-	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids);
-<<
+<$if concat(function.name)$><$block : join(\n\n)$>
+<$endif$>/* ====================================================================== */
+
+static struct kedr_fh_handlers *handlers[] = {
+	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
+	<$endif$>NULL
+};
+/* ====================================================================== */
+
+static void
+on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod)
+{
+	struct kedr_cdev_hb_id *pos;
+	unsigned long tid;
+	unsigned long pc;
+	
+	tid = kedr_get_thread_id();
+	pc = (unsigned long)mod->exit;
+	
+	list_for_each_entry(pos, &cdev_hb_ids, list)
+		trigger_end_exit_wait_events(tid, pc, pos);
+}
+
+static void
+on_exit_post(struct kedr_fh_plugin *fh, struct module *mod)
+{
+	struct kedr_cdev_hb_id *pos;
+	struct kedr_cdev_hb_id *tmp;
+	
+	list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
+		list_del(&pos->list);
+		kfree(pos);
+	}
+}
+
+static struct kedr_fh_plugin fh = {
+	.owner = THIS_MODULE,
+	.on_exit_pre = on_exit_pre,
+	.on_exit_post = on_exit_post,
+	
+	.handlers = &handlers[0]
+};
+/* ====================================================================== */
+
+static int __init
+func_drd_init_module(void)
+{
+	return kedr_fh_plugin_register(&fh);	
+}
+
+static void __exit
+func_drd_exit_module(void)
+{
+	kedr_fh_plugin_unregister(&fh);
+}
+
+module_init(func_drd_init_module);
+module_exit(func_drd_exit_module);
+/* ====================================================================== */

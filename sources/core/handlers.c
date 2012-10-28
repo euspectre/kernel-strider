@@ -34,7 +34,7 @@
 
 #include "handlers.h"
 #include "tid.h"
-
+#include "fh_impl.h"
 /* ====================================================================== */
 
 /* KEDR_SAVE_SCRATCH_REGS_BUT_AX
@@ -317,8 +317,7 @@ kedr_fill_call_info(unsigned long ci)
 	info->pre_handler = default_pre_handler;
 	info->post_handler = default_post_handler;
 
-	if (function_handlers->fill_call_info != NULL)
-		function_handlers->fill_call_info(function_handlers, info);
+	kedr_fh_fill_call_info(info);
 }
 KEDR_DEFINE_WRAPPER(kedr_fill_call_info);
 /* ====================================================================== */

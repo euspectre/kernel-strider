@@ -9,7 +9,6 @@
 	unsigned int mn;
 	unsigned int mj;
 	unsigned int i;
-	struct kedr_event_handlers *eh;
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long pc;
 	unsigned long tid;
@@ -17,7 +16,6 @@
 	
 	pc = info->pc;
 	tid = ls->tid;
-	eh = kedr_get_event_handlers();
 		
 	p = (struct cdev *)KEDR_LS_ARG1(ls);
 	dev = (dev_t)KEDR_LS_ARG2(ls);
@@ -26,7 +24,7 @@
 	mj = MAJOR(dev);
 	
 	for (i = 0; i < count; ++i) {
-		item = kedr_create_ids_for_cdev(mj, mn + i);
+		item = create_ids_for_cdev(mj, mn + i);
 		if (item == NULL) {
 			pr_warning(KEDR_MSG_PREFIX 
 "cdev_add.pre: failed to obtain IDs for the device (%u, %u)\n", 
@@ -34,7 +32,7 @@
 			continue;
 		}
 		
-		kedr_trigger_reg_start_signal_events(eh, tid, pc, item);
+		trigger_reg_start_signal_events(tid, pc, item);
 	}
 	set_callback_handlers(p);
 	<<

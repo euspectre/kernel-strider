@@ -237,49 +237,34 @@ test_post(struct kedr_local_storage *ls)
 	/* This handler is intentionally empty. */
 }
 
-static void
-fill_call_info(struct kedr_function_handlers *fh, 
-	struct kedr_call_info *call_info)
-{
-	/* Process kedr_test_cbh_register() only. 
-	 * We do not bother removing the handlers when the callbacks
-	 * are unregistered, so it is enough to process the registration
-	 * only.
-	 * It may be necessary to remove the handlers on deregistration
-	 * of the callbacks when processing some real-world modules but
-	 * the tests do not require it. */
-	if (call_info->target != (unsigned long)&kedr_test_cbh_register)
-		return;
-	
-	/* We do not need a replacement. */
-	call_info->repl = call_info->target;
-	
-	/* Set the handlers. */
-	call_info->pre_handler = test_pre;
-	call_info->post_handler = test_post;
-}
+static struct kedr_fh_handlers handlers = {
+	.orig = &kedr_test_cbh_register,
+	.pre = test_pre,
+	.post = test_post,
+};
 
-static struct kedr_function_handlers fh = {
+static struct kedr_fh_handlers *handlers_array[] = {
+	&handlers, 
+	NULL
+};
+
+static struct kedr_fh_plugin fh = {
 	.owner = THIS_MODULE,
-	.fill_call_info = fill_call_info,
+	.handlers = &handlers_array[0],
 };
 /* ====================================================================== */
 
 static void __exit
 test_cleanup_module(void)
 {
-	kedr_set_function_handlers(NULL);
+	kedr_fh_plugin_unregister(&fh);
 }
 
 static int __init
 test_init_module(void)
 {
-	int ret;
-	
 	BUILD_BUG_ON(ARRAY_SIZE(expected_args) != KEDR_TEST_ARGS_TOTAL);
-	
-	ret = kedr_set_function_handlers(&fh);
-	return ret;
+	return kedr_fh_plugin_register(&fh);
 }
 
 module_init(test_init_module);

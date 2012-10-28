@@ -1,92 +1,46 @@
-# Create the kernel module to handle the function calls relevant for
-# data race detection.
-set(KMODULE_NAME "kedr_func_drd")
-
 set(TOP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include/kedr")
-set(COMBINED_DATA_FILE "${CMAKE_CURRENT_BINARY_DIR}/func.data")
-set(MAIN_C_FILE "module.c")
+########################################################################
 
-# The following function groups must always be processed.
-set(FUNCTION_GROUPS 
-	"alloc" 
-	"realloc" 
-	"free" 
-	"lock" 
-	"unlock"
-	"uaccess"
-	"dup"
-	"strings"
-	"thread"
-)
+# Common name of header part of the data file
+set(header_data_file "header.data")
 
-if(NOT KEDR_COI_INSTALL_DIR)
-	# Without KEDR COI, the plugin for cdev operations will not built.
-	# Instead, a simple built-in model for that subsystem will be used.
-	list(APPEND FUNCTION_GROUPS "cdev")
-endif(NOT KEDR_COI_INSTALL_DIR)
-
-set(HANDLER_C_FILES)
-set(HANDLER_DATA_FILES)
-set(GROUP_TARGETS)
-foreach(group ${FUNCTION_GROUPS})
-	list(APPEND GROUP_TARGETS "func_drd_${group}")
-	list(APPEND HANDLER_DATA_FILES 
-		"${CMAKE_CURRENT_BINARY_DIR}/groups/${group}/handlers.data")
-	list(APPEND HANDLER_C_FILES
-		"${CMAKE_CURRENT_BINARY_DIR}/handlers_${group}.c")
-	rule_copy_file(
-		"${CMAKE_CURRENT_BINARY_DIR}/handlers_${group}.c"
-		"${CMAKE_CURRENT_BINARY_DIR}/groups/${group}/handlers_${group}.c"
-	)
-endforeach(group ${FUNCTION_GROUPS})
-
-# The rule to create a combined .data file.
-add_custom_command(OUTPUT ${COMBINED_DATA_FILE}
-	COMMAND cat ${HANDLER_DATA_FILES} > ${COMBINED_DATA_FILE}
-)
-add_custom_target(${KMODULE_NAME}_data_file
-	DEPENDS ${COMBINED_DATA_FILE}
-)
-add_dependencies(${KMODULE_NAME}_data_file ${GROUP_TARGETS})
-
-# The rule to create the main source file of the module.
-add_custom_command(OUTPUT ${MAIN_C_FILE}
-	COMMAND ${KEDR_GEN_TOOL} 
-		"${CMAKE_CURRENT_SOURCE_DIR}/templates"
-		${COMBINED_DATA_FILE} > ${MAIN_C_FILE}
-	DEPENDS ${COMBINED_DATA_FILE}
-)
-add_custom_target(${KMODULE_NAME}_module.c
-	DEPENDS ${MAIN_C_FILE}
-)
-add_dependencies(${KMODULE_NAME}_module.c ${KMODULE_NAME}_data_file)
-
-kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
-kbuild_add_dependencies("kedr_mem_core")
-
-if(KEDR_COI_INSTALL_DIR)
-	# The main module provides some of the functionality for a simple 
-	# model for 'cdev' group.
-	# If this model is not going to be used, that functionality implemented
-	# will not be present in the main module.
-	kbuild_add_definitions("-DNO_CDEV")
-endif(KEDR_COI_INSTALL_DIR)
-
-kbuild_add_module(${KMODULE_NAME}
-# sources
-	${MAIN_C_FILE}
-	${HANDLER_C_FILES}
+# The rules to produce handlers.data and handlers_${group_name}.c.
+# [NB] Even if no functions from that particular group are to be 
+# intercepted, these two files should still be produced.
+# For each function in ${functions} list, ${function}.data file 
+# should contain information about the handlers of that function.
+function(create_handlers_group group_name functions)
+	set(source_file "${CMAKE_CURRENT_BINARY_DIR}/handlers_${group_name}.c")
+	set(handlers_data_file "${CMAKE_CURRENT_BINARY_DIR}/handlers.data")
 	
-# headers
-	"${TOP_INCLUDE_DIR}/kedr_mem/core_api.h"
-	"${TOP_INCLUDE_DIR}/kedr_mem/functions.h"
-	"${TOP_INCLUDE_DIR}/kedr_mem/local_storage.h"
-	"${TOP_INCLUDE_DIR}/object_types.h"
-	"${CMAKE_BINARY_DIR}/config.h"
-)
-add_dependencies(${KMODULE_NAME} ${KMODULE_NAME}_module.c)
-kedr_install_kmodule(${KMODULE_NAME})
-kedr_install_symvers(${KMODULE_NAME})
+	set(functions_data)
+	foreach(func ${functions} ${ARGN})
+		list(APPEND functions_data "${func}.data")
+	endforeach(func ${functions} ${ARGN})
+	
+	set(data_files_abs)
+	if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${header_data_file}")
+		to_abs_path(data_files_abs ${header_data_file} ${functions_data})
+	else ()
+		to_abs_path(data_files_abs ${functions_data})
+	endif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${header_data_file}")
+
+	add_custom_command(OUTPUT ${handlers_data_file}
+		COMMAND cat ${data_files_abs} > ${handlers_data_file}
+		DEPENDS ${data_files_abs}
+	)
+	
+	add_custom_command(OUTPUT ${source_file}
+		COMMAND ${KEDR_GEN_TOOL} 
+			"${CMAKE_CURRENT_SOURCE_DIR}/templates"
+			${handlers_data_file} > ${source_file}
+		DEPENDS ${handlers_data_file}
+	)
+	
+	add_custom_target(func_drd_${group_name} ALL
+		DEPENDS ${handlers_data_file} ${source_file}
+	)
+endfunction(create_handlers_group group_name functions)
 ########################################################################
 
 # Test-related stuff
@@ -97,9 +51,23 @@ set(KEDR_UMH_DIR "${CMAKE_BINARY_DIR}/core/tests")
 # The core module.
 set(CORE_MODULE_NAME "kedr_mem_core")
 set(CORE_MODULE_DIR "${CMAKE_BINARY_DIR}/core")
-
-kedr_test_add_subdirectory(tests)
 ########################################################################
 
-add_subdirectory(groups)
+# The operations common to different kinds of kernel modules are handled 
+# there.
+add_subdirectory(common)
+
+if (KEDR_COI_INSTALL_DIR)
+    # This plugin handles ordering relationships in various file- and 
+	# filesystem-related operations. Needs KEDR COI system.
+	add_subdirectory(fs)
+else ()
+	# Without KEDR COI, the full-fledged handling for cdev operations will 
+	# not be built (it is a part of 'fs' plugin). Instead, a simple built-in
+	# model for that subsystem will be used.
+	add_subdirectory(cdev)
+endif (KEDR_COI_INSTALL_DIR)
+########################################################################
+
+kedr_test_add_subdirectory(tests)
 ########################################################################
