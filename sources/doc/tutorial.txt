@@ -197,7 +197,8 @@ First, load the core components of KernelStrider:
  
     # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
         target_name=buggy01
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_func_drd.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_common.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_cdev.ko
 
 These components are responsible for the instrumentation of the target 
 module and for collecting the data about it in the kernel space.
@@ -331,7 +332,9 @@ with a different file to save the trace to) and go on as described above.
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # rmmod kedr_simple_trace_recorder kedr_func_drd kedr_mem_core
+    # rmmod kedr_simple_trace_recorder 
+    # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
+    # rmmod kedr_mem_core
 
 3.1.9
 Convert the saved trace to a format that ThreadSanitizer understands:
@@ -409,7 +412,9 @@ with a different path to save the trace to) and go on as described above.
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # rmmod kedr_trace_sender kedr_func_drd kedr_mem_core
+    # rmmod kedr_simple_trace_recorder 
+    # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
+    # rmmod kedr_mem_core
 
 3.2.9
 Convert the saved trace to a format that ThreadSanitizer understands:
