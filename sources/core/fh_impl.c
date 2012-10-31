@@ -87,11 +87,12 @@ kedr_fh_plugin_register_impl(struct kedr_fh_plugin *fh)
 {
 	struct kedr_fh_plugin *p = NULL;
 
-	// TODO: Do not allow to register plugins when a session is active
-
 	if (fh->owner == NULL)
 		return -EINVAL;
-
+	
+	/* Here we can assume the session is not active (the caller is 
+	 * responsible for that). */
+	
 	/* A sanity check first. */
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p == fh)
@@ -105,8 +106,12 @@ kedr_fh_plugin_register_impl(struct kedr_fh_plugin *fh)
 
 	/* Check if some already registered plugin handles any of the
 	 * functions that 'fh' handles too. */
-	if (function_set_bad(fh))
+	if (function_set_bad(fh)) {
+		pr_warning(KEDR_MSG_PREFIX
+	"Attempt to register a plugin that handles some of the already "
+	"handled functions.\n");
 		return -EINVAL;
+	}
 
 	list_add(&fh->list, &fh_plugins);
 	return 0;
@@ -116,8 +121,6 @@ void
 kedr_fh_plugin_unregister_impl(struct kedr_fh_plugin *fh)
 {
 	struct kedr_fh_plugin *p = NULL;
-	
-	// TODO: Do not allow to unregister plugins when a session is active
 	
 	/* A sanity check first. */
 	list_for_each_entry(p, &fh_plugins, list) {
