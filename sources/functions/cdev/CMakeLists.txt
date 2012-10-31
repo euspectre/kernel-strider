@@ -31,3 +31,7 @@ if (num_funcs)
 	kedr_install_symvers(${KMODULE_NAME})
 endif (num_funcs)
 ########################################################################
+
+# Tests
+kedr_test_add_subdirectory(tests)
+########################################################################
