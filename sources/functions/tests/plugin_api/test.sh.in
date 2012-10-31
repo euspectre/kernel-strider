@@ -1,0 +1,318 @@
+#!/bin/sh
+
+########################################################################
+# This test checks the functionality of the API for function handling 
+# plugins that is not checked by the tests for the particular plugins.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# Helper functions
+########################################################################
+loadTarget()
+{
+	insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadTarget()
+{
+	rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${PLUGIN_A_MODULE}"; then
+		printf "The plugin module is missing: ${PLUGIN_A_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${PLUGIN_B_MODULE}"; then
+		printf "The plugin module is missing: ${PLUGIN_B_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${PLUGIN_C_MODULE}"; then
+		printf "The plugin module is missing: ${PLUGIN_C_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${PLUGIN_A_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${PLUGIN_A_NAME}"
+	fi
+
+	lsmod | grep "${PLUGIN_B_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${PLUGIN_B_NAME}"
+	fi
+
+	lsmod | grep "${PLUGIN_C_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${PLUGIN_C_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# checkParam() - checks if the output parameter of the given module.
+# 
+# $1 - name of the module;
+# $2 - name of the parameter;
+# $3 - the expected value of the parameter.
+########################################################################
+checkParam()
+{
+	printf "checkParam \"$1\" \"$2\" \"$3\"\n"
+
+	if test -z "$1"; then
+		printf "checkParam(): name of the module is empty.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if test -z "$2"; then
+		printf "checkParam(): name of the parameter is empty.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if test -z "$3"; then
+		printf "checkParam(): value of the parameter is empty.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	param_file="/sys/module/$1/parameters/$2"
+	if test ! -e "${param_file}"; then
+		printf "Parameter file does not exist: ${param_file}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	actual_value=$(cat "${param_file}")
+	if test "t${actual_value}" != "t$3"; then
+		printf "Parameter $2 of the module $1 is ${actual_value} while it should be $3.\n"
+		cleanupAll
+		exit 1 
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	insmod "${CORE_MODULE}" \
+		target_name="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	# 1. Load the target and then try to load a plugin. The latter must 
+	# fail.
+	loadTarget
+	
+	insmod "${PLUGIN_A_MODULE}"
+	if test $? -eq 0; then
+		printf "Loaded a plugin while the target was in memory.\n"
+		cleanupAll
+		exit 1
+	fi
+	printf "This error was expected, continuing the test.\n"
+	
+	unloadTarget
+
+	# 2. Load the plugin A and then try to load the conflicting plugin.
+	insmod "${PLUGIN_A_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load plugin A.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	insmod "${PLUGIN_B_MODULE}"
+	if test $? -eq 0; then
+		printf "The core allowed to load two plugins that handle the same function.\n"
+		cleanupAll
+		exit 1
+	fi
+	printf "This error was expected, continuing the test.\n"
+
+	# 3. Load the target, check if the replacement function has been 
+	# called. Also check that the plugin cannot be unloaded while the
+	# target remains in memory.
+	checkParam ${PLUGIN_A_NAME} "called_kfree" 0
+	loadTarget
+	checkParam ${PLUGIN_A_NAME} "called_kfree" 1
+
+	rmmod "${PLUGIN_A_MODULE}"
+	if test $? -eq 0; then
+		printf "The core failed to prevent unloading of plugin A "
+		printf "while the target was loaded.\n"
+		cleanupAll
+		exit 1
+	fi
+	printf "This error was expected, continuing the test.\n"
+
+	unloadTarget
+
+	rmmod "${PLUGIN_A_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to unload plugin A.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# 4. Load plugins B and C, then the target. Check if the appropriate
+	# handlers have been called.
+	insmod "${PLUGIN_B_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load plugin B.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${PLUGIN_C_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load plugin C.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	checkParam ${PLUGIN_B_NAME} "called_kfree_pre" 0
+	checkParam ${PLUGIN_B_NAME} "called_kfree_post" 0
+	checkParam ${PLUGIN_B_NAME} "called_init_pre" 0
+	checkParam ${PLUGIN_B_NAME} "called_exit_pre" 0
+	checkParam ${PLUGIN_B_NAME} "called_exit_post" 0
+
+	checkParam ${PLUGIN_C_NAME} "called_init_pre" 0
+	checkParam ${PLUGIN_C_NAME} "called_init_post" 0
+	checkParam ${PLUGIN_C_NAME} "called_exit_post" 0
+
+	loadTarget
+
+	checkParam ${PLUGIN_B_NAME} "called_kfree_pre" 1
+	checkParam ${PLUGIN_B_NAME} "called_kfree_post" 1
+	checkParam ${PLUGIN_B_NAME} "called_init_pre" 1
+	checkParam ${PLUGIN_B_NAME} "called_exit_pre" 0
+	checkParam ${PLUGIN_B_NAME} "called_exit_post" 0
+
+	checkParam ${PLUGIN_C_NAME} "called_init_pre" 1
+	checkParam ${PLUGIN_C_NAME} "called_init_post" 1
+	checkParam ${PLUGIN_C_NAME} "called_exit_post" 0
+
+	unloadTarget
+
+	checkParam ${PLUGIN_B_NAME} "called_kfree_pre" 1
+	checkParam ${PLUGIN_B_NAME} "called_kfree_post" 1
+	checkParam ${PLUGIN_B_NAME} "called_init_pre" 1
+	checkParam ${PLUGIN_B_NAME} "called_exit_pre" 1
+	checkParam ${PLUGIN_B_NAME} "called_exit_post" 1
+
+	checkParam ${PLUGIN_C_NAME} "called_init_pre" 1
+	checkParam ${PLUGIN_C_NAME} "called_init_post" 1
+	checkParam ${PLUGIN_C_NAME} "called_exit_post" 1
+
+	rmmod "${PLUGIN_B_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to unload plugin B.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod "${PLUGIN_C_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to unload plugin C.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Done
+	rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+USAGE_STRING="Usage: sh $0"
+
+if test $# -gt 1; then
+	printf "${USAGE_STRING}\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TARGET_MODULE_NAME="@TEST_TARGET_NAME@"
+TARGET_MODULE="@TEST_TARGET_DIR@/${TARGET_MODULE_NAME}.ko"
+
+BINARY_DIR="@CMAKE_CURRENT_BINARY_DIR@"
+
+PLUGIN_A_NAME="test_fh_plugin_a"
+PLUGIN_A_MODULE="${BINARY_DIR}/plugin_a/${PLUGIN_A_NAME}.ko"
+
+PLUGIN_B_NAME="test_fh_plugin_b"
+PLUGIN_B_MODULE="${BINARY_DIR}/plugin_b/${PLUGIN_B_NAME}.ko"
+
+PLUGIN_C_NAME="test_fh_plugin_c"
+PLUGIN_C_MODULE="${BINARY_DIR}/plugin_c/${PLUGIN_C_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
