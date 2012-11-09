@@ -4,11 +4,6 @@
 #
 # Used in unit testing.
 # May be moved upper for integration system testing(as whole).
-set(trace_sender_module_name "kedr_trace_sender" CACHE INTERNAL
-	"Name of trace sender module")
-set(trace_sender_module_dir "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL
-	"Directory where trace sender module is placed.")
-
 set(KMODULE_NAME ${trace_sender_module_name})
 
 # Determine how to create module parameters with callbacks
@@ -96,8 +91,6 @@ set(meta_template_file "ctf_meta_template")
 rule_copy_file("${CMAKE_CURRENT_BINARY_DIR}/${meta_template_file}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../${meta_template_file}")
 
-set(meta_template_shipped_file "${CMAKE_CURRENT_BINARY_DIR}/ctf_meta_template.o_shipped")
-
 # Create 'shipped' file with CTF trace metadata format
 add_custom_command(OUTPUT "${meta_template_shipped_file}"
 	COMMAND ld -o "${meta_template_shipped_file}" "--format=binary"
@@ -110,7 +103,7 @@ kbuild_add_dependencies("kedr_mem_core")
 kbuild_include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 kbuild_add_module(${KMODULE_NAME}
 	"event_collector.c"
-    "trace_server.c"
+	"trace_server.c"
 	"trace_sender.c"
 	"trace_packets.c"
 	"net_message.c"
@@ -118,7 +111,7 @@ kbuild_add_module(${KMODULE_NAME}
 
 	"${meta_template_shipped_file}"
 
-    "trace_sender.h"
+	"trace_sender.h"
 	"trace_packets.h"
 	"net_message.h"
 	"uuid_generator.h"

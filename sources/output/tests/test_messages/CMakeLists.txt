@@ -4,6 +4,7 @@ set(EXECUTABLE_NAME "trace_sender_test_messages_checker")
 kbuild_use_symbols("${core_stub_module_dir}/Module.symvers")
 kbuild_use_symbols("${trace_sender_module_dir}/Module.symvers")
 kbuild_add_dependencies(${core_stub_module_name})
+kbuild_add_dependencies(${trace_sender_module_name})
 kbuild_include_directories(${core_stub_include_dir})
 
 kbuild_add_module(${KMODULE_NAME}
