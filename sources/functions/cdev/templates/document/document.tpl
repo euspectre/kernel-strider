@@ -20,6 +20,7 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/rcupdate.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>

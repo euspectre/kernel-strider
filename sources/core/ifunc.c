@@ -181,6 +181,7 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 		return -ENOMEM;
 	
 	tf->info.addr = addr; /* [NB] tf->size is 0 now */
+	tf->info.owner = mod;
 	tf->name = kstrdup(name, GFP_KERNEL);
 	if (tf->name == NULL) {
 		kfree(tf);

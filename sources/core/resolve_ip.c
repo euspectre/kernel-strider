@@ -28,6 +28,7 @@
 #include "resolve_ip.h"
 #include "i13n.h"
 #include "ifunc.h"
+#include "target.h"
 /* ====================================================================== */
 
 /* The files in debugfs. */
@@ -37,10 +38,10 @@ static struct dentry *func_i_start_file = NULL;
 
 /* The name and the start address of the instrumented instance of the 
  * function to be output. 
- * [NB] The accesses to 'i13n' are serialized with 'target_mutex'. 'i13n' is
- * needed to find the name and the start address of the instrumented 
- * function. So, for simplicity, we can use 'target_mutex' to protect 
- * 'func_name' and 'func_i_start' too. */
+ * [NB] kedr_for_each_loaded_target() must be called with 'session_mutex'
+ * locked. This function is used to find the name and the start address of 
+ * the instrumented function. So, for simplicity, we can use 'session_mutex'
+ * to protect 'func_name' and 'func_i_start' too. */
 static char *func_name = NULL;
 static unsigned long func_i_start = 0;
 /* ====================================================================== */
@@ -60,40 +61,13 @@ i_addr_open(struct inode *inode, struct file *filp)
 	return nonseekable_open(inode, filp);
 }
 
-static int
-i_addr_release(struct inode *inode, struct file *filp)
+static int 
+find_func(struct kedr_target *t, void *data)
 {
-	int ret = 0;
-	char *buf = filp->private_data;
-	char *addr_end;
-	unsigned long addr;
 	struct kedr_ifunc *f;
+	unsigned long addr = *(unsigned long *)data;
 	
-	if (mutex_lock_killable(&target_mutex) != 0)
-	{
-		pr_warning(KEDR_MSG_PREFIX "i_addr_release(): "
-			"got a signal while trying to acquire a mutex.\n");
-		ret = -EINTR;
-		goto out_free;
-	}
-	
-	kfree(func_name);
-	func_name = NULL;
-	func_i_start = 0;
-	
-	if (i13n == NULL) {
-		/* target module is not loaded */
-		ret = -EINVAL;
-		goto out;
-	}
-	
-	addr = simple_strtoul(buf, &addr_end, 16);
-	if (addr == 0) {
-		ret = -EINVAL;
-		goto out;
-	}
-	
-	list_for_each_entry(f, &i13n->ifuncs, list) {
+	list_for_each_entry(f, &t->i13n->ifuncs, list) {
 		size_t len;
 
 		if (addr < (unsigned long)f->i_addr ||
@@ -108,19 +82,49 @@ i_addr_release(struct inode *inode, struct file *filp)
 		 * executed. */
 		func_name = kzalloc(len + 2, GFP_KERNEL);
 		if (func_name == NULL) {
-			ret = -ENOMEM;
-			goto out;
+			return -ENOMEM;
 		}
 		
 		strncpy(func_name, f->name, len);
 		func_name[len] = '\n';
 		/* [NB] The terminating 0 has already been set by 
 		 * kzalloc(). */
-		break;
+		return 1; /* found, no need to look into other targets */
 	}
+	
+	return 0;
+}
+
+static int
+i_addr_release(struct inode *inode, struct file *filp)
+{
+	int ret = 0;
+	char *buf = filp->private_data;
+	char *addr_end;
+	unsigned long addr;
+	
+	if (mutex_lock_killable(&session_mutex) != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX "i_addr_release(): "
+			"got a signal while trying to acquire a mutex.\n");
+		ret = -EINTR;
+		goto out_free;
+	}
+	
+	kfree(func_name);
+	func_name = NULL;
+	func_i_start = 0;
+	
+	addr = simple_strtoul(buf, &addr_end, 16);
+	if (addr == 0) {
+		ret = -EINVAL;
+		goto out;
+	}
+	
+	ret = kedr_for_each_loaded_target(find_func, &addr);
 
 out:	
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 
 out_free:
 	kfree(filp->private_data);
@@ -140,7 +144,7 @@ i_addr_write(struct file *filp, const char __user *buf, size_t count,
 	if (i_addr_buf == NULL)
 		return -EINVAL;
 	
-	if (mutex_lock_killable(&target_mutex) != 0)
+	if (mutex_lock_killable(&session_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX "i_addr_write(): "
 			"got a signal while trying to acquire a mutex.\n");
@@ -169,12 +173,12 @@ i_addr_write(struct file *filp, const char __user *buf, size_t count,
 		goto out;
 	}
 	
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	*f_pos += count;
 	return count;
 	
 out:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return ret;
 }
 
@@ -207,7 +211,7 @@ func_name_read(struct file *filp, char __user *buf, size_t count,
 	loff_t pos = *f_pos;
 	size_t data_len;
 	
-	if (mutex_lock_killable(&target_mutex) != 0)
+	if (mutex_lock_killable(&session_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX "func_name_read(): "
 			"got a signal while trying to acquire a mutex.\n");
@@ -240,13 +244,13 @@ func_name_read(struct file *filp, char __user *buf, size_t count,
 		goto out;
 	}
 
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 
 	*f_pos += count;
 	return count;
 
 out:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return ret;
 }
 
@@ -280,7 +284,7 @@ func_i_start_read(struct file *filp, char __user *buf, size_t count,
 	size_t data_len;
 	char addr_buf[I_ADDR_BUF_SIZE];
 	
-	if (mutex_lock_killable(&target_mutex) != 0)
+	if (mutex_lock_killable(&session_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX "func_i_start_read(): "
 			"got a signal while trying to acquire a mutex.\n");
@@ -309,13 +313,13 @@ func_i_start_read(struct file *filp, char __user *buf, size_t count,
 		goto out;
 	}
 
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 
 	*f_pos += count;
 	return count;
 
 out:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return ret;
 }
 

@@ -8,13 +8,6 @@
 
 struct module;
 
-/* An opaque structure that identifies an analysis session for the target
- * module. 
- * A session starts when the target module is loaded but before our system
- * begins to instrument it. The session stops, when the target is about to 
- * unload and "target unload" event has been processed. */
-struct kedr_session;
-
 /* The meaning of the arguments:
  *	eh - the pointer passed during registration
  *	target_module - the target module
@@ -48,9 +41,22 @@ struct kedr_event_handlers
 	/* The module providing the handlers. */
 	struct module *owner;
 	
+	/* Session start and end events. All other events from the "analysis
+	 * session" will be reported after "session start" event but before 
+	 * "session end" event.
+	 * 
+	 * A session starts when a target module has just loaded but no 
+	 * other targets are currently loaded. The session ends when a 
+	 * target module is about to unload but no other targets are 
+	 * currently loaded. A session can be viewed as a period when one or
+	 * more target modules are in the memory.
+	 * 
+	 * [NB] These two handlers are executed in a non-atomic context. */
+	void (*on_session_start)(struct kedr_event_handlers *eh);
+	void (*on_session_end)(struct kedr_event_handlers *eh);
+	
 	/* Target module: loading and unloading 
-	 * [NB] Unlike all other handlers, these two are executed in a 
-	 * non-atomic context*/
+	 * [NB] These two handlers are executed in a non-atomic context. */
 	void (*on_target_loaded)(struct kedr_event_handlers *eh, 
 		struct module *target_module);
 	void (*on_target_about_to_unload)(struct kedr_event_handlers *eh, 
@@ -251,54 +257,6 @@ kedr_get_event_handlers(void);
  *
  * It is not recommended to call the handlers directly in the new code. 
  * kedr_eh*() functions should be used instead. */
-static inline void
-kedr_eh_on_target_loaded(struct module *target_module)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_target_loaded != NULL)
-		eh->on_target_loaded(eh, target_module);
-}
-
-static inline void
-kedr_eh_on_target_about_to_unload(struct module *target_module)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_target_about_to_unload != NULL)
-		eh->on_target_about_to_unload(eh, target_module);
-}
-
-static inline void
-kedr_eh_on_function_entry(unsigned long tid, unsigned long func)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_function_entry != NULL)
-		eh->on_function_entry(eh, tid, func);
-}
-
-static inline void
-kedr_eh_on_function_exit(unsigned long tid, unsigned long func)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_function_exit != NULL)
-		eh->on_function_exit(eh, tid, func);
-}
-
-static inline void
-kedr_eh_on_call_pre(unsigned long tid, unsigned long pc, unsigned long func)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_call_pre != NULL)
-		eh->on_call_pre(eh, tid, pc, func);
-}
-
-static inline void
-kedr_eh_on_call_post(unsigned long tid, unsigned long pc, 
-	unsigned long func)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_call_post != NULL)
-		eh->on_call_post(eh, tid, pc, func);
-}
 
 static inline void
 kedr_eh_begin_memory_events(unsigned long tid, unsigned long num_events, 
@@ -333,71 +291,6 @@ kedr_eh_on_single_memory_event(unsigned long tid, unsigned long pc,
 	kedr_eh_begin_memory_events(tid, 1, &data);
 	kedr_eh_on_memory_event(tid, pc, addr, size, type, data);
 	kedr_eh_end_memory_events(tid, data);
-}
-
-static inline void
-kedr_eh_on_locked_op_pre(unsigned long tid, unsigned long pc, 
-	void **pdata)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_locked_op_pre != NULL)
-		eh->on_locked_op_pre(eh, tid, pc, pdata);
-}
-
-static inline void
-kedr_eh_on_locked_op_post(unsigned long tid, unsigned long pc, 
-	unsigned long addr, unsigned long size, 
-	enum kedr_memory_event_type type, void *data)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_locked_op_post != NULL)
-		eh->on_locked_op_post(eh, tid, pc, addr, size, type, data);
-}
-
-static inline void
-kedr_eh_on_io_mem_op_pre(unsigned long tid, unsigned long pc, 
-	void **pdata)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_io_mem_op_pre != NULL)
-		eh->on_io_mem_op_pre(eh, tid, pc, pdata);
-}
-
-static inline void
-kedr_eh_on_io_mem_op_post(unsigned long tid, unsigned long pc, 
-	unsigned long addr, unsigned long size, 
-	enum kedr_memory_event_type type, void *data)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_io_mem_op_post != NULL)
-		eh->on_io_mem_op_post(eh, tid, pc, addr, size, type, data);
-}
-
-static inline void
-kedr_eh_on_memory_barrier_pre(unsigned long tid, unsigned long pc, 
-	enum kedr_barrier_type type)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_memory_barrier_pre != NULL)
-		eh->on_memory_barrier_pre(eh, tid, pc, type);
-}
-
-static inline void
-kedr_eh_on_memory_barrier_post(unsigned long tid, unsigned long pc, 
-	enum kedr_barrier_type type)
-{
-	struct kedr_event_handlers *eh = kedr_get_event_handlers();
-	if (eh->on_memory_barrier_post != NULL)
-		eh->on_memory_barrier_post(eh, tid, pc, type);
-}
-
-/* "barrier pre" + "barrier post" */
-static inline void
-kedr_eh_on_memory_barrier(unsigned long tid, unsigned long pc, 
-	enum kedr_barrier_type type)
-{
-	kedr_eh_on_memory_barrier_pre(tid, pc, type);
-	kedr_eh_on_memory_barrier_post(tid, pc, type);
 }
 
 static inline void

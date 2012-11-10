@@ -196,14 +196,14 @@ root privileges.
 First, load the core components of KernelStrider:
  
     # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
-        target_name=buggy01
+        targets=buggy01
     # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_common.ko
     # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_cdev.ko
 
 These components are responsible for the instrumentation of the target 
 module and for collecting the data about it in the kernel space.
 
-The name of the target module is specified via parameter "target_name" of 
+The name of the target module is specified via parameter "targets" of 
 "kedr_mem_core" module.
 
 2. 

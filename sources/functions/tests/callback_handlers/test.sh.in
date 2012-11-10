@@ -5,13 +5,8 @@
 # functions can retrieve the arguments and the return values of the
 # callees, where appropriate.
 # 
-# If "no_lookup" argument is also specified, the core will be loaded with
-# function lookup facilities disabled. The handlers for the callbacks must
-# not be set at all. The test checks at least that nothing crashes in this
-# case.
-# 
 # Usage: 
-#   sh test.sh [no_lookup]
+#   sh test.sh
 ########################################################################
 
 # Just in case the tools like lsmod are not in their usual location.
@@ -102,9 +97,8 @@ checkParam()
 doTest()
 {
 	insmod "${CORE_MODULE}" \
-		target_name="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" \
-		lookup_func_info=${DO_LOOKUP_FI} || exit 1
+		targets="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
 	insmod "${CB_USER_MODULE}"
 	if test $? -ne 0; then
@@ -181,29 +175,16 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
-DO_LOOKUP_FI=1
 EXPECTED_FIRST_PRE=1
 EXPECTED_FIRST_POST=1
 EXPECTED_SECOND_PRE=1
 EXPECTED_SECOND_POST=1
 
-USAGE_STRING="Usage: sh $0 [no_lookup]"
+USAGE_STRING="Usage: sh $0"
 
-if test $# -gt 1; then
+if test $# -ne 0; then
 	printf "${USAGE_STRING}\n"
 	exit 1
-fi
-
-if test $# -eq 1; then
-	if test "t$1" != "tno_lookup"; then
-		printf "${USAGE_STRING}\n"
-		exit 1
-	fi
-	DO_LOOKUP_FI=0
-	EXPECTED_FIRST_PRE=0
-	EXPECTED_FIRST_POST=0
-	EXPECTED_SECOND_PRE=0
-	EXPECTED_SECOND_POST=0
 fi
 
 CORE_MODULE_NAME="@CORE_MODULE_NAME@"

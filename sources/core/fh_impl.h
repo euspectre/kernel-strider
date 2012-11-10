@@ -5,10 +5,12 @@
 
 struct kedr_call_info;
 struct kedr_fh_plugin;
+struct kedr_target;
+
 struct module;
 
 /* Unless specifically stated, the functions listed below must be called
- * with 'target_mutex' locked. */
+ * with 'session_mutex' locked. */
 
 /* These two functions implement registration/deregistration of the plugin.
  */
@@ -39,20 +41,29 @@ kedr_fh_on_target_load(struct module *mod);
 void
 kedr_fh_on_target_unload(struct module *mod);
 
+/* These two functions are called right before the init function returns and
+ * on entry to the exit function, respectively. They call appropriate 
+ * handlers provided by the plugins. */
+void
+kedr_fh_on_init_post(struct module *mod);
+
+void
+kedr_fh_on_exit_pre(struct module *mod);
+
 /* Handlers for "session start/end" events. They can be used to perform 
  * session-specific initialization (before the first event has been 
  * generated for the target module) and cleanup (after the last event has 
  * been generated for it). */
 void 
-kedr_fh_on_session_start(struct kedr_session *session);
+kedr_fh_on_session_start(void);
 
 void
-kedr_fh_on_session_end(struct kedr_session *session);
+kedr_fh_on_session_end(void);
 
 /* If there are some handlers and/or a replacement function for the target
  * function (info->target), this function will set them in 'info'. Other 
  * fields of 'info' are left unchanged.
- * This function does not require 'target_mutex' to be locked. */
+ * This function does not require 'session_mutex' to be locked. */
 void 
 kedr_fh_fill_call_info(struct kedr_call_info *info);
 

@@ -50,7 +50,7 @@ cleanupAll()
 ########################################################################
 doTest()
 {
-    insmod "${CORE_MODULE}" target_name="unused" || exit 1
+    insmod "${CORE_MODULE}" targets="unused" || exit 1
 
     insmod "${TEST_MODULE}"
     if test $? -ne 0; then

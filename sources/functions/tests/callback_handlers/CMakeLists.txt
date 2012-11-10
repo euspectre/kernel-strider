@@ -20,10 +20,6 @@ kedr_test_add_script (functions.callback_handlers.01
     test.sh
 )
 
-kedr_test_add_script (functions.callback_handlers.02
-    test.sh "no_lookup"
-)
-
 add_subdirectory(cb_user)
 add_subdirectory(target)
 add_subdirectory(checker)

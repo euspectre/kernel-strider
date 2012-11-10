@@ -58,7 +58,7 @@ doTest()
 	# execute, including the assignment of thread indexes, etc. Note that
 	# sampling itself is not checked in this test.
 	insmod "${CORE_MODULE}" \
-		target_name="${TARGET_MODULE_NAME}" \
+		targets="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" sampling_rate=1 || exit 1
 
 	sh "${TARGET_CONTROL_SCRIPT}" load

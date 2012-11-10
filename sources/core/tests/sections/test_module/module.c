@@ -56,7 +56,7 @@ module_param(test_failed, int, S_IRUGO);
 /* ====================================================================== */
 
 /* The module being analyzed. NULL if the module is not currently loaded. 
- * The accesses to this variable must be protected with 'target_mutex'. */
+ * The accesses to this variable must be protected with 'session_mutex'. */
 static struct module *target_module = NULL;
 
 /* If nonzero, module load and unload notifications will be handled,
@@ -64,7 +64,7 @@ static struct module *target_module = NULL;
 static int handle_module_notifications = 0;
 
 /* A mutex to protect the data related to the target module. */
-DEFINE_MUTEX(target_mutex);
+DEFINE_MUTEX(session_mutex);
 
 /* A directory for the core in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
@@ -133,7 +133,7 @@ filter_module(const char *module_name)
  * called after the target module has been loaded into memory but before it
  * begins its initialization.
  *
- * Note that this function must be called with 'target_mutex' locked. */
+ * Note that this function must be called with 'session_mutex' locked. */
 static void 
 on_module_load(struct module *mod)
 {
@@ -159,7 +159,7 @@ on_module_load(struct module *mod)
  * is called after the cleanup function of the latter has completed and the
  * module loader is about to unload that module.
  *
-  * Note that this function must be called with 'target_mutex' locked.
+  * Note that this function must be called with 'session_mutex' locked.
  *
  * [NB] This function is called even if the initialization of the target
  * module fails. */
@@ -181,10 +181,10 @@ detector_notifier_call(struct notifier_block *nb,
 	struct module* mod = (struct module *)vmod;
 	BUG_ON(mod == NULL);
     
-	if (mutex_lock_killable(&target_mutex) != 0)
+	if (mutex_lock_killable(&session_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-		"detector_notifier_call(): failed to lock target_mutex\n");
+		"detector_notifier_call(): failed to lock session_mutex\n");
 		return 0;
 	}
     
@@ -215,7 +215,7 @@ detector_notifier_call(struct notifier_block *nb,
 	}
 
 out:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return 0;
 }
 
@@ -307,16 +307,16 @@ test_init_module(void)
 		goto out_unreg_notifier;
 	}
     
-	ret = mutex_lock_killable(&target_mutex);
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-			"init(): failed to lock target_mutex\n");
+			"init(): failed to lock session_mutex\n");
 		goto out_unreg_notifier;
 	}
 
 	handle_module_notifications = 1;
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 
 	mutex_unlock(&module_mutex);
         

@@ -72,6 +72,7 @@ kbuild_add_module(${KMODULE_NAME}
 	"resolve_ip.h"
 	"annot_impl.h"
 	"fh_impl.h"
+	"target.h"
 
 # Instruction decoder: sources and headers
 	"${ARCH_DIR}/lib/inat.c"

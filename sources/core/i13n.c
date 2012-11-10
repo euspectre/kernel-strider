@@ -18,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/hash.h>
+#include <linux/spinlock.h>
 
 #include <kedr/kedr_mem/functions.h>
 
@@ -31,6 +32,7 @@
 #include "ir.h"
 #include "util.h"
 #include "hooks.h"
+#include "fh_impl.h"
 /* ====================================================================== */
 
 static void
@@ -104,7 +106,7 @@ struct kedr_fi_table_item
 	struct kedr_func_info *fi;
 };
 
-/* Creates the hash table (only if lookup is enabled). */
+/* Creates the hash table. */
 static int 
 create_fi_table(struct kedr_i13n *i13n)
 {
@@ -112,9 +114,6 @@ create_fi_table(struct kedr_i13n *i13n)
 	
 	/* i13n->fi_table is NULL because '*i13n' has been allocated with 
 	 * kzalloc(). */
-	if (!lookup_func_info)
-		return 0; /* do nothing, just report success. */
-	
 	i13n->fi_table = vmalloc(
 		sizeof(struct hlist_head) * KEDR_FUNC_INFO_TABLE_SIZE);
 	if (i13n->fi_table == NULL) {
@@ -129,7 +128,7 @@ create_fi_table(struct kedr_i13n *i13n)
 	return 0;
 }
 
-/* Destroys the hash table (only if lookup is enabled). */
+/* Destroys the hash table. */
 static void
 destroy_fi_table(struct kedr_i13n *i13n)
 {
@@ -139,7 +138,7 @@ destroy_fi_table(struct kedr_i13n *i13n)
 	struct kedr_fi_table_item *item;
 	int i;
 	
-	if (!lookup_func_info || i13n->fi_table == NULL) 
+	if (i13n->fi_table == NULL) 
 		return;
 	
 	for (i = 0; i < KEDR_FUNC_INFO_TABLE_SIZE; ++i) {
@@ -153,7 +152,7 @@ destroy_fi_table(struct kedr_i13n *i13n)
 	i13n->fi_table = NULL;
 }
 
-/* Adds the item to the hash table (only if lookup is enabled). 
+/* Adds the item to the hash table. 
  * Note that because the table is to be populated in the "on_load" handler
  * for the target module, we may assume that this operation happens in the
  * process context. Therefore we may use GFP_KERNEL here. */
@@ -162,9 +161,6 @@ add_item_to_fi_table(struct kedr_i13n *i13n, struct kedr_func_info *fi)
 {
 	struct kedr_fi_table_item *item;
 	unsigned long bucket;
-	
-	if (!lookup_func_info) 
-		return 0;
 	
 	item = kzalloc(sizeof(*item), GFP_KERNEL);
 	if (item == NULL) {
@@ -188,9 +184,6 @@ kedr_i13n_func_info_for_addr(struct kedr_i13n *i13n, unsigned long addr)
 	struct hlist_node *node;
 	struct kedr_fi_table_item *item;
 	unsigned long bucket;
-	
-	if (!lookup_func_info)
-		return NULL;
 	
 	bucket = hash_ptr((void *)addr, KEDR_FUNC_INFO_HASH_BITS);
 	head = &i13n->fi_table[bucket];
@@ -558,6 +551,64 @@ detour_original_functions(struct kedr_i13n *i13n)
 }
 /* ====================================================================== */
 
+static void
+on_init_post(struct kedr_local_storage *ls)
+{
+	kedr_fh_on_init_post(ls->fi->owner);
+}
+
+static void
+on_exit_pre(struct kedr_local_storage *ls)
+{
+	kedr_fh_on_exit_pre(ls->fi->owner);
+}
+
+static void
+set_init_post_callback(struct kedr_i13n *i13n)
+{
+	struct module *mod = i13n->target;
+	struct kedr_func_info *fi;
+	unsigned long irq_flags;
+	void (*handler)(struct kedr_local_storage *ls) = &on_init_post;
+	
+	if (mod->init == NULL) 
+		return;
+	
+	/* [NB] kedr_find_func_info() cannot be used here as 'i13n' has not
+	 * been saved in the target object yet. */
+	fi = kedr_i13n_func_info_for_addr(i13n, (unsigned long)mod->init);
+	if (fi == NULL)
+		return; /* init() is not instrumentable (e.g., too small) */
+	
+	/* Use the locks just in case something weird occurs and someone
+	 * else tries to set these callbacks even before the target started
+	 * executing. Not sure if such situations may occur though. */
+	spin_lock_irqsave(&fi->handler_lock, irq_flags);
+	rcu_assign_pointer(fi->post_handler, handler);
+	spin_unlock_irqrestore(&fi->handler_lock, irq_flags);
+}
+
+static void
+set_exit_pre_callback(struct kedr_i13n *i13n)
+{
+	struct module *mod = i13n->target;
+	struct kedr_func_info *fi;
+	unsigned long irq_flags;
+	void (*handler)(struct kedr_local_storage *ls) = &on_exit_pre;
+	
+	if (mod->exit == NULL) 
+		return;
+
+	fi = kedr_i13n_func_info_for_addr(i13n, (unsigned long)mod->exit);
+	if (fi == NULL)
+		return; /* exit() is not instrumentable (e.g., too small) */
+	
+	spin_lock_irqsave(&fi->handler_lock, irq_flags);
+	rcu_assign_pointer(fi->pre_handler, handler);
+	spin_unlock_irqrestore(&fi->handler_lock, irq_flags);
+}
+/* ====================================================================== */
+
 struct kedr_i13n *
 kedr_i13n_process_module(struct module *target)
 {
@@ -645,6 +696,9 @@ kedr_i13n_process_module(struct module *target)
 		fixup_fallback_jump_tables(func, i13n);
 	
 	detour_original_functions(i13n);
+	
+	set_init_post_callback(i13n);
+	set_exit_pre_callback(i13n);
 	return i13n;
 
 out_free_functions:

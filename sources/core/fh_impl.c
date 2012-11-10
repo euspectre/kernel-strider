@@ -26,17 +26,8 @@
 #include "fh_impl.h"
 /* ====================================================================== */
 
-/* This list can be accessed only with 'target_mutex' locked. */
+/* This list can be accessed only with 'session_mutex' locked. */
 static LIST_HEAD(fh_plugins);
-/* ====================================================================== */
-
-/* Module's init function, if set. */
-static int  (*init_func)(void) = NULL;
-/* Module's exit function, if set. */
-static void (*exit_func)(void) = NULL;
-
-static struct module *target_module = NULL;
-/* ====================================================================== */
 
 /* The array of pointers to function handlers structures combined from all 
  * registered FH plugins. 'handlers_size' is the number of elements in the
@@ -283,13 +274,13 @@ destroy_handler_table(void)
 /* ====================================================================== */
 
 void 
-kedr_fh_on_session_start(struct kedr_session *session)
+kedr_fh_on_session_start(void)
 {
 	prepare_handler_table();
 }
 
 void
-kedr_fh_on_session_end(struct kedr_session *session)
+kedr_fh_on_session_end(void)
 {
 	destroy_handler_table();
 }
@@ -335,76 +326,31 @@ do_call_exit_post(struct module *mod)
 	}
 }
 
-/* The replacement functions for the init- and exit-functions of the target
- * module. */
-static int
-repl_init(void)
-{
-	int ret = 0;
-
-	BUG_ON(init_func == NULL);
-
-	/* Call the original init function */
-	if (init_func != NULL)
-		ret = init_func();
-
-	/* Restore the callback, the handlers might need its address. */
-	target_module->init = init_func;
-
-	do_call_init_post(target_module);
-
-	return ret;
-}
-
-static void
-repl_exit(void)
-{
-	BUG_ON(exit_func == NULL);
-
-	/* Restore the callback, the handlers might need its address. */
-	target_module->exit = exit_func;
-
-	do_call_exit_pre(target_module);
-
-	/* Call the original exit function. */
-	if (exit_func != NULL)
-		exit_func();
-}
-
 /* If the target module has init function, "init post" handlers will be 
- * called by our replacement for it. Otherwise, they will be called by 
- * kedr_fh_on_target_load() directly. Similar rule applies for the exit 
- * function. */
+ * called by our replacement for it. Otherwise, they will not be called. 
+ * Similar rule applies to the handlers for the exit function. */
 void
 kedr_fh_on_target_load(struct module *mod)
 {
-	target_module = mod;
-	init_func = target_module->init;
-	
 	do_call_init_pre(mod);
-	
-	if (init_func != NULL) {
-		target_module->init = repl_init;
-	}
-	else {
-		do_call_init_post(mod);
-	}
-
-	exit_func = target_module->exit;
-	if (exit_func != NULL) {
-		target_module->exit = repl_exit;
-	}
 }
 
 void
 kedr_fh_on_target_unload(struct module *mod)
 {
-	if (exit_func == NULL)
-		do_call_exit_pre(mod);
-	
 	do_call_exit_post(mod);
-	
-	target_module = NULL;
+}
+
+void
+kedr_fh_on_init_post(struct module *mod)
+{
+	do_call_init_post(mod);
+}
+
+void
+kedr_fh_on_exit_pre(struct module *mod)
+{
+	do_call_exit_pre(mod);
 }
 /* ====================================================================== */
 

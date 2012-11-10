@@ -4,6 +4,7 @@
 #define CORE_IMPL_H_1628_INCLUDED
 
 #include <linux/bug.h> /* BUG_ON */
+#include <linux/list.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -22,12 +23,11 @@
  * module. */
 #define KEDR_SECTIONS_FILE "@KEDR_MEM_CORE_SECTIONS_FILE@"
 
-/* The instrumentation object. NULL if the instrumentation failed or was not
- * performed. */
-extern struct kedr_i13n *i13n;
+/* The object containing session-specific data */
+extern struct kedr_session session;
 
-/* The mutex to serialize operations with the target-specific data. */
-extern struct mutex target_mutex;
+/* The mutex to serialize operations with the session-specific data. */
+extern struct mutex session_mutex;
 
 /* The current set of event handlers. Should never be NULL. */
 struct kedr_event_handlers;
@@ -61,9 +61,127 @@ extern unsigned int sampling_rate;
  * number of blocks skipped because of sampling, respectively. */
 extern size_t blocks_total;
 extern size_t blocks_skipped;
+/* ====================================================================== */
 
-/* This parameter allows to enable and disable lookup of func_info objects
- * by the address of an original function. */
-extern int lookup_func_info;
+static inline void
+kedr_eh_on_session_start(void)
+{
+	if (eh_current->on_session_start != NULL)
+		eh_current->on_session_start(eh_current);
+}
 
+static inline void
+kedr_eh_on_session_end(void)
+{
+	if (eh_current->on_session_end != NULL)
+		eh_current->on_session_end(eh_current);
+}
+
+static inline void
+kedr_eh_on_target_loaded(struct module *target_module)
+{
+	if (eh_current->on_target_loaded != NULL)
+		eh_current->on_target_loaded(eh_current, target_module);
+}
+
+static inline void
+kedr_eh_on_target_about_to_unload(struct module *target_module)
+{
+	if (eh_current->on_target_about_to_unload != NULL)
+		eh_current->on_target_about_to_unload(eh_current, 
+			target_module);
+}
+
+static inline void
+kedr_eh_on_function_entry(unsigned long tid, unsigned long func)
+{
+	if (eh_current->on_function_entry != NULL)
+		eh_current->on_function_entry(eh_current, tid, func);
+}
+
+static inline void
+kedr_eh_on_function_exit(unsigned long tid, unsigned long func)
+{
+	if (eh_current->on_function_exit != NULL)
+		eh_current->on_function_exit(eh_current, tid, func);
+}
+
+static inline void
+kedr_eh_on_call_pre(unsigned long tid, unsigned long pc, unsigned long func)
+{
+	if (eh_current->on_call_pre != NULL)
+		eh_current->on_call_pre(eh_current, tid, pc, func);
+}
+
+static inline void
+kedr_eh_on_call_post(unsigned long tid, unsigned long pc, 
+	unsigned long func)
+{
+	if (eh_current->on_call_post != NULL)
+		eh_current->on_call_post(eh_current, tid, pc, func);
+}
+
+static inline void
+kedr_eh_on_locked_op_pre(unsigned long tid, unsigned long pc, 
+	void **pdata)
+{
+	if (eh_current->on_locked_op_pre != NULL)
+		eh_current->on_locked_op_pre(eh_current, tid, pc, pdata);
+}
+
+static inline void
+kedr_eh_on_locked_op_post(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type, void *data)
+{
+	if (eh_current->on_locked_op_post != NULL)
+		eh_current->on_locked_op_post(eh_current, tid, pc, addr, 
+			size, type, data);
+}
+
+static inline void
+kedr_eh_on_io_mem_op_pre(unsigned long tid, unsigned long pc, 
+	void **pdata)
+{
+	if (eh_current->on_io_mem_op_pre != NULL)
+		eh_current->on_io_mem_op_pre(eh_current, tid, pc, pdata);
+}
+
+static inline void
+kedr_eh_on_io_mem_op_post(unsigned long tid, unsigned long pc, 
+	unsigned long addr, unsigned long size, 
+	enum kedr_memory_event_type type, void *data)
+{
+	if (eh_current->on_io_mem_op_post != NULL)
+		eh_current->on_io_mem_op_post(eh_current, tid, pc, addr, 
+			size, type, data);
+}
+
+static inline void
+kedr_eh_on_memory_barrier_pre(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	if (eh_current->on_memory_barrier_pre != NULL)
+		eh_current->on_memory_barrier_pre(eh_current, tid, pc, 
+			type);
+}
+
+static inline void
+kedr_eh_on_memory_barrier_post(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	if (eh_current->on_memory_barrier_post != NULL)
+		eh_current->on_memory_barrier_post(eh_current, tid, pc, 
+			type);
+}
+
+/* "barrier pre" + "barrier post" */
+static inline void
+kedr_eh_on_memory_barrier(unsigned long tid, unsigned long pc, 
+	enum kedr_barrier_type type)
+{
+	kedr_eh_on_memory_barrier_pre(tid, pc, type);
+	kedr_eh_on_memory_barrier_post(tid, pc, type);
+}
+/* ====================================================================== */
 #endif /* CORE_IMPL_H_1628_INCLUDED */

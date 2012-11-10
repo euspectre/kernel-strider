@@ -114,7 +114,7 @@ doTest()
 	getInfoFromKoFile
 	
 	insmod "${CORE_MODULE}" \
-		target_name="${TARGET_MODULE_NAME}" ${PROCESS_STACK} \
+		targets="${TARGET_MODULE_NAME}" ${PROCESS_STACK} \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
 
 	insmod "${REPORTER_MODULE}" \

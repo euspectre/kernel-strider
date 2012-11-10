@@ -18,7 +18,7 @@ if test ! -f "${CORE_MODULE}"; then
     exit 1
 fi
 
-insmod "${CORE_MODULE}" target_name="unused"
+insmod "${CORE_MODULE}" targets="unused"
 if test $? -ne 0; then
     printf "Failed to load the core module\n"
     exit 1

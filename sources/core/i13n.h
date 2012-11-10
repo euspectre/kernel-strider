@@ -76,11 +76,8 @@ kedr_i13n_process_module(struct module *target);
 void
 kedr_i13n_cleanup(struct kedr_i13n *i13n);
 
-/* If this feature is enabled, the function looks for the func_info object
- * for the function with the given address. Returns the address of the 
- * object if found, NULL otherwise. 
- * If lookup is disabled (lookup_func_info parameter of the core is 0), the 
- * function always returns NULL. */
+/* Looks for the func_info object for the function with the given address. 
+ * Returns the address of the object if found, NULL otherwise. */
 struct kedr_func_info *
 kedr_i13n_func_info_for_addr(struct kedr_i13n *i13n, unsigned long addr);
 

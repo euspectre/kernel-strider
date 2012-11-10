@@ -9,6 +9,7 @@
 
 struct kedr_local_storage;
 struct kedr_session;
+struct module;
 
 /* Information about how to process the given call to the target function.
  * For each near call and jump out of the function, a call_info instance
@@ -54,6 +55,9 @@ struct kedr_func_info
 	/* Address of the original (i.e. not instrumented) function. */
 	unsigned long addr;
 
+	/* The kernel module this function belongs to. */
+	struct module *owner;
+	
 	/* If set, these handlers will be called on entry to the function
 	 * and right before its exit, respectively. Unlike the handlers from
 	 * call_info structures, these handlers are called no matter how the
@@ -74,9 +78,9 @@ struct kedr_func_info
 	 * set new handlers if some handlers have already been set, etc.)
 	 *
 	 * Execution of these handlers will be performed in the RCU
-	 * read-side sections (consider the addresses of the handlers as the
+	 * read-side section. Treat the addresses of the handlers as the
 	 * pointers to the RCU-protected resources, use rcu_dereference(),
-	 * etc.).
+	 * etc.
 	 *
 	 * The code setting these handlers must follow the rules for the RCU
 	 * write-side sections: take 'handler_lock' to serialize the updates
@@ -96,9 +100,6 @@ struct kedr_func_info
 
 /* Searches for the func_info structure for a function with the given start
  * address. Returns NULL if not found.
- * [NB] If searching for func_info is disabled ('lookup_func_info' parameter
- * of the core is 0), the function does not perform search and just returns
- * NULL.
  *
  * It is allowed to call this function only if the target module has already
  * been instrumented and is now in the memory. It is expected to be called
@@ -162,9 +163,6 @@ struct kedr_fh_plugin
 	 * target as the arguments. If a callback is NULL, it will be
 	 * ignored.
 	 *
-	 * If set, the appropriate callbacks will be called even the target
-	 * module does not have init and/or exit function.
-	 *
 	 * The core of the system ensures that such callbacks (be they from
 	 * the same or from different plugins) are never executed
 	 * concurrently.
@@ -176,11 +174,17 @@ struct kedr_fh_plugin
 	void (*on_init_pre)(struct kedr_fh_plugin *fh, struct module *mod);
 
 	/* Called right after the target module has completed its
-	 * initialization. */
+	 * initialization. 
+	 * [NB] This callback may not be called if the target module has no 
+	 * init function or if the init function is too small to be 
+	 * instrumented. */
 	void (*on_init_post)(struct kedr_fh_plugin *fh, struct module *mod);
 
 	/* Called right before the target module starts executing its exit
-	 * function. */
+	 * function. 
+	 * [NB] This callback may not be called if the target module has no 
+	 * exit function or if the exit function is too small to be 
+	 * instrumented. */
 	void (*on_exit_pre)(struct kedr_fh_plugin *fh, struct module *mod);
 
 	/* Called when the target module has executed its exit function and

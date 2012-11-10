@@ -22,22 +22,28 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
+static void *p = NULL;
+
 static void __exit
 test_cleanup_module(void)
 {
+	/* Do something here to make the function not too small as it is 
+	 * needed to be instrumentable. */
+	kfree(p);
 	return;
 }
 
 static int __init
 test_init_module(void)
 {
-	void *p;
+	p = kmalloc(20, GFP_KERNEL);
+	if (p == NULL)
+		return -ENOMEM;
+	kfree(p);
 	
 	p = kmalloc(20, GFP_KERNEL);
 	if (p == NULL)
 		return -ENOMEM;
-	
-	kfree(p);
 	return 0;
 }
 

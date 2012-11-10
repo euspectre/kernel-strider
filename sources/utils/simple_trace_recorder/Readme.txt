@@ -79,7 +79,7 @@ collection system require root privileges.
 Load the core components of KernelStrider:
  
  # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
-   target_name=<name_of_the_target_module>
+   targets=<name_of_the_target_module>
  # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_func_drd.ko 
 
 2. 

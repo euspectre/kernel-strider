@@ -26,6 +26,9 @@
 #include <linux/mutex.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
+#include <linux/string.h>
+#include <linux/spinlock.h>
+#include <asm/uaccess.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -42,15 +45,32 @@
 #include "util.h"
 #include "resolve_ip.h"
 #include "fh_impl.h"
+#include "target.h"
 /* ====================================================================== */
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
-/* Name of the module to analyze. An empty name will match no module */
-char *target_name = "";
-module_param(target_name, charp, S_IRUGO);
+/* Names of the modules to be processed ("target modules"). The names can be
+ * separated with any number of commas and semicolons. Note that spaces are
+ * not allowed as separators as the module loaded interprets them in a 
+ * special way. 
+ *
+ * "*" or at least one target module should be specified.
+ *
+ * If "*" is used instead of the list of modules, our system will process 
+ * all the modules that will load after it except the modules with the names
+ * staring from "kedr_" and "test_". If it is needed to analyze such 
+ * modules, their names should be listed explicitly.
+ * 
+ * '*' is interpreted this way only if it is the only character in the value
+ * of "targets" (except separator characters that may be also present). If 
+ * there are other characters in that string value, '*' is considered to be
+ * part of the name of a module, which is usually not what you want. 
+ * [NB] Glob-expressions (e.g. "iwl*i") are not supported. */
+char *targets = "*";
+module_param(targets, charp, S_IRUGO);
 
 /* Path where the user-mode helper scripts are located. Normally, the user
  * would not change it, it is mainly for testing purposes. */
@@ -114,28 +134,58 @@ module_param(process_um_accesses, int, S_IRUGO);
  * the performance degradation can be significant here. */
 unsigned int sampling_rate = 0;
 module_param(sampling_rate, uint, S_IRUGO);
-
-/* If non-zero, searching for func_info objects for the functions will be
- * enabled, given the start addresses of these functions (i.e. of the
- * original instances of these). See kedr_find_func_info().
- * If such searching slows down the operation of the target module too much,
- * you can disable this functionality by setting 'lookup_func_info' to 0
- * when loading the core module. kedr_find_func_info() will always return
- * NULL in this case, no searching will be performed. */
-int lookup_func_info = 1;
-module_param(lookup_func_info, int, S_IRUGO);
 /* ====================================================================== */
 
-/* [NB] When support for analysis of several modules as a whole is 
- * implemented, this structure will actually contain data for an analysis
- * session: the list of modules, etc. For now, it is a placeholder. */
+/* An structure that identifies an analysis session for the target module. 
+ * A session starts when the target module is loaded but before our system
+ * begins to instrument it. The session stops, when the target is about to 
+ * unload and "target unload" event has been processed. 
+ *
+ * Unless specifically stated, all operations with the session object must
+ * be performed with 'session_mutex' locked, except its initialization and
+ * cleanup.
+ * 
+ * [NB] Initialize it before connecting to the kernel notification system.*/
 struct kedr_session
 {
-	int unused;
+	/* The list of the 'target objects' (see below). 
+	 * If the particular targets have been specified for our system, the
+	 * list contains the preallocated objects for these (no matter 
+	 * whether the targets are loaded or not).
+	 * 
+	 * If processing of all modules has been requested (that is, our 
+	 * system has been loaded with targets='*'), the session object 
+	 * starts with an empty 'targets' list. New elements are added to it
+	 * when the kernel modules are loaded and therefore become the 
+	 * targets. Note that the elements remain here even after the 
+	 * corresponding target modules have been unloaded and are reused if
+	 * they are loaded again. */
+	struct list_head targets;
+	
+	/* Non-zero if processing of all modules to be loaded has been 
+	 * requested (parameter 'targets' is '*'), 0 otherwise. */
+	int process_all;
+	
+	/* Number of the currently loaded target modules. */
+	unsigned int num_loaded;
+	
+	/* Nonzero, if the system failed to start the session. The target
+	 * modules will not be processed until the core of our system is 
+	 * reloaded. */
+	int is_broken;
 };
 
-/* The analysis session. */
-static struct kedr_session session;
+/* The session object. */
+struct kedr_session session;
+
+/* A mutex to protect the data related to the analysis session and to the
+ * target modules in particular. */
+DEFINE_MUTEX(session_mutex);
+
+/* A spinlock to protect operations with the list of target object while the
+ * session is active. Not needed if the target is not active or if the list
+ * is only being read with 'session_mutex' locked. */
+static DEFINE_SPINLOCK(target_list_lock);
 /* ====================================================================== */
 
 /* Total number of blocks containing potential memory accesses and the
@@ -156,36 +206,24 @@ static struct kedr_event_handlers *eh_default = NULL;
 /* The current set of event handlers. If no set is registered, 'eh_current'
  * must be the address of the default set, i.e. eh_current == eh_default.
  * Except the initial assignment, all accesses to 'eh_current' pointer must
- * be protected with 'target_mutex'. This way, we make sure the instrumented
+ * be protected with 'session_mutex'. This way, we make sure the instrumented
  * code will see the set of handlers in a consistent state.
  *
  * Note that calling the handlers from '*eh_current' is expected to be done
- * without locking 'target_mutex'. As long as the structure pointed to by
+ * without locking 'session_mutex'. As long as the structure pointed to by
  * 'eh_current' stays unchanged since its registration till its
  * de-registration, this makes no harm. Only the changes in the pointer
  * itself must be protected. */
 struct kedr_event_handlers *eh_current = NULL;
 
-/* The module being analyzed. NULL if the module is not currently loaded.
- * The accesses to this variable must be protected with 'target_mutex'. */
-static struct module *target_module = NULL;
-
 /* If nonzero, module load and unload notifications will be handled,
  * if 0, they will not. */
 static int handle_module_notifications = 0;
-
-/* A mutex to protect the data related to the target module. */
-DEFINE_MUTEX(target_mutex);
 /* ====================================================================== */
 
 /* A directory for the core in debugfs. */
 static struct dentry *debugfs_dir_dentry = NULL;
 const char *debugfs_dir_name = KEDR_DEBUGFS_DIR;
-/* ====================================================================== */
-
-/* The instrumentation object. NULL if the instrumentation failed or was not
- * performed. */
-struct kedr_i13n *i13n = NULL;
 /* ====================================================================== */
 
 /* The pool of the IDs that are unique during the session with the target
@@ -237,6 +275,257 @@ clear_id_pool(void)
 }
 /* ====================================================================== */
 
+static int
+session_active(void)
+{
+	return (session.num_loaded > 0);
+}
+
+static void
+cleanup_session(void)
+{
+	struct kedr_target *t;
+	struct kedr_target *tmp;
+
+	BUG_ON(session_active());
+	
+	list_for_each_entry_safe(t, tmp, &session.targets, list) {
+		BUG_ON(t->mod != NULL);
+		BUG_ON(t->i13n != NULL);
+		
+		list_del(&t->list);
+		kfree(t->name);
+		kfree(t);
+	}
+}
+
+/* Replace '-' with '_' in the name of the target to allow the user to 
+ * specify the target names like "kvm-intel" or the like. */
+static void
+replace_dashes(char *str)
+{
+	int i = 0;
+	while (str[i] != 0) {
+		if (str[i] == '-')
+			str[i] = '_';
+		++i;
+	}
+}
+
+/* Preallocate objects for the known targets. */
+static int __init
+add_target_object(size_t beg, size_t len)
+{
+	struct kedr_target *t;
+	
+	t = kzalloc(sizeof(*t), GFP_KERNEL);
+	if (t == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to create a target object: out of memory.\n");
+		return -ENOMEM;
+	}
+			
+	t->name = kstrndup(&targets[beg], len, GFP_KERNEL);
+	if (t->name == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to copy the name of the target: out of memory.\n");
+		
+		kfree(t);
+		return -ENOMEM;
+	}
+	
+	replace_dashes(t->name);
+	
+	/* No need for locking the spinlock, the session is not active. */
+	list_add(&t->list, &session.targets);
+	return 0;
+}
+
+/* Initializes the session object according to the value of "targets" 
+ * parameter. Pre-creates the kedr_target objects if needed. */
+static int __init
+init_session(void)
+{
+	static const char *seps = ",;";
+	int ret = -EINVAL;
+	int targets_found = 0;
+	
+	size_t beg = 0;
+	size_t end = strlen(targets);
+	
+	INIT_LIST_HEAD(&session.targets);
+	session.process_all = 0;
+	session.num_loaded = 0;
+	session.is_broken = 0;
+	
+	beg += strspn(targets, seps);
+	while (beg < end) {
+		size_t len = strcspn(&targets[beg], seps);
+		
+		if (targets[beg] == '*' && len == 1) {
+			session.process_all = 1;
+		}
+		else {
+			ret = add_target_object(beg, len);
+			if (ret != 0)
+				goto fail;
+			
+			targets_found = 1;
+		}
+		beg += len + strspn(&targets[beg + len], seps);
+	}
+	
+	if (!session.process_all && !targets_found) {
+		pr_warning(KEDR_MSG_PREFIX
+			"At least one target should be specified.\n");
+		goto fail;
+	}
+	
+	if (session.process_all && targets_found) {
+		pr_warning(KEDR_MSG_PREFIX
+"If '*' is used, it must be the only item in the list of targets.\n");
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	cleanup_session();
+	return ret;
+}
+
+/* These two functions looks for a target object corresponding to the module
+ * with the given name or struct module. Return the object if found, NULL 
+ * otherwise. 
+ *
+ * Should be called with 'session_mutex' locked. */
+static struct kedr_target *
+find_target_object_by_name(const char *name)
+{
+	struct kedr_target *pos = NULL;
+	struct kedr_target *t = NULL;
+	
+	list_for_each_entry(pos, &session.targets, list) {
+		if (strcmp(pos->name, name) == 0) {
+			t = pos;
+			break;
+		}
+	}
+	return t;
+}
+
+static struct kedr_target *
+find_target_object_by_mod(struct module *mod)
+{
+	struct kedr_target *pos = NULL;
+	struct kedr_target *t = NULL;
+
+	list_for_each_entry(pos, &session.targets, list) {
+		if (pos->mod == mod) {
+			t = pos;
+			break;
+		}
+	}
+	return t;
+}
+
+static struct kedr_target *
+object_for_loaded_target(struct module *mod)
+{
+	struct kedr_target *t;
+	unsigned long irq_flags;
+	
+	t = kzalloc(sizeof(*t), GFP_KERNEL);
+	if (t == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to create a target object: out of memory.\n");
+		return NULL;
+	}
+			
+	t->name = kstrdup(module_name(mod), GFP_KERNEL);
+	if (t->name == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"Failed to copy the name of the target: out of memory.\n");
+		
+		kfree(t);
+		return NULL;
+	}
+
+	/* [NB] No need to replace '-' with '_' in the name of the target
+	 * in this case: insmod/modprobe/... must have done that already. */
+
+	spin_lock_irqsave(&target_list_lock, irq_flags);
+	list_add(&t->list, &session.targets);
+	spin_unlock_irqrestore(&target_list_lock, irq_flags);
+	return t;
+}
+
+/* Nonzero of the name of the module does not start with "kedr_" or "test_",
+ * 0 otherwise. */
+static int
+is_special_module(struct module *mod)
+{
+	static char pr1[] = "kedr_";
+	static char pr2[] = "test_";
+	
+	if (strncmp(module_name(mod), &pr1[0], ARRAY_SIZE(pr1) - 1) == 0)
+		return 1;
+	
+	if (strncmp(module_name(mod), &pr2[0], ARRAY_SIZE(pr2) - 1) == 0)
+		return 1;
+	
+	return 0;
+}
+
+/* The function returns the target object for the given module.
+ * NULL is returned if the module is not a target or if an error occurs. 
+ * Should be called with 'session_mutex' locked. */
+static struct kedr_target *
+get_target_object(struct module *mod)
+{
+	struct kedr_target *t;
+	
+	/* First check if the target module is already known. Lookup by name
+	 * because the module might have been unloaded and loaded again and
+	 * might have a different struct module now. */
+	t = find_target_object_by_name(module_name(mod));
+	
+	if (t == NULL && session.process_all && !is_special_module(mod))
+		t = object_for_loaded_target(mod);
+			
+	if (t != NULL) {
+		BUG_ON(t->mod != NULL);
+		t->mod = mod;
+	}
+	return t;
+}
+
+int
+kedr_for_each_loaded_target(int (*func)(struct kedr_target *, void *), 
+	void *data)
+{
+	struct kedr_target *t;
+	int ret = 0;
+	
+	list_for_each_entry(t, &session.targets, list) {
+		if (t->mod != NULL && t->i13n != NULL) {
+			ret = func(t, data);
+			if (ret < 0) {
+				/* error */
+				goto out;
+			}
+			else if (ret > 0) { 
+				/* no error, but no need to go further */
+				ret = 0;
+				goto out;
+			}
+		}
+	}
+out:
+	return ret;
+}
+/* ====================================================================== */
+
 /* "Provider" support */
 /* A provider is a component that provides its functions to the core
  * (e.g. event handlers, allocators, other kinds of callbacks).
@@ -252,7 +541,7 @@ clear_id_pool(void)
  * least, their usage count set by our module should remain 0).
  *
  * Operations with the collection of providers (set, reset, get, put)
- * except its initialization should be performed with 'target_mutex' locked.
+ * except its initialization should be performed with 'session_mutex' locked.
  * This way, these operations will be atomic w.r.t. the loading / unloading
  * of the target. */
 enum kedr_provider_role
@@ -275,25 +564,21 @@ enum kedr_provider_role
 static struct module *providers[KEDR_PR_NUM_ROLES];
 
 /* Set the provider with the given role.
- * Must not be called if the target module has already been instrumented.
- * As this function is called with 'target_mutex' locked, it can either see
- * the target completely instrumented (i13n != NULL) and the providers
- * already "locked" in memory or it can see the providers unlocked. Only in
- * the latter case, it is allowed to use this function. */
+ * Must not be called if the session is already active. */
 static void
 set_provider(struct module *m, enum kedr_provider_role role)
 {
 	BUG_ON(m == NULL);
-	BUG_ON(i13n != NULL);
+	BUG_ON(session_active());
 	providers[role] = m;
 }
 
 /* Reset the provider with the given role to the default.
- * Must not be called if the target module has already been instrumented. */
+ * Must not be called if the session is already active. */
 static void
 reset_provider(enum kedr_provider_role role)
 {
-	BUG_ON(i13n != NULL);
+	BUG_ON(session_active());
 	providers[role] = THIS_MODULE;
 }
 
@@ -379,17 +664,11 @@ struct kedr_core_hooks *core_hooks = &default_hooks;
 
 /* Non-zero if some set of event handlers has already been registered,
  * 0 otherwise.
- * Must be called with 'target_mutex' locked. */
+ * Must be called with 'session_mutex' locked. */
 static int
 event_handlers_registered(void)
 {
 	return (eh_current != eh_default);
-}
-
-static int
-target_module_loaded(void)
-{
-	return (target_module != NULL);
 }
 
 int
@@ -398,16 +677,15 @@ kedr_register_event_handlers(struct kedr_event_handlers *eh)
 	int ret = 0;
 	BUG_ON(eh == NULL || eh->owner == NULL);
 
-	if (mutex_lock_killable(&target_mutex) != 0) {
+	if (mutex_lock_killable(&session_mutex) != 0) {
 		pr_warning(KEDR_MSG_PREFIX
 		"kedr_register_event_handlers(): failed to lock mutex\n");
 		return -EINTR;
 	}
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-		"Unable to register event handlers: target module is "
-		"loaded\n");
+	"Unable to register event handlers: analysis session is active.\n");
 		ret = -EBUSY;
 		goto out_unlock;
 	}
@@ -422,11 +700,11 @@ kedr_register_event_handlers(struct kedr_event_handlers *eh)
 
 	eh_current = eh;
 	set_provider(eh->owner, KEDR_PR_EVENT_HANDLERS);
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return 0; /* success */
 
 out_unlock:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return ret;
 }
 EXPORT_SYMBOL(kedr_register_event_handlers);
@@ -440,16 +718,15 @@ kedr_unregister_event_handlers(struct kedr_event_handlers *eh)
 	 * lock the mutex anyway. The handlers must be restored to their
 	 * defaults even if their owner did something wrong.
 	 * If this mutex_lock() call hangs because some other code has taken
-	 * 'target_mutex' forever, it is our bug anyway and reboot will
+	 * 'session_mutex' forever, it is our bug anyway and reboot will
 	 * probably be necessary among other things. It seems safer to let
 	 * it hang than to allow the owner of the event handlers go away
 	 * while these handlers might be in use. */
-	mutex_lock(&target_mutex);
+	mutex_lock(&session_mutex);
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-		"Attempt to unregister event handlers while the target "
-		"module is loaded\n");
+"Attempt to unregister event handlers while the session is active\n");
 		goto out;
 	}
 
@@ -465,7 +742,7 @@ out:
 	 * handlers to their defaults, it is safer anyway. */
 	eh_current = eh_default;
 	reset_provider(KEDR_PR_EVENT_HANDLERS);
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return;
 }
 EXPORT_SYMBOL(kedr_unregister_event_handlers);
@@ -473,72 +750,94 @@ EXPORT_SYMBOL(kedr_unregister_event_handlers);
 struct kedr_event_handlers *
 kedr_get_event_handlers(void)
 {
-	WARN_ON_ONCE(!target_module_loaded());
+	WARN_ON_ONCE(!session_active());
 	return eh_current;
 }
 EXPORT_SYMBOL(kedr_get_event_handlers);
 /* ====================================================================== */
 
-/* Module filter.
- * Should return nonzero if the core should watch for the module with the
- * specified name. We are interested in analyzing only the module with that
- * name. */
 static int
-filter_module(const char *module_name)
+session_start(void)
 {
-	return strcmp(module_name, target_name) == 0;
+	int ret = providers_get();
+	if (ret != 0)
+		return ret;
+
+	ret = kedr_fh_plugins_get();
+	if (ret != 0) {
+		providers_put();
+		return ret;
+	}
+	
+	kedr_eh_on_session_start();
+	kedr_fh_on_session_start();
+	
+	blocks_total = 0;
+	blocks_skipped = 0;
+	return 0;
+}
+
+static void
+session_end(void)
+{
+	kedr_fh_on_session_end();
+	kedr_eh_on_session_end();
+	
+	kedr_fh_plugins_put();
+	providers_put();
+	clear_id_pool();
 }
 
 /* on_module_load() handles loading of the target module. This function is
  * called after the target module has been loaded into memory but before it
  * begins its initialization.
  *
- * Note that this function must be called with 'target_mutex' locked. */
+ * Note that this function must be called with 'session_mutex' locked. */
 static void
-on_module_load(struct module *mod)
+on_module_load(struct kedr_target *t) 
 {
-	BUG_ON(i13n != NULL);
-
+	int session_begins = (session.num_loaded == 0);
+	
+	if (session.is_broken)
+		return;
+		
+	BUG_ON(t == NULL);
+	BUG_ON(t->i13n != NULL);
+	
+	if (session_begins) {
+		int ret = session_start();
+		if (ret != 0) {
+			pr_warning(KEDR_MSG_PREFIX
+		"Failed to start the analysis session. Error code: %d\n",
+				ret);
+			session.is_broken = 1;
+			return;
+		}
+	}
+	
+	/* If we failed to start the session, no targets will be processed
+	 * until the core module is reloaded. If the session started 
+	 * successfully but instrumentation of some of the target modules 
+	 * has failed, these modules will not be analysed this time but 
+	 * other targets (if they exist) will be. */
+		
+	++session.num_loaded;
+	
 	pr_info(KEDR_MSG_PREFIX
 		"Target module \"%s\" has just loaded.\n",
-		module_name(mod));
-
-	if (providers_get() != 0) {
-		/* If we failed to lock the providers in memory, we
-		 * should not instrument or otherwise affect the target. */
-		return;
-	}
-
-	if (kedr_fh_plugins_get() != 0) {
-		providers_put();
-		return;
-	}
-	kedr_fh_on_session_start(&session);
+		module_name(t->mod));
 	
-	i13n = kedr_i13n_process_module(mod);
-	BUG_ON(i13n == NULL);
-	if (IS_ERR(i13n)) {
-		pr_warning(KEDR_MSG_PREFIX
-		"Failed to instrument module \"%s\". Error code: %d\n",
-			module_name(mod), (int)PTR_ERR(i13n));
-		i13n = NULL;
-
-		/* Instrumentation failed, no need to keep the providers
-		 * and the FH plugins in memory in this case. The target
-		 * module will run unmodified anyway. */
-		kedr_fh_on_session_end(&session);
-		kedr_fh_plugins_put();
-		providers_put();
+	t->i13n = kedr_i13n_process_module(t->mod);
+	BUG_ON(t->i13n == NULL);
+	if (IS_ERR(t->i13n)) {
+		t->i13n = NULL;
 		return;
 	}
-
-	blocks_total = 0;
-	blocks_skipped = 0;
 
 	/* First, report "target load" event, then allow the plugins to
 	 * generate more events for this target if they need to. */
-	kedr_eh_on_target_loaded(mod);
-	kedr_fh_on_target_load(mod);
+	kedr_eh_on_target_loaded(t->mod);
+	kedr_fh_on_target_load(t->mod);
 	return;
 }
 
@@ -546,52 +845,63 @@ on_module_load(struct module *mod)
  * is called after the cleanup function of the latter has completed and the
  * module loader is about to unload that module.
  *
- * Note that this function must be called with 'target_mutex' locked.
+ * Note that this function must be called with 'session_mutex' locked.
  *
  * [NB] This function is called even if the initialization of the target
  * module fails. */
 static void
-on_module_unload(struct module *mod)
+on_module_unload(struct kedr_target *t)
 {
+	int session_ends = (session.num_loaded == 1);
+	
+	BUG_ON(t == NULL);
+	BUG_ON(t->mod == NULL);
+	
+	if (session.is_broken)
+		return;
+	
 	pr_info(KEDR_MSG_PREFIX
 		"Target module \"%s\" is going to unload.\n",
-		module_name(mod));
+		module_name(t->mod));
 
 	/* If we failed to lock the providers in memory when the target had
 	 * just loaded or failed to perform the instrumentation then, the
 	 * target module worked unchanged and usage count of the providers
 	 * was not modified. Nothing to clean up in this case. */
-	if (i13n == NULL)
-		return;
+	if (t->i13n == NULL)
+		goto out;
 
 	/* The function handling plugins may generate events themselves, so
 	 * make them do it before the event handling subsystem reports
 	 * "target unload" event. */
-	kedr_fh_on_target_unload(mod);
-	kedr_eh_on_target_about_to_unload(mod);
+	kedr_fh_on_target_unload(t->mod);
+	kedr_eh_on_target_about_to_unload(t->mod);
 
-	clear_id_pool();
-	kedr_i13n_cleanup(i13n);
-	i13n = NULL; /* prepare for the next instrumentation session */
+	kedr_i13n_cleanup(t->i13n);
+	t->i13n = NULL; /* prepare for the next instrumentation session */
 	
-	kedr_fh_on_session_end(&session);
-	kedr_fh_plugins_put();
-	providers_put();
+out:
+	t->mod = NULL;
+	
+	--session.num_loaded;
+	if (session_ends)
+		session_end();
 }
 
-/* A callback function to handle loading and unloading of a module.
- * Sets 'target_module' pointer among other things. */
+/* A callback function to handle loading and unloading of a module. */
 static int
 detector_notifier_call(struct notifier_block *nb,
 	unsigned long mod_state, void *vmod)
 {
 	struct module* mod = (struct module *)vmod;
+	struct kedr_target *t = NULL;
+	
 	BUG_ON(mod == NULL);
 
-	if (mutex_lock_killable(&target_mutex) != 0)
+	if (mutex_lock_killable(&session_mutex) != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-		"detector_notifier_call(): failed to lock target_mutex\n");
+		"detector_notifier_call(): failed to lock session_mutex\n");
 		return 0;
 	}
 
@@ -602,27 +912,24 @@ detector_notifier_call(struct notifier_block *nb,
 	switch(mod_state)
 	{
 	case MODULE_STATE_COMING: /* the module has just loaded */
-		if(!filter_module(module_name(mod)))
+		t = get_target_object(mod);
+		if (t == NULL)
 			break;
-
-		BUG_ON(target_module_loaded());
-		target_module = mod;
-		on_module_load(mod);
+		
+		on_module_load(t);
 		break;
 
 	case MODULE_STATE_GOING: /* the module is going to unload */
-		/* if the target module has already been unloaded,
-		 * target_module is NULL, so (mod != target_module)
-		 * will be true. */
-		if(mod != target_module)
+		t = find_target_object_by_mod(mod);
+		if (t == NULL)
 			break;
 
-		on_module_unload(mod);
-		target_module = NULL;
+		on_module_unload(t);
+		break;
 	}
 
 out:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 	return 0;
 }
 
@@ -649,33 +956,30 @@ kedr_set_ls_allocator(struct kedr_ls_allocator *al)
 {
 	int ret = 0;
 
-	/* Because we need to check 'target_module' and update the allocator
-	 * atomically w.r.t. the loading of the target module, we should
-	 * lock 'target_mutex'.
-	 * It is only allowed to change the allocator if the target module
-	 * is not loaded: different allocators can be incompatible with
-	 * each other. If the local storage has been allocated by a given
-	 * allocator, it must be freed by the same allocator. */
-	ret = mutex_lock_killable(&target_mutex);
+	/* Because we need to check if the session is active, we should
+	 * lock 'session_mutex'.
+	 * It is only allowed to change the allocator if the session is not
+	 * active: different allocators can be incompatible with each other.
+	 * If the local storage has been allocated by a given allocator,
+	 * it must be freed by the same allocator. */
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-		"kedr_set_ls_allocator(): failed to lock target_mutex\n");
+		"kedr_set_ls_allocator(): failed to lock session_mutex\n");
 		goto out;
 	}
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-	"Attempt to change local storage allocator while the target "
-	"is loaded. The allocator will not be changed.\n");
+	"Failed to change local storage allocator: the session is active.\n");
 		goto out_unlock;
 	}
 
 	if (al != NULL) {
 		if (ls_allocator != &default_ls_allocator) {
 			pr_warning(KEDR_MSG_PREFIX
-	"Attempt to set the local storage allocator while a custom "
-	"allocator is still active. The allocator will not be changed.\n");
+	"Failed to set the local storage allocator while a custom allocator is active.\n");
 			goto out_unlock;
 		}
 		ls_allocator = al;
@@ -687,7 +991,7 @@ kedr_set_ls_allocator(struct kedr_ls_allocator *al)
 	}
 
 out_unlock:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 out:
 	return;
 }
@@ -705,26 +1009,24 @@ void
 kedr_set_core_hooks(struct kedr_core_hooks *hooks)
 {
 	int ret = 0;
-	ret = mutex_lock_killable(&target_mutex);
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-		"kedr_set_core_hooks(): failed to lock target_mutex\n");
+		"kedr_set_core_hooks(): failed to lock session_mutex\n");
 		goto out;
 	}
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-	"Attempt to change the core hooks while the target is loaded. "
-	"The hooks will not be changed.\n");
+	"Failed to change the core hooks while the session is active.\n");
 		goto out_unlock;
 	}
 
 	if (hooks != NULL) {
 		if (core_hooks != &default_hooks) {
 			pr_warning(KEDR_MSG_PREFIX
-	"Attempt to set the core hooks while custom hooks are still "
-	"active. The hooks will not be changed.\n");
+	"Failed to set the core hooks while custom hooks are still active.\n");
 			goto out_unlock;
 		}
 		core_hooks = hooks;
@@ -736,7 +1038,7 @@ kedr_set_core_hooks(struct kedr_core_hooks *hooks)
 	}
 
 out_unlock:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 out:
 	return;
 }
@@ -749,25 +1051,24 @@ kedr_fh_plugin_register(struct kedr_fh_plugin *fh)
 	int ret = 0;
 
 	BUG_ON(fh == NULL);
-	ret = mutex_lock_killable(&target_mutex);
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-	"kedr_fh_plugin_register(): failed to lock target_mutex\n");
+	"kedr_fh_plugin_register(): failed to lock session_mutex\n");
 		goto out;
 	}
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-			"Attempt to register the function handling plugin "
-			"while the target is loaded.\n");
+	"Failed to register the function handling plugin: the session is active.\n");
 		ret = -EBUSY;
 		goto out_unlock;
 	}
 	ret = kedr_fh_plugin_register_impl(fh);
 
 out_unlock:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 out:
 	return ret;
 }
@@ -779,35 +1080,57 @@ kedr_fh_plugin_unregister(struct kedr_fh_plugin *fh)
 	int ret = 0;
 
 	BUG_ON(fh == NULL);
-	ret = mutex_lock_killable(&target_mutex);
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-	"kedr_fh_plugin_unregister(): failed to lock target_mutex\n");
+	"kedr_fh_plugin_unregister(): failed to lock session_mutex\n");
 		return;
 	}
 
-	if (target_module_loaded()) {
+	if (session_active()) {
 		pr_warning(KEDR_MSG_PREFIX
-		"Attempt to unregister the function handling plugin "
-		"while the target is loaded.\n");
+	"Failed to unregister the function handling plugin: the session is active.\n");
 		goto out_unlock;
 	}
 	kedr_fh_plugin_unregister_impl(fh);
 
 out_unlock:
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 }
 EXPORT_SYMBOL(kedr_fh_plugin_unregister);
 /* ====================================================================== */
 
+static struct kedr_i13n *
+i13n_for_addr(unsigned long addr)
+{
+	struct kedr_i13n *i13n = NULL;
+	struct kedr_target *t;
+	unsigned long irq_flags;
+	
+	spin_lock_irqsave(&target_list_lock, irq_flags);
+	list_for_each_entry(t, &session.targets, list) {
+		if (t->mod == NULL)
+			continue;
+			
+		if (kedr_is_text_address(addr, t->mod))
+			i13n = t->i13n;
+	}
+	
+	spin_unlock_irqrestore(&target_list_lock, irq_flags);
+	return i13n;
+}
+
 struct kedr_func_info *
 kedr_find_func_info(unsigned long addr)
 {
-	/* Do not perform lookup if it is not the address within the code of
-	 * the target. */
-	if (target_module == NULL ||
-	    !kedr_is_text_address(addr, target_module))
+	struct kedr_i13n *i13n;
+
+	if (!session_active())
+		return NULL;
+	
+	i13n = i13n_for_addr(addr);
+	if (i13n == NULL)
 		return NULL;
 
 	return kedr_i13n_func_info_for_addr(i13n, addr);
@@ -822,6 +1145,145 @@ init_providers(void)
 	for (i = 0; i < KEDR_PR_NUM_ROLES; ++i)
 		providers[i] = THIS_MODULE;
 }
+/* ====================================================================== */
+
+/* The list of the names of the loaded and instrumented target modules 
+ * separated by newlines. Available via "loaded_targets" file in debugfs. 
+ * The file will contain string "none" if no targets are currently loaded.*/
+static char *loaded_targets = NULL;
+static struct dentry *loaded_targets_file = NULL;
+
+/* Allocates and populates 'loaded_targets' string. 
+ * Should be called with 'session_mutex' locked. */
+static int
+update_loaded_targets_list(void)
+{
+	size_t len = 0;
+	size_t pos = 0;
+	struct kedr_target *t;
+	
+	kfree(loaded_targets);
+	loaded_targets = NULL;
+	
+	/* 'session_mutex' is locked, so the target modules cannot come or 
+	 * go, the list remains the same. No need to protect it further. */
+	list_for_each_entry(t, &session.targets, list) {
+		if (t->mod != NULL && t->i13n != NULL) {
+			len += strlen(t->name) + 1; /* +1 for '\n' */
+		}
+	}
+	
+	if (len == 0)
+		return 0;
+	
+	loaded_targets = kzalloc(len + 1, GFP_KERNEL);
+	if (loaded_targets == NULL)
+		return -ENOMEM;
+	
+	list_for_each_entry(t, &session.targets, list) {
+		size_t cur_len;
+		if (t->mod == NULL || t->i13n == NULL)
+			continue;
+		
+		cur_len = strlen(t->name);
+		BUG_ON(pos + cur_len + 1 > len);
+		
+		strncpy(&loaded_targets[pos], t->name, cur_len);
+		pos += cur_len;
+		loaded_targets[pos] = '\n';
+		++pos;
+	}
+	return 0;	
+}
+
+/* File: "loaded_targets", read-only */
+static int 
+loaded_targets_open(struct inode *inode, struct file *filp)
+{
+	int ret = 0;
+	
+	if (mutex_lock_killable(&session_mutex) != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX "loaded_targets_read(): "
+			"got a signal while trying to acquire a mutex.\n");
+		return -EINTR;
+	}
+	
+	ret = update_loaded_targets_list();
+	if (ret != 0)
+		goto fail;
+	
+	mutex_unlock(&session_mutex);
+	return nonseekable_open(inode, filp);
+
+fail:
+	mutex_unlock(&session_mutex);
+	return ret;
+}
+
+static int
+loaded_targets_release(struct inode *inode, struct file *filp)
+{
+	return 0;
+}
+
+static ssize_t 
+loaded_targets_read(struct file *filp, char __user *buf, size_t count,
+	loff_t *f_pos)
+{
+	ssize_t ret = 0;
+	loff_t pos = *f_pos;
+	size_t data_len;
+	static char none_str[] = "none\n";
+	char *out_buf = loaded_targets;
+	
+	if (mutex_lock_killable(&session_mutex) != 0)
+	{
+		pr_warning(KEDR_MSG_PREFIX "loaded_targets_read(): "
+			"got a signal while trying to acquire a mutex.\n");
+		return -EINTR;
+	}
+	
+	if (out_buf == NULL)
+		out_buf = none_str;
+	
+	data_len = strlen(out_buf);
+	
+	/* Reading outside of the data buffer is not allowed */
+	if ((pos < 0) || (pos > data_len)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* EOF reached or 0 bytes requested */
+	if ((count == 0) || (pos == data_len)) {
+		ret = 0; 
+		goto out;
+	}
+
+	if (pos + count > data_len) 
+		count = data_len - pos;
+	if (copy_to_user(buf, &out_buf[pos], count) != 0) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	mutex_unlock(&session_mutex);
+
+	*f_pos += count;
+	return count;
+
+out:
+	mutex_unlock(&session_mutex);
+	return ret;
+}
+
+static const struct file_operations loaded_targets_ops = {
+	.owner = THIS_MODULE,
+	.open = loaded_targets_open,
+	.release = loaded_targets_release,
+	.read = loaded_targets_read,
+};
 /* ====================================================================== */
 
 /* Initialize the default handlers, callbacks, hooks, etc., before
@@ -850,6 +1312,8 @@ remove_debugfs_files(void)
 		debugfs_remove(blocks_total_file);
 	if (blocks_skipped_file != NULL)
 		debugfs_remove(blocks_skipped_file);
+	if (loaded_targets_file != NULL)
+		debugfs_remove(loaded_targets_file);
 }
 
 static int __init
@@ -875,6 +1339,15 @@ create_debugfs_files(void)
 		ret = -ENOMEM;
 		goto out;
 	}
+	
+	loaded_targets_file = debugfs_create_file("loaded_targets", S_IRUGO, 
+		debugfs_dir_dentry, NULL, &loaded_targets_ops);
+	if (loaded_targets_file == NULL) {
+		name = "loaded_targets";
+		ret = -ENOMEM;
+		goto out;
+	}
+	
 	return 0;
 out:
 	pr_warning(KEDR_MSG_PREFIX
@@ -882,6 +1355,22 @@ out:
 		name);
 	remove_debugfs_files();
 	return ret;
+}
+
+/* Must be called with 'module_mutex' locked. As no target module may come 
+ * or go when this mutex is locked, no need to additionally protect the 
+ * session object here. */
+static int __init
+some_targets_loaded(void)
+{
+	struct kedr_target *t;	
+	BUG_ON(session_active()); /* Must never trigger but ... */
+	
+	list_for_each_entry(t, &session.targets, list) {
+		if (find_module(t->name) != NULL)
+			return 1;
+	}
+	return 0;
 }
 
 static int __init
@@ -892,26 +1381,25 @@ core_init_module(void)
 	pr_info(KEDR_MSG_PREFIX
 		"Initializing (" KEDR_KS_PACKAGE_NAME " version "
 		KEDR_KS_PACKAGE_VERSION ")\n");
-
-	if (target_name[0] == '\0') {
-		pr_warning(KEDR_MSG_PREFIX
-			"Parameter \"target_name\" must not be empty.\n");
-		return -EINVAL;
-	}
+	
+	ret = init_session();
+	if (ret != 0)
+		return ret;
 
 	if (sampling_rate > 31) {
 		pr_warning(KEDR_MSG_PREFIX
 		"Parameter \"sampling_rate\" has an invalid value (%u). "
 		"Must be 0 .. 31.\n",
 			sampling_rate);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out_cleanup_session;
 	}
 
 	ret = init_defaults();
 	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX
-			"Initialization of defaults failed.\n");
-		return ret;
+			"Initialization of the defaults failed.\n");
+		goto out_cleanup_session;
 	}
 
 	/* Create the directory for the core in debugfs */
@@ -953,7 +1441,7 @@ core_init_module(void)
 	 * registering our callbacks with the notification system.
 	 * Do not forget to re-check labels in the error path after that. */
 
-	/* find_module() requires 'module_mutex' to be locked. */
+	/* some_targets_loaded() requires 'module_mutex' to be locked. */
 	ret = mutex_lock_killable(&module_mutex);
 	if (ret != 0)
 	{
@@ -970,28 +1458,26 @@ core_init_module(void)
 		goto out_unlock;
 	}
 
-	/* Check if the target is already loaded */
-	if (find_module(target_name) != NULL)
+	/* Check if one or more targets are already loaded. */
+	if (some_targets_loaded())
 	{
 		pr_warning(KEDR_MSG_PREFIX
-		"Target module \"%s\" is already loaded. Processing of "
-		"already loaded target modules is not supported\n",
-		target_name);
+"One or more target modules are already loaded. Processing of already loaded target modules is not supported\n");
 
 		ret = -EEXIST;
 		goto out_unreg_notifier;
 	}
 
-	ret = mutex_lock_killable(&target_mutex);
+	ret = mutex_lock_killable(&session_mutex);
 	if (ret != 0)
 	{
 		pr_warning(KEDR_MSG_PREFIX
-			"init(): failed to lock target_mutex\n");
+			"init(): failed to lock session_mutex\n");
 		goto out_unreg_notifier;
 	}
 
 	handle_module_notifications = 1;
-	mutex_unlock(&target_mutex);
+	mutex_unlock(&session_mutex);
 
 	mutex_unlock(&module_mutex);
 
@@ -1025,14 +1511,16 @@ out_rmdir:
 
 out_free_eh:
 	kfree(eh_default);
+
+out_cleanup_session:
+	cleanup_session();
+	kfree(loaded_targets);
 	return ret;
 }
 
 static void __exit
 core_exit_module(void)
 {
-	/*pr_info(KEDR_MSG_PREFIX "Cleaning up\n");*/
-
 	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
 
@@ -1044,6 +1532,9 @@ core_exit_module(void)
 	kedr_cleanup_resolve_ip();
 	debugfs_remove(debugfs_dir_dentry);
 	kfree(eh_default);
+	
+	cleanup_session();
+	kfree(loaded_targets);
 
 	WARN_ON(!list_empty(&id_pool));
 	return;
