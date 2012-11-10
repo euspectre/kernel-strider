@@ -17,8 +17,6 @@ set(src_files
 	"trace_packets.c"
 	"net_message.c"
 	"uuid_generator.c"
-
-	"${meta_template_shipped_file}"
 )
 
 set(header_files
@@ -35,9 +33,14 @@ foreach(s_file ${src_files})
 		"${ORIG_BIN_DIR}/${s_file}")
 endforeach()
 
+rule_copy_file(
+	"${CMAKE_CURRENT_BINARY_DIR}/${meta_template_shipped_name}"
+	"${meta_template_shipped_file}")
+
 kbuild_include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 kbuild_add_module(${KMODULE_NAME}
 	${src_files}
+	${meta_template_shipped_name}
 	${header_files}
 )
 
