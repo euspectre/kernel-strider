@@ -84,8 +84,9 @@ doTest()
 
 	insmod "${REPORTER_MODULE}" \
 		target_function="${TARGET_FUNCTION}" \
+		target_module="${TARGET_MODULE_NAME}" \
 		report_calls=1 report_mem=0 report_block_enter=0 \
-        resolve_symbols=1
+		report_load=0 resolve_symbols=1
 	if test $? -ne 0; then
 		printf "Failed to load the reporter module\n"
 		cleanupAll

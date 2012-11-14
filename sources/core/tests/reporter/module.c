@@ -11,9 +11,12 @@
  * from that function in the same thread will be reported (and only the 
  * events from that thread will be reported) if enabled by "report_*".
  * 
- * Note that in the second mode, the module cannot handle the targets where
- * that function is called recursively (the reporter must not crash but the 
- * report itself is likely to contain less data than expected).
+ * Note that in the second mode, the reporter cannot handle the targets 
+ * where that function is called recursively (the reporter must not crash
+ * but the report itself is likely to contain less data than expected).
+ *
+ * If 'target_function' is set, 'target_module' must also be set to specify
+ * the module containing that function.
  * 
  * Format of the output records is as follows if 'resolve_symbols' parameter
  * has a non-zero value (the leading spaces are only for readability). 
@@ -97,6 +100,24 @@
  * executed. The format is as follows:
  * 
  *	TID=<tid,0x%lx> BLOCK_ENTER pc=<pc,%p>
+ *
+ * If 'report_load' parameter has a non-zero value, target load/unload
+ * events will also be reported. The format is as follows:
+ *
+ *	TARGET LOAD name="<name>" <area_info>
+ * 	TARGET UNLOAD name="<name>"
+ *
+ * [NB] No more than KEDR_TARGET_NAME_LEN characters of the target's name
+ * will be reported. Should be enough for most cases; simplifies the
+ * implementation.
+ * 
+ *  <area_info> has the following format:
+ *	init=<%p> init_size=<%lu> core=<%p> core_size=<%lu>
+ * 'init', 'core' - addresses of the "init" and "core" area of the loaded
+ * module (see 'module_init' and 'module_core' in struct module),
+ * 'init_size' and 'core_size' are the sizes of these areas, respectively.
+ * This information allows to later determine the addresses of the ELF
+ * sections using the binary file of the module.
  * 
  * [NB] The reporter does not report the events that occur during the 
  * initialization of the target module if 'resolve_symbols' parameter has a
@@ -108,7 +129,9 @@
  * (e.g. the pointers to the string table and the symbol table). It is 
  * better to avoid going into a race condition on these fields. So it is
  * safer not to use symbol resolution (and kallsyms in general) in such 
- * conditions. */
+ * conditions.
+ * [NB] As a consequence, symbol resolution should not be used if
+ * 'target_function' is not specified. */
 
 /* ========================================================================
  * Copyright (C) 2012, KEDR development team
@@ -155,6 +178,12 @@ MODULE_LICENSE("GPL");
 char *target_function = "";
 module_param(target_function, charp, S_IRUGO);
 
+/* The name of the module the target function belongs to. Must be set if
+ * 'target_function' is set. Ignored if 'target_function' is not set (i.e.
+ * empty). */
+char *target_module = "";
+module_param(target_module, charp, S_IRUGO);
+
 /* The maximum number of events that can be reported in a single session
  * (from loading to unloading of the target or from the function entry to 
  * the function exit). After this number of events has been reported, the 
@@ -182,6 +211,10 @@ module_param(report_mem, int, S_IRUGO);
  * executed. */
 int report_block_enter = 1;
 module_param(report_block_enter, int, S_IRUGO);
+
+/* If non-zero, "target load" and "target unload" events will be reported.*/
+int report_load = 1;
+module_param(report_load, int, S_IRUGO);
 
 /* If non-zero, the reporter will try to resolve the memory addresses in
  * the report, i.e. determine the names of the corresponding symbols, 
@@ -261,13 +294,17 @@ static int max_events_reached = 0;
 static unsigned long target_start = 0;
 
 #define KEDR_ALL_THREADS ((unsigned long)(-1))
+#define KEDR_NO_THREADS ((unsigned long)(-1))
 
 /* The ID of the thread to report the events for. If it is KEDR_ALL_THREADS,
  * no restriction on thread ID is imposed. */
 static unsigned long target_tid = KEDR_ALL_THREADS;
 
 /* The target. */
-static struct module *target_module = NULL;
+static struct module *target = NULL;
+
+/* Length of a buffer to contain the name of the target. */
+#define KEDR_TARGET_NAME_LEN 31
 /* ====================================================================== */
 
 /* A file in debugfs that a user may write an additional symbol table to. 
@@ -779,6 +816,22 @@ struct kr_work_on_signal_wait
 	void *pc;
 	int is_signal; /* nonzero for "signal", 0 for "wait" */
 	int is_post; /* nonzero for "post" event, 0 for "pre" event */
+};
+
+struct kr_work_on_load
+{
+	struct work_struct work;
+	char name[KEDR_TARGET_NAME_LEN + 1];
+	void *init_addr;
+	void *core_addr;
+	unsigned long init_size;
+	unsigned long core_size;
+};
+
+struct kr_work_on_unload
+{
+	struct work_struct work;
+	char name[KEDR_TARGET_NAME_LEN + 1];
 };
 /* ====================================================================== */
 
@@ -1314,6 +1367,49 @@ out:
 			ret);
 	kfree(wosw);
 }
+
+/* Reports "target load" event.
+ * 'work' should be &kr_work_on_load::work. */
+static void
+work_func_load(struct work_struct *work)
+{
+	static const char *fmt =
+"TARGET LOAD name=\"%s\" init=%p init_size=%lu core=%p core_size=%lu\n";
+
+	int ret = 0;
+	struct kr_work_on_load *wol = container_of(work,
+		struct kr_work_on_load, work);
+
+	ret = debug_util_print(fmt, wol->name,
+			       wol->init_addr, wol->init_size,
+			       wol->core_addr, wol->core_size);
+
+	if (ret < 0)
+		pr_warning(KEDR_MSG_PREFIX
+		"work_func_load(): output failed, error code: %d.\n",
+			ret);
+	kfree(wol);
+}
+
+/* Reports "target unload" event.
+ * 'work' should be &kr_work_on_unload::work. */
+static void
+work_func_unload(struct work_struct *work)
+{
+	static const char *fmt = "TARGET UNLOAD name=\"%s\"\n";
+
+	int ret = 0;
+	struct kr_work_on_unload *wou = container_of(work,
+		struct kr_work_on_unload, work);
+
+	ret = debug_util_print(fmt, wou->name);
+
+	if (ret < 0)
+		pr_warning(KEDR_MSG_PREFIX
+		"work_func_unload(): output failed, error code: %d.\n",
+			ret);
+	kfree(wou);
+}
 /* ====================================================================== */
 
 /* If the function is called not from on_load/on_unload handlers, 'wq_lock' 
@@ -1342,32 +1438,124 @@ report_event_allowed(unsigned long tid)
 	max_events_reached |= (ecount > (size_t)max_events);
 	if (max_events_reached)
 		return 0;
-	
-	if (target_module == NULL || 
-	    (target_module->module_init != NULL && resolve_symbols != 0))
-		return 0;
-	
+
 	if (!restrict_to_func)
 		return 1;
+	
+	if (target == NULL ||
+	    (target->module_init != NULL && resolve_symbols != 0))
+		return 0;
 	
 	return (within_target_func && (tid == target_tid));
 }
 /* ====================================================================== */
 
+static void
+on_session_start(struct kedr_event_handlers *eh)
+{
+	reset_counters();
+	target_start = 0;
+	target_tid = KEDR_ALL_THREADS;
+
+	debug_util_clear();
+}
+
+static void
+on_session_end(struct kedr_event_handlers *eh)
+{
+	flush_workqueue(wq); /* Just in case */
+}
+
+static int
+is_special_target(struct module *mod)
+{
+	if (target_module[0] == 0)
+		return 0;
+
+	return (strcmp(target_module, module_name(mod)) == 0);
+}
+
+static void
+report_load_event(struct module *mod)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_load *wol = NULL;
+
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	++ecount;
+
+	if (!report_event_allowed(KEDR_NO_THREADS))
+		goto out;
+
+	wol = kzalloc(sizeof(*wol), GFP_ATOMIC);
+	if (wol == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"report_load_event(): out of memory.\n");
+			goto out;
+	}
+
+	/* The module may have gone when the workqueue processes this event,
+	 * so we cannot store 'mod' and pass it to the workqueue. We rather
+	 * need to copy the relevant data here. */
+	strncpy(wol->name, module_name(mod), KEDR_TARGET_NAME_LEN);
+
+	wol->init_addr = mod->module_init;
+	if (wol->init_addr == NULL)
+		wol->init_size = 0;
+	else
+		wol->init_size = mod->init_size;
+
+	wol->core_addr = mod->module_core;
+	wol->core_size = mod->core_size;
+	
+	INIT_WORK(&wol->work, work_func_load);
+	queue_work(wq, &wol->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
+static void
+report_unload_event(struct module *mod)
+{
+	unsigned long irq_flags;
+	struct kr_work_on_unload *wou = NULL;
+
+	spin_lock_irqsave(&wq_lock, irq_flags);
+	++ecount;
+
+	if (!report_event_allowed(KEDR_NO_THREADS))
+		goto out;
+
+	wou = kzalloc(sizeof(*wou), GFP_ATOMIC);
+	if (wou == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"report_unload_event(): out of memory.\n");
+			goto out;
+	}
+
+	/* The module may have gone when the workqueue processes this event,
+	 * so we cannot store 'mod' and pass it to the workqueue. We rather
+	 * need to copy the relevant data here. */
+	strncpy(wou->name, module_name(mod), KEDR_TARGET_NAME_LEN);
+
+	INIT_WORK(&wou->work, work_func_unload);
+	queue_work(wq, &wou->work);
+out:
+	spin_unlock_irqrestore(&wq_lock, irq_flags);
+}
+
 static void 
 on_load(struct kedr_event_handlers *eh, struct module *mod)
 {
 	int ret;
-	
-	reset_counters();
-	target_start = 0;
-	target_tid = KEDR_ALL_THREADS;
-	
-	debug_util_clear();
-	target_module = mod;
+
+	if (!is_special_target(mod))
+		goto out;
+		
+	target = mod;
 	
 	if (!restrict_to_func)
-		return;
+		goto out;
 	
 	ret = kallsyms_on_each_symbol(symbol_walk_callback, mod);
 	if (ret < 0) {
@@ -1383,15 +1571,26 @@ on_load(struct kedr_event_handlers *eh, struct module *mod)
 	else { /* Must have found the target function. */
 		BUG_ON(target_start == 0);
 	}
+
+out:
+	if (report_load)
+		report_load_event(mod);
 }
 
 static void 
 on_unload(struct kedr_event_handlers *eh, struct module *mod)
 {
-	flush_workqueue(wq);
-	/* Reporting must have been finished for all the previous events
-	 * by now, so it is safe to reset 'target_module'. */
-	target_module = NULL;
+	if (is_special_target(mod)) {
+		flush_workqueue(wq);
+
+		/* Reporting must have been finished for all the previous
+		 * events in this target by now, so it is safe to reset
+		 * 'target'. */
+		target = NULL;
+	}
+
+	if (report_load)
+		report_unload_event(mod);
 }
 
 static void 
@@ -2264,6 +2463,8 @@ out:
 
 static struct kedr_event_handlers eh = {
 	.owner = THIS_MODULE,
+	.on_session_start = on_session_start,
+	.on_session_end = on_session_end,
 	.on_target_loaded = on_load,
 	.on_target_about_to_unload = on_unload,
 	.on_function_entry = on_function_entry,
@@ -2399,11 +2600,23 @@ static int __init
 test_init_module(void)
 {
 	int ret = 0;
+
+	if (target_function[0] != 0 && target_module[0] == 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+	"'target_function' parameter is set but 'target_module' is not.\n");
+		return -EINVAL;
+	}
 	
 	restrict_to_func = (target_function[0] != 0);
+
+	if (!restrict_to_func && resolve_symbols) {
+		pr_warning(KEDR_MSG_PREFIX 
+"Symbol resolution is only supported when reporting the events from a single function.\n");
+		return -EINVAL;
+	}
 	
 	/* [NB] Add checking of other report_* parameters here as needed. */
-	if (!report_calls && !report_mem) {
+	if (!report_calls && !report_mem && !report_load) {
 		pr_warning(KEDR_MSG_PREFIX 
 	"At least one of \"report_*\" parameters should be non-zero.\n");
 		return -EINVAL;

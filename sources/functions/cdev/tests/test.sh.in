@@ -77,7 +77,7 @@ doTest()
 
 	insmod "${REPORTER_MODULE}" \
 		report_calls=1 report_mem=1 report_block_enter=0 \
-		resolve_symbols=0
+		report_load=0 resolve_symbols=0
 	if test $? -ne 0; then
 		printf "Failed to load the module: ${REPORTER_MODULE_NAME}\n"
 		cleanupAll
