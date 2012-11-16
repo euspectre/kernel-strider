@@ -1,0 +1,381 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that the modules that cannot be instrumented are
+# handled correctly and do not prevent the system from processing other
+# targets.
+# 
+# Usage: 
+#   sh test_broken.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${REPORTER_MODULE}"; then
+		printf "The \"trace reporter\" module is missing: ${REPORTER_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE_SAMPLE}"; then
+		printf "The target module is missing: ${TARGET_MODULE_SAMPLE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE_DUMMY}"; then
+		printf "The target module is missing: ${TARGET_MODULE_DUMMY}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE_BROKEN}"; then
+		printf "The target module is missing: ${TARGET_MODULE_BROKEN}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+cleanupTargets()
+{
+	printf "Cleaning up the targets...\n"
+
+	lsmod | grep "${TARGET_NAME_SAMPLE}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_SAMPLE}"
+	fi
+
+	lsmod | grep "${TARGET_NAME_DUMMY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_DUMMY}"
+	fi
+
+	lsmod | grep "${TARGET_NAME_BROKEN}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_BROKEN}"
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+
+	cleanupTargets
+
+	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${REPORTER_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${CORE_MODULE_NAME}"
+	fi
+
+	umount "${TEST_DEBUGFS_DIR}"
+}
+
+########################################################################
+loadReporter()
+{
+	insmod "${REPORTER_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadReporter()
+{
+	rmmod "${REPORTER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+loadSampleTarget()
+{
+	insmod "${TARGET_MODULE_SAMPLE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_SAMPLE}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadSampleTarget()
+{
+	lsmod | grep "${TARGET_NAME_SAMPLE}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_SAMPLE}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_SAMPLE}\n"
+			cleanupAll
+			exit 1
+		fi
+
+	fi
+}
+
+loadDummyTarget()
+{
+	insmod "${TARGET_MODULE_DUMMY}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_DUMMY}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadDummyTarget()
+{
+	lsmod | grep "${TARGET_NAME_DUMMY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_DUMMY}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_DUMMY}\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+}
+
+loadBrokenTarget()
+{
+	insmod "${TARGET_MODULE_BROKEN}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_BROKEN}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadBrokenTarget()
+{
+	lsmod | grep "${TARGET_NAME_BROKEN}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_BROKEN}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_BROKEN}\n"
+			cleanupAll
+			exit 1
+		fi
+
+	fi
+}
+
+########################################################################
+checkLoadedTargets()
+{
+	printf "Loaded targets: \n"
+	cat "${TEST_DEBUGFS_TARGETS_FILE}" | sort | sed -e 's/^/	/'
+
+	cat "${TEST_DEBUGFS_TARGETS_FILE}" | sort | tr "\n" " " | sed -e 's/ $//' > "${TEST_LOADED_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to read the list of loaded targets from "
+		printf "${TEST_DEBUGFS_TARGETS_FILE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	target_str=$(cat "${TEST_LOADED_FILE}")
+	if test "t${target_str}" != "t$1"; then
+		printf "The list of targets differs from the expected one (\"$1\")\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# doTest() - perform the test
+########################################################################
+doTest()
+{
+	printf "Starting doTest(), arguments: "
+	if test -z "$1"; then
+		printf "none\n"
+	else
+		printf "$1"
+	fi
+
+	insmod "${CORE_MODULE}" \
+		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY},${TARGET_NAME_BROKEN}" \
+		umh_dir="@KEDR_UMH_DIR@"
+	if test $? -ne 0; then
+		printf "Failed to unload the core module: ${CORE_MODULE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	loadReporter
+
+	printf "Checkpoint 01\n"
+	checkLoadedTargets "none"
+
+	if test "t$1" = "tbroken_first"; then
+		loadBrokenTarget
+
+		printf "Checkpoint 02-1\n"
+		checkLoadedTargets "none"
+
+		loadSampleTarget
+
+		printf "Checkpoint 02-2\n"
+		checkLoadedTargets "kedr_sample_target"
+	else
+		loadSampleTarget
+
+		printf "Checkpoint 02-1\n"
+		checkLoadedTargets "kedr_sample_target"
+
+		loadBrokenTarget
+
+		printf "Checkpoint 02-2\n"
+		checkLoadedTargets "kedr_sample_target"
+	fi
+
+	loadDummyTarget
+
+	printf "Checkpoint 03\n"
+	checkLoadedTargets "kedr_dummy_target kedr_sample_target"
+
+	echo "Abracadabra" > /dev/cfake0
+	if test $? -ne 0; then
+		printf "Failed to use the sample target module\n"
+		cleanupAll
+		exit 1
+	fi
+
+	unloadSampleTarget
+
+	printf "Checkpoint 04\n"
+	checkLoadedTargets "kedr_dummy_target"
+
+	loadSampleTarget
+
+	printf "Checkpoint 05\n"
+	checkLoadedTargets "kedr_dummy_target kedr_sample_target"
+
+	echo "Abracadabra" > /dev/cfake1
+	if test $? -ne 0; then
+		printf "Failed to use the sample target module\n"
+		cleanupAll
+		exit 1
+	fi
+
+	unloadSampleTarget
+	unloadDummyTarget
+
+	printf "Checkpoint 06\n"
+	checkLoadedTargets "none"
+
+	unloadBrokenTarget
+
+	# Get the trace.
+	TEST_TRACE_FILE="${TEST_TMP_DIR}/trace_test.txt"
+	cat "${TEST_DEBUGFS_OUTPUT_FILE}" > "${TEST_TRACE_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_OUTPUT_FILE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the remaining modules, they are no longer needed
+	unloadReporter
+	rmmod "${CORE_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the core module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if test -z "${MATCH_EXPR}"; then
+		printf "The regular expression for the trace must not be empty.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	cat "${TEST_TRACE_FILE}" | tr "\n" " " | grep -E "${MATCH_EXPR}" > /dev/null
+	if test $? -ne 0; then
+		printf "No matching substring has been found in the trace for the "
+		printf "expression \"${MATCH_EXPR}\".\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+REPORTER_MODULE_NAME="kedr_test_reporter"
+REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"
+
+TARGET_NAME_SAMPLE="kedr_sample_target"
+TARGET_MODULE_SAMPLE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_NAME_SAMPLE}.ko"
+
+TARGET_NAME_DUMMY="kedr_dummy_target"
+TARGET_MODULE_DUMMY="@CMAKE_BINARY_DIR@/tests/dummy_target/${TARGET_NAME_DUMMY}.ko"
+
+# A valid module that cannot be instrumented because it contains a function
+# that looks like it is broken into 2 or more parts.
+TARGET_NAME_BROKEN="test_ir_create_split_func"
+TARGET_MODULE_BROKEN="@CMAKE_BINARY_DIR@/core/tests/i13n/ir_create/target_split_func/${TARGET_NAME_BROKEN}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@/broken"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+TEST_DEBUGFS_OUTPUT_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
+TEST_DEBUGFS_TARGETS_FILE="${TEST_DEBUGFS_DIR}/kedr_mem_core/loaded_targets"
+TEST_LOADED_FILE="${TEST_TMP_DIR}/loaded.txt"
+
+MATCH_EXPR="TARGET LOAD name=\"kedr_sample_target\".*TARGET LOAD name=\"kedr_dummy_target\".*TARGET UNLOAD name=\"kedr_sample_target\".*TARGET LOAD name=\"kedr_sample_target\".*TARGET UNLOAD name=\"kedr_sample_target\".*TARGET UNLOAD name=\"kedr_dummy_target\".*"
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+checkPrereqs
+
+mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+	cleanupAll
+	exit 1
+fi
+
+doTest broken_first
+doTest
+
+cleanupAll
+
+# test passed
+exit 0
