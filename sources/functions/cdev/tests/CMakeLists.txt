@@ -34,3 +34,7 @@ configure_file (
 kedr_test_add_script (functions.cdev.01
 	test.sh
 )
+
+kedr_test_add_script (functions.cdev.02
+	test.sh with-common
+)

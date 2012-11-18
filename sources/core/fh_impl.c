@@ -209,19 +209,18 @@ prepare_handler_table(void)
 	struct kedr_fh_plugin *p = NULL;
 	size_t sz = 0;
 	struct kedr_fh_handlers **h;
+	int is_err = 0;
 	
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p->handlers == NULL)
 			continue;
 		
 		h = p->handlers;
-		
 		while ((*h) != NULL) {
 			++h;
 			++sz;
 		}
 	}
-	
 	if (sz == 0)  /* No handlers - no problems */
 		return;
 	
@@ -237,30 +236,29 @@ prepare_handler_table(void)
 			continue;
 		
 		h = p->handlers;
-		
 		while ((*h) != NULL) {
 			/* Sanity check */
 			if (handlers_size >= sz) {
-				handlers_size = 0;
+				is_err = 1;
 				break;
 			}
-			
 			handlers[handlers_size] = *h;
-			
 			++h;
 			++handlers_size;
 		}
-		if (handlers_size != sz) {
-			pr_warning(KEDR_MSG_PREFIX 
-		"prepare_handler_table(): "
-		"the arrays of handlers have been changed unexpectedly.\n");
-			kfree(handlers);
-			handlers = NULL;
-			handlers_size = 0;
-			return;
-		}
+		if (is_err)
+			break;
 	}
-	
+	if (is_err || handlers_size != sz) {
+		pr_warning(KEDR_MSG_PREFIX 
+	"prepare_handler_table(): "
+	"the arrays of handlers have been changed unexpectedly.\n");
+		kfree(handlers);
+		handlers = NULL;
+		handlers_size = 0;
+		return;
+	}		
+
 	sort(&handlers[0], handlers_size, sizeof(*handlers), 
 		compare_htable_items, swap_htable_items);
 }

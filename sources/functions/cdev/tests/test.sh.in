@@ -3,9 +3,13 @@
 ########################################################################
 # This test checks that the correct events are generated for the calls
 # to the particular functions.
+#
+# If 'with-common' option is specified, the FH plugin handling common 
+# operations will also be loaded. This allows to check if the plugins 
+# play well together.
 # 
 # Usage: 
-#   sh test.sh
+#   sh test.sh [with-common]
 ########################################################################
 
 # Just in case the tools like lsmod are not in their usual location.
@@ -24,6 +28,11 @@ checkPrereqs()
 
 	if test ! -f "${FH_MODULE}"; then
 		printf "The module implementing function handlers is missing: ${FH_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${FH_COMMON_MODULE}"; then
+		printf "The module implementing function handlers is missing: ${FH_COMMON_MODULE}\n"
 		exit 1
 	fi
 	
@@ -60,6 +69,11 @@ cleanupAll()
 		rmmod "${FH_MODULE_NAME}"
 	fi
 	
+	lsmod | grep "${FH_COMMON_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_COMMON_NAME}"
+	fi
+	
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
 		rmmod "${CORE_MODULE_NAME}"
@@ -82,6 +96,15 @@ doTest()
 		printf "Failed to load the module: ${REPORTER_MODULE_NAME}\n"
 		cleanupAll
 		exit 1
+	fi
+	
+	if test -n "${WITH_COMMON}"; then
+		insmod "${FH_COMMON_MODULE}"
+		if test $? -ne 0; then
+			printf "Failed to load the module: ${FH_COMMON_NAME}\n"
+			cleanupAll
+			exit 1
+		fi
 	fi
 	
 	insmod "${FH_MODULE}"
@@ -146,6 +169,15 @@ doTest()
 		exit 1
 	fi
 
+	if test -n "${WITH_COMMON}"; then
+		rmmod "${FH_COMMON_NAME}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${FH_COMMON_NAME}\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+
 	rmmod "${CORE_MODULE_NAME}" || exit 1
 	
 	cat "${TEST_TRACE_FILE}" | tr -d '\n' | grep -E '@TEST_MATCH_EXPR@' > /dev/null
@@ -160,9 +192,14 @@ doTest()
 ########################################################################
 WORK_DIR=${PWD}
 
-if test $# -ne 0; then
-	printf "Usage: sh $0\n"
+if test $# -gt 1; then
+	printf "Usage: sh $0 [with-common]\n"
 	exit 1
+fi
+
+WITH_COMMON=""
+if test "t$1" = "twith-common"; then
+	WITH_COMMON="yes"
 fi
 
 CORE_MODULE_NAME="@CORE_MODULE_NAME@"
@@ -173,6 +210,9 @@ REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.
 
 FH_MODULE_NAME="kedr_fh_drd_cdev"
 FH_MODULE="@CMAKE_BINARY_DIR@/functions/cdev/${FH_MODULE_NAME}.ko"
+
+FH_COMMON_NAME="kedr_fh_drd_common"
+FH_COMMON_MODULE="@CMAKE_BINARY_DIR@/functions/common/${FH_COMMON_NAME}.ko"
 
 TARGET_MODULE_NAME="kedr_sample_target"
 TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
