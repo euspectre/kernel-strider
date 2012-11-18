@@ -61,12 +61,15 @@ if (KEDR_COI_INSTALL_DIR)
     # This plugin handles ordering relationships in various file- and 
 	# filesystem-related operations. Needs KEDR COI system.
 	add_subdirectory(fs)
-else ()
-	# Without KEDR COI, the full-fledged handling for cdev operations will 
-	# not be built (it is a part of 'fs' plugin). Instead, a simple built-in
-	# model for that subsystem will be used.
-	add_subdirectory(cdev)
 endif (KEDR_COI_INSTALL_DIR)
+
+# Without KEDR COI, the full-fledged handling for cdev operations will
+# not be built (it is a part of 'fs' plugin). In this case a simple 
+# model of these operations can be used that is provided by 
+# kedr_fh_drd_cdev plugin. It will be built anyway but cannot be used 
+# simultaneously with 'fs' plugin in the same analysis session.
+add_subdirectory(cdev)
+
 ########################################################################
 
 kedr_test_add_subdirectory(tests)
