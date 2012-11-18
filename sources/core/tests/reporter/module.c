@@ -303,7 +303,8 @@ static unsigned long target_tid = KEDR_ALL_THREADS;
 /* The target. */
 static struct module *target = NULL;
 
-/* Length of a buffer to contain the name of the target. */
+/* Maximum length of the target module's name to be reported. If the name
+ * is longer, only the first KEDR_TARGET_NAME_LEN will be used here. */
 #define KEDR_TARGET_NAME_LEN 31
 /* ====================================================================== */
 
