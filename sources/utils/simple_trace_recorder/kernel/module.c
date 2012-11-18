@@ -427,6 +427,45 @@ static const struct file_operations buffer_file_ops = {
 /* ====================================================================== */
 
 static void
+handle_session_event_impl(enum kedr_tr_event_type et)
+{
+	__u32 wp;
+	__u32 rp;
+	unsigned long irq_flags;
+	struct kedr_tr_event_session *ev;
+	unsigned int size = (unsigned int)sizeof(*ev);
+
+	spin_lock_irqsave(&eh_lock, irq_flags);
+	rp = get_read_pos();
+	wp = record_write_common(start_page->write_pos, rp, size);
+	if (wp == (__u32)(-1))
+		goto out;
+
+	ev = buffer_pos_to_addr(wp);
+	ev->header.type = et;
+	ev->header.event_size = size;
+	ev->header.nr_events = 0;
+	ev->header.obj_type = 0;
+	ev->header.tid = 0;
+
+	wp += size;
+	set_write_pos_and_notify(wp, rp);
+
+	if (et == KEDR_TR_EVENT_SESSION_END) {
+		/* This helps if the reader is not currently waiting... */
+		signal_on_next_poll = 1;
+
+		/* ...and this - if it is. */
+		notify_reader();
+	}
+	else {
+		signal_on_next_poll = 0;
+	}
+out:
+	spin_unlock_irqrestore(&eh_lock, irq_flags);
+}
+
+static void
 handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 {
 	__u32 wp;
@@ -434,6 +473,11 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 	unsigned long irq_flags;
 	struct kedr_tr_event_module *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);
+
+	/* [NB] It is OK to access the fields of 'mod' here because the
+	 * target module cannot go away while "target load" and "target
+	 * unload" handlers are executed. Therefore, 'mod' remains valid,
+	 * the core ensures that. */
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
 	rp = get_read_pos();
@@ -442,26 +486,25 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 		goto out;
 	
 	ev = buffer_pos_to_addr(wp);
+	memset(ev, 0, size);
+	
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = 0;
-	ev->mod = (__u64)(unsigned long)mod;
+	strncpy(ev->name, module_name(mod), KEDR_TARGET_NAME_LEN);
+
+	if (et == KEDR_TR_EVENT_TARGET_LOAD) {
+		ev->init_addr = (__u32)(unsigned long)mod->module_init;
+		if (ev->init_addr != 0)
+			ev->init_size = (__u32)mod->init_size;
+
+		ev->core_addr = (__u32)(unsigned long)mod->module_core;
+		if (ev->core_addr != 0)
+			ev->core_size = (__u32)mod->core_size;
+	}
 	
 	wp += size;
 	set_write_pos_and_notify(wp, rp);
 	
-	if (et == KEDR_TR_EVENT_TARGET_UNLOAD) {
-		/* This helps if the reader is not currently waiting... */
-		signal_on_next_poll = 1;
-		
-		/* ...and this - if it is. */
-		notify_reader();
-	}
-	else {
-		signal_on_next_poll = 0;
-	}
 out:
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
@@ -531,6 +574,18 @@ handle_call_impl(enum kedr_tr_event_type et, unsigned long tid,
 	set_write_pos_and_notify(wp, rp);
 out:
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
+}
+
+static void
+on_session_start(struct kedr_event_handlers *eh)
+{
+	handle_session_event_impl(KEDR_TR_EVENT_SESSION_START);
+}
+
+static void
+on_session_end(struct kedr_event_handlers *eh)
+{
+	handle_session_event_impl(KEDR_TR_EVENT_SESSION_END);
 }
 
 static void 
@@ -981,7 +1036,10 @@ on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
 
 struct kedr_event_handlers eh = {
 	.owner 			= THIS_MODULE,
-	
+
+	.on_session_start	= on_session_start,
+	.on_session_end		= on_session_end,
+
 	.on_target_loaded 	= on_load,
 	.on_target_about_to_unload = on_unload,
 
@@ -1050,7 +1108,7 @@ create_page_buffer(void)
 	page_buffer = vmalloc(sz);
 	if (page_buffer == NULL)
 		return -ENOMEM;
-	memset(page_buffer, 0, sz);	
+	memset(page_buffer, 0, sz);
 
 	for (i = 0; i < nr_data_pages + 1; ++i) {
 		page_buffer[i] = get_zeroed_page(GFP_KERNEL);

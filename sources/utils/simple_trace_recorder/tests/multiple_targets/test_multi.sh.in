@@ -1,0 +1,541 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that the simple trace recorder subsystem records the
+# events correctly if more than one target module is used. The traces 
+# recorded by this subsystem and by the test reporter are compared.
+# 
+# Usage: 
+#   sh test_multi.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${FH_COMMON_MODULE}"; then
+		printf "The module is missing: ${FH_COMMON_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${FH_CDEV_MODULE}"; then
+		printf "The module is missing: ${FH_CDEV_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${REPORTER_MODULE}"; then
+		printf "The \"trace reporter\" module is missing: ${REPORTER_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE_SAMPLE}"; then
+		printf "The target module is missing: ${TARGET_MODULE_SAMPLE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE_DUMMY}"; then
+		printf "The target module is missing: ${TARGET_MODULE_DUMMY}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${TARGET_MODULE_BUGGY}"; then
+		printf "The target module is missing: ${TARGET_MODULE_BUGGY}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${OUTPUT_MODULE}"; then
+		printf "Module is missing: ${OUTPUT_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${OUTPUT_RECORDER}"; then
+		printf "The user-space part of the output system is missing: "
+		printf "${OUTPUT_RECORDER}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+cleanupTargets()
+{
+	printf "Cleaning up the targets...\n"
+
+	lsmod | grep "${TARGET_NAME_SAMPLE}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_SAMPLE}"
+	fi
+
+	lsmod | grep "${TARGET_NAME_DUMMY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_DUMMY}"
+	fi
+	
+	lsmod | grep "${TARGET_NAME_BUGGY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_BUGGY}"
+	fi
+}
+
+########################################################################
+# is_process_running pid
+# True if the given process started from the same shell as this script
+# is currently running, false otherwise.
+########################################################################
+isProcessRunning()
+{
+    nlines=$(ps -p "$1" | wc -l)
+    test "$nlines" -eq 2
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+
+	cleanupTargets
+
+	if test "t${RECORDER_PID}" != "tERR"; then
+		if isProcessRunning ${RECORDER_PID}; then
+			kill ${RECORDER_PID}
+
+			# Give the user-space application some time to finish
+			sleep 1
+
+			# If it is still running, force it to stop
+			if isProcessRunning ${RECORDER_PID}; then
+				kill -9 ${RECORDER_PID}
+			fi
+		fi
+	fi
+	
+	lsmod | grep "${OUTPUT_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${OUTPUT_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${REPORTER_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${FH_COMMON_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_COMMON_NAME}"
+	fi
+
+	lsmod | grep "${FH_CDEV_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_CDEV_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${CORE_MODULE_NAME}"
+	fi
+
+	umount "${TEST_DEBUGFS_DIR}"
+}
+
+########################################################################
+loadCore()
+{
+	insmod "${CORE_MODULE}" \
+		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY},${TARGET_NAME_BUGGY}" \
+		umh_dir="@KEDR_UMH_DIR@"
+	if test $? -ne 0; then
+		printf "Failed to unload the core module: ${CORE_MODULE}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadCore()
+{
+	rmmod "${CORE_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the core module.\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+loadReporter()
+{
+	insmod "${REPORTER_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadReporter()
+{
+	rmmod "${REPORTER_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${REPORTER_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+loadFHPlugins()
+{
+	insmod "${FH_COMMON_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load FH plugin for common operations: ${FH_COMMON_MODULE}.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${FH_CDEV_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load FH plugin for cdev operations: ${FH_CDEV_MODULE}.\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadFHPlugins()
+{
+	rmmod "${FH_COMMON_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${FH_COMMON_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod "${FH_CDEV_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${FH_CDEV_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+loadSampleTarget()
+{
+	insmod "${TARGET_MODULE_SAMPLE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_SAMPLE}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+loadDummyTarget()
+{
+	insmod "${TARGET_MODULE_DUMMY}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_DUMMY}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+loadBuggyTarget()
+{
+	insmod "${TARGET_MODULE_BUGGY}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_BUGGY}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadSampleTarget()
+{
+	lsmod | grep "${TARGET_NAME_SAMPLE}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_SAMPLE}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_SAMPLE}\n"
+			cleanupAll
+			exit 1
+		fi
+
+	fi
+}
+
+unloadDummyTarget()
+{
+	lsmod | grep "${TARGET_NAME_DUMMY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_DUMMY}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_DUMMY}\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+}
+
+unloadBuggyTarget()
+{
+	lsmod | grep "${TARGET_NAME_BUGGY}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME_BUGGY}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME_BUGGY}\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+}
+
+########################################################################
+# doTargets() - load, use and unload the target modules
+########################################################################
+doTargets()
+{
+	loadSampleTarget
+	loadDummyTarget
+	loadBuggyTarget
+	
+	sleep 1
+
+	echo "Abracadabra" > /dev/cfake0
+	if test $? -ne 0; then
+		printf "Failed to use the sample target module\n"
+		cleanupAll
+		exit 1
+	fi
+
+	unloadSampleTarget
+	loadSampleTarget
+
+	echo "Abracadabra" > /dev/cfake1
+	if test $? -ne 0; then
+		printf "Failed to use the sample target module\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	unloadSampleTarget
+	unloadBuggyTarget
+	unloadDummyTarget
+}
+
+########################################################################
+# simplifyTrace() - process the trace from file $1 and save the result
+# in $1.simplified. The parts of the trace specific to a given test run
+# are removed.
+########################################################################
+simplifyTrace()
+{
+	if test ! -f "$1"; then
+		printf "File does not exist: \"$1\".\n"
+		cleanupAll
+		exit 1
+	fi
+
+	cat "$1" | \
+		sed -e 's/0x//g; s/^TID=[0-9a-f]*//' | \
+		sed -e 's/init=[0-9a-f]*//; s/core=[0-9a-f]*//; s/addr=[0-9a-f]*//' | \
+		sed -e 's/pc=[0-9a-f]*//; s/id=[0-9a-f]*//' | \
+		sed -e 's/CALL_PRE .* [0-9a-f]*/CALL_PRE/; s/CALL_POST .* [0-9a-f]*/CALL_POST/' | \
+		sed -e 's/FENTRY [0-9a-f]*/FENTRY/; s/FEXIT [0-9a-f]*/FEXIT/' > "$1.simplified"
+	if test $? -ne 0; then
+		printf "Failed to process the trace file \"$1\".\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# prepareExpectedTrace() - use the test reporter to prepare the trace
+########################################################################
+prepareExpectedTrace()
+{
+	loadCore
+	loadFHPlugins
+	loadReporter
+
+	doTargets
+
+	# Get the trace.
+	cat "${TEST_DEBUGFS_OUTPUT_FILE}" > "${EXPECTED_TRACE_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to read data from the output file in debugfs: "
+		printf "${TEST_DEBUGFS_OUTPUT_FILE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	simplifyTrace "${EXPECTED_TRACE_FILE}"
+	
+	unloadReporter
+	unloadFHPlugins
+	unloadCore
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	loadCore
+	loadFHPlugins
+	
+	insmod "${OUTPUT_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the kernel-space part of the output system.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	"${OUTPUT_RECORDER}" "${TEST_TRACE_RAW_FILE}" &
+	RECORDER_PID=$!
+	
+	if ! isProcessRunning ${RECORDER_PID}; then
+		printf "Failed to load the user-space part of the output system.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	doTargets
+	
+	if isProcessRunning ${RECORDER_PID}; then
+		# Give the output system some time.
+		sleep 1
+		
+		if isProcessRunning ${RECORDER_PID}; then
+			printf "Something wrong happened: "
+			printf "the user-space part of the output system is still running.\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+	
+	EVENTS_LOST=$(cat "${EVENTS_LOST_FILE}")
+	if test -z "${EVENTS_LOST}"; then
+		printf "Failed to read lost event count from ${EVENTS_LOST_FILE}.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	if test "t${EVENTS_LOST}" != "t0"; then
+		printf "The output system lost ${EVENTS_LOST} event(s), test failed.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	# Convert the trace to text format
+	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" > "${TEST_TRACE_TEXT_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to convert the trace to text format.\n"
+		cleanupAll
+		exit 1
+	fi	
+	
+	simplifyTrace "${TEST_TRACE_TEXT_FILE}"
+	
+	# Unload the modules, they are no longer needed
+	rmmod "${OUTPUT_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload module: ${OUTPUT_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	unloadFHPlugins
+	unloadCore
+
+	# Compare the obtained and the expected data
+	sh "${COMPARE_SCRIPT}" "${EXPECTED_TRACE_FILE}.simplified" "${TEST_TRACE_TEXT_FILE}.simplified"
+	if test $? -eq 0; then
+		printf "The obtained event trace matches the expected one.\n"
+	else
+		printf "Error occurred during the comparison "
+		printf "of the obtained event trace and the expected one.\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+TOP_STR_DIR="@CMAKE_BINARY_DIR@/utils/simple_trace_recorder"
+OUTPUT_MODULE_NAME="kedr_simple_trace_recorder"
+OUTPUT_MODULE="${TOP_STR_DIR}/kernel/${OUTPUT_MODULE_NAME}.ko"
+OUTPUT_RECORDER="${TOP_STR_DIR}/tests/multiple_targets/output_user/@RECORDER_TEST_NAME@"
+TRACE_TO_TEXT="${TOP_STR_DIR}/tests/trace_to_text/test_trace_to_text"
+
+CORE_MODULE_NAME="kedr_mem_core"
+CORE_MODULE="@CMAKE_BINARY_DIR@/core/${CORE_MODULE_NAME}.ko"
+
+REPORTER_MODULE_NAME="kedr_test_reporter"
+REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"
+
+TARGET_NAME_SAMPLE="kedr_sample_target"
+TARGET_MODULE_SAMPLE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_NAME_SAMPLE}.ko"
+
+TARGET_NAME_DUMMY="kedr_dummy_target"
+TARGET_MODULE_DUMMY="@CMAKE_BINARY_DIR@/tests/dummy_target/${TARGET_NAME_DUMMY}.ko"
+
+TARGET_NAME_BUGGY="buggy01"
+TARGET_MODULE_BUGGY="@CMAKE_BINARY_DIR@/examples/buggy01/tests/${TARGET_NAME_BUGGY}.ko"
+
+FH_COMMON_NAME="kedr_fh_drd_common"
+FH_COMMON_MODULE="@CMAKE_BINARY_DIR@/functions/common/${FH_COMMON_NAME}.ko"
+
+FH_CDEV_NAME="kedr_fh_drd_cdev"
+FH_CDEV_MODULE="@CMAKE_BINARY_DIR@/functions/cdev/${FH_CDEV_NAME}.ko"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
+EVENTS_LOST_FILE="${TEST_DEBUGFS_DIR}/${OUTPUT_MODULE_NAME}/events_lost"
+
+TEST_TRACE_RAW_FILE="${TEST_TMP_DIR}/trace.dat"
+TEST_TRACE_TEXT_FILE="${TEST_TMP_DIR}/trace.txt"
+EXPECTED_TRACE_FILE="${TEST_TMP_DIR}/trace_expected.txt"
+TEST_DEBUGFS_OUTPUT_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
+TEST_DEBUGFS_FILE_BUGGY="${TEST_DEBUGFS_DIR}/${TARGET_NAME_BUGGY}/data"
+
+COMPARE_SCRIPT="@CMAKE_SOURCE_DIR@/core/tests/util/compare_files.sh"
+
+RECORDER_PID="ERR"
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create ${TEST_DEBUGFS_DIR}\n"
+	exit 1
+fi
+
+mount -t debugfs none "${TEST_DEBUGFS_DIR}"
+if test $? -ne 0; then
+	printf "Failed to mount debugfs to ${TEST_DEBUGFS_DIR}\n"
+	cleanupAll
+	exit 1
+fi
+
+prepareExpectedTrace
+doTest
+
+cleanupAll
+
+# test passed
+exit 0

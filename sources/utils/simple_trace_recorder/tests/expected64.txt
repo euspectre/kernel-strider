@@ -1,4 +1,4 @@
-LOAD target=0xcaafbeed12345678
+TARGET LOAD name="test_str_event_gen"
 TID=0xfaad1234b00c5678 FENTRY ffffffffc0123ffa
 TID=0xfaad1234b00c5678 CALL_PRE pc=ffffffffc0123ffb ffffffffd123400b
 TID=0xfaad1234b00c5678 FENTRY ffffffffd123400b
@@ -879,4 +879,4 @@ TID=0xfaad1234b00c5678 FENTRY ffffffffd123400b
 TID=0xfaad1234b00c5678 FEXIT ffffffffd123400b
 TID=0xfaad1234b00c5678 CALL_POST pc=ffffffffc0123ffb ffffffffd123400b
 TID=0xfaad1234b00c5678 FEXIT ffffffffc0123ffa
-UNLOAD target=0xcaafbeed12345678
+TARGET UNLOAD name="test_str_event_gen"

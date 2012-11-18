@@ -72,8 +72,9 @@ struct kedr_event_handlers *cur_eh = NULL;
 
 #define KEDR_TEST_SIGN_EXT_64(_val32) ((unsigned long)(long)(s32)(_val32))
 
+static struct module *target = THIS_MODULE; /* must be a valid module */
+
 #ifdef CONFIG_X86_64
-static struct module *target = (struct module *)0xcaafbeed12345678;
 static unsigned long tid1 = 0xfaad1234b00c5678;
 static unsigned long tid2 = 0xea12ea34fdc1235b;
 static unsigned long addr1 = 0x8eee567ad4c06bf3;
@@ -81,7 +82,6 @@ static unsigned long addr2 = 0xdeed600dfead0bf0;
 static unsigned long lock1 = 0xff4856001001abcd;
 
 #else /* x86-32 */
-static struct module *target = (struct module *)0xcaafbeed;
 static unsigned long tid1 = 0xb00c5678;
 static unsigned long tid2 = 0xfdc1235b;
 static unsigned long addr1 = 0x8eee567a;
@@ -153,6 +153,8 @@ static int
 callbacks_ok(void)
 {
 	return (cur_eh != NULL &&
+		cur_eh->on_session_start != NULL &&
+		cur_eh->on_session_end != NULL &&
 		cur_eh->on_target_loaded != NULL &&
 		cur_eh->on_target_about_to_unload != NULL &&
 		cur_eh->on_function_entry != NULL &&
@@ -201,6 +203,9 @@ generate_events(void)
 	if (!callbacks_ok())
 		return -EINVAL;
 
+	cur_eh->on_session_start(cur_eh);
+	sleep_after_event(sizeof(struct kedr_tr_event_session));
+	
 	cur_eh->on_target_loaded(cur_eh, target);
 	sleep_after_event(sizeof(struct kedr_tr_event_module));
 
@@ -450,6 +455,9 @@ generate_events(void)
 
 	cur_eh->on_target_about_to_unload(cur_eh, target);
 	sleep_after_event(sizeof(struct kedr_tr_event_module));
+
+	cur_eh->on_session_end(cur_eh);
+	sleep_after_event(sizeof(struct kedr_tr_event_session));
 	return 0;
 }
 /* ====================================================================== */

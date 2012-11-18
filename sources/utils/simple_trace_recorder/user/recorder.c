@@ -10,8 +10,8 @@
  * file does not exist, it will be created. The previous contents of the 
  * file will be cleared. 
  *
- * The application stops polling the file and exits when it sees "target 
- * unloaded" event or if it is interrupted by a signal. If the signal is 
+ * The application stops polling the file and exits when it sees
+ * "session end" event or if it is interrupted by a signal. If the signal is
  * SIGINT (e.g., Ctrl+C) or SIGTERM (e.g., plain 'kill'), the application
  * also saves the remaining available data before exiting. */
 
@@ -204,8 +204,9 @@ process_data(void *buffer, FILE *outf)
 		}
 		rp += treh->event_size;
 				
-		/* Finish if the target module has been unloaded. */
-		if (treh->type == KEDR_TR_EVENT_TARGET_UNLOAD) {
+		/* Finish if the last target module has been unloaded
+		 * (that is, the session has ended). */
+		if (treh->type == KEDR_TR_EVENT_SESSION_END) {
 			done = 1;
 			break;
 		}

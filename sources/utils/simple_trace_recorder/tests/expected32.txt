@@ -1,4 +1,4 @@
-LOAD target=0xcaafbeed
+TARGET LOAD name="test_str_event_gen"
 TID=0xb00c5678 FENTRY c0123ffa
 TID=0xb00c5678 CALL_PRE pc=c0123ffb d123400b
 TID=0xb00c5678 FENTRY d123400b
@@ -879,4 +879,4 @@ TID=0xb00c5678 FENTRY d123400b
 TID=0xb00c5678 FEXIT d123400b
 TID=0xb00c5678 CALL_POST pc=c0123ffb d123400b
 TID=0xb00c5678 FEXIT c0123ffa
-UNLOAD target=0xcaafbeed
+TARGET UNLOAD name="test_str_event_gen"

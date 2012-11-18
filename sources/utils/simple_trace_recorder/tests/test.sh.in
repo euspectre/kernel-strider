@@ -98,7 +98,7 @@ doTest()
 		exit 1
 	fi
 
-	insmod "${OUTPUT_MODULE}" nr_data_pages=2		
+	insmod "${OUTPUT_MODULE}" nr_data_pages=4		
 	if test $? -ne 0; then
 		printf "Failed to load the kernel-space part of the output system.\n"
 		cleanupAll
@@ -155,7 +155,7 @@ doTest()
 	fi
 	
 	# Convert the trace to text format
-	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" > "${TEST_TRACE_TEXT_FILE}"
+	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" | sed -e 's/ init=.*$//' > "${TEST_TRACE_TEXT_FILE}"
 	if test $? -ne 0; then
 		printf "Failed to convert the trace to text format.\n"
 		cleanupAll

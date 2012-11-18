@@ -1,12 +1,9 @@
 /* This application produces a trace in the text format from the binary
  * trace file saved by "simple_trace_recorder". 
- * Except for "target load/unload" events, the format is the same that 
- * "kedr_test_reporter" uses if symbol resolution is not enabled.
+ * The format is the same that "kedr_test_reporter" uses if loaded with the
+ * default options except possible differences in presence/absense of "0x"
+ * prefix for the hex numbers.
  *
- * "target load/unload" events are reported as follows:
- *    LOAD target=<mod,0x%lx>
- *    UNLOAD target=<mod,0x%lx>
- * 
  * The resulting trace will be output to stdout.
  *
  * Usage:
@@ -232,10 +229,21 @@ report_io_memory_event(unsigned long tid,
 }
 
 static void
-report_load_unload_event(const struct kedr_tr_event_module *ev, bool is_load)
+report_load_event(const struct kedr_tr_event_module *ev)
 {
-	printf("%s target=0x%lx\n", (is_load ? "LOAD" : "UNLOAD"), 
-		(unsigned long)ev->mod);
+	unsigned long init_addr = code_address_from_raw(ev->init_addr);
+	unsigned long core_addr = code_address_from_raw(ev->core_addr);
+	
+	printf(
+"TARGET LOAD name=\"%s\" init=%lx init_size=%u core=%lx core_size=%u\n",
+		ev->name, init_addr, (unsigned int)ev->init_size,
+	        core_addr, (unsigned int)ev->core_size);
+}
+
+static void
+report_unload_event(const struct kedr_tr_event_module *ev)
+{
+	printf("TARGET UNLOAD name=\"%s\"\n", ev->name);
 }
 
 static void
@@ -364,16 +372,18 @@ do_convert(FILE *fd)
 		unsigned long tid = (unsigned long)record->tid;
 		
 		switch (record->type) {
+		case KEDR_TR_EVENT_SESSION_START:
+		case KEDR_TR_EVENT_SESSION_END:
+			break;
+
 		case KEDR_TR_EVENT_TARGET_LOAD:
-			report_load_unload_event(
-				(struct kedr_tr_event_module *)record, 
-				true);
+			report_load_event(
+				(struct kedr_tr_event_module *)record);
 			break;
 		
 		case KEDR_TR_EVENT_TARGET_UNLOAD:
-			report_load_unload_event(
-				(struct kedr_tr_event_module *)record, 
-				false);
+			report_unload_event(
+				(struct kedr_tr_event_module *)record);
 			break;
 		
 		case KEDR_TR_EVENT_FENTRY:

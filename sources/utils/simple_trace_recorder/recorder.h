@@ -14,6 +14,10 @@
  * the user space part is a 32-bit application. */
 /* ====================================================================== */
 
+/* Maximum length of the target module's name to be reported. If the name
+ * is longer, only the first KEDR_TARGET_NAME_LEN will be used here. */
+#define KEDR_TARGET_NAME_LEN 31
+
 /* Meaning of the commonly used fields of the event structures:
  *   tid - thread ID;
  *   pc - program counter (aka PC, instruction pointer, IP) - address of 
@@ -43,7 +47,7 @@ struct kedr_tr_event_header
 	__u16 obj_type; 
 	
 	/* ID of the thread where the event happened. Not used for module
-	 * load/unload events. */
+	 * load/unload and session start/end events. */
 	__u64 tid;
 } __attribute__ ((packed));
 
@@ -120,7 +124,15 @@ enum kedr_tr_event_type
 	 * function, no barriers, no backward jumps.
 	 * Structure: kedr_tr_event_block. */
 	KEDR_TR_EVENT_BLOCK_ENTER	= 24,
-	
+
+	/* "Session start" and "session end" events. The former is generated
+	 * when the first of the target modules has been loaded (before 
+	 * "target load" event). The latter is generated when the only
+	 * loaded target module is about to unload (after "target unload"
+	 * event). */
+	KEDR_TR_EVENT_SESSION_START	= 25,
+	KEDR_TR_EVENT_SESSION_END	= 26,
+
 	/* The number of event types defined so far. */
 	KEDR_TR_EVENT_MAX
 };
@@ -129,15 +141,38 @@ enum kedr_tr_event_type
  * higher 32 bits can be obtained by sign extension of the stored values:
  * full_value = (__u64)(__s64)(__s32)stored_value. */
 
+struct kedr_tr_event_session
+{
+	struct kedr_tr_event_header header;
+} __attribute__ ((packed));
+
 struct kedr_tr_event_module
 {
 	struct kedr_tr_event_header header;
-	
-	/* Address of 'struct module' for the target module. When the target
-	 * is loaded the next time, the address may be different, so this is
-	 * rather a kind of an ID for an analysis session with this target 
-	 * module. */
-	__u64 mod;
+
+	/* Name of the module, truncated if longer than KEDR_TARGET_NAME_LEN
+	 * characters. C-style string. */
+	char name[KEDR_TARGET_NAME_LEN + 1];
+
+	/* Addresses and sizes of "init" and "core" areas of the module.
+	 * Both the address and the size are 0 if there is no such area.
+	 * 
+	 * Meaningful for "target load" events only.
+	 * 
+	 * This information provides a way to determine the addresses of the
+	 * module's ELF sections (if the algorithm the module loader uses
+	 * to arrange the sections does not change significantly in the
+	 * future).
+	 * See linux/module.h and layout_sections() in kernel/module.c, as
+	 * of kernel versions 2.6.32 - 3.6.x.
+	 *
+	 * [NB] As "init" and "core" areas are in the module mapping space,
+	 * it is enough to store the lower 32 bits of them, the rule is the
+	 * same as for 'pc' values. */
+	__u32 init_addr;
+	__u32 core_addr;
+	__u32 init_size;
+	__u32 core_size;
 } __attribute__ ((packed));
 
 struct kedr_tr_event_func

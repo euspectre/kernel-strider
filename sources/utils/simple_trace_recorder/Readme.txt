@@ -51,7 +51,7 @@ synchronization events.
 Note that call-related events are often used to maintain the call stack 
 information. If recording of such events is disabled, that information 
 will not be available, only the address of the instruction that generated
-the event will be in the trace. */
+the event will be in the trace.
 ============================================================================
 
 Prerequisites:
@@ -101,15 +101,15 @@ file as an argument:
  # /usr/local/bin/kedr_st_recorder trace.dat &
 
 4. 
-Load the target module.
+Load the target module(s).
 
 5. 
 The kernel modules do not have fixed load addresses. So it is recommended 
-to obtain the memory addresses at least for the loaded sections of the 
+to obtain the memory addresses at least for the loaded sections of each
 target module now:
 
  # /usr/local/bin/kedr_show_target_sections.sh \
-   <name_of_the_target_module> > sections.dat
+   <name_of_the_target_module> > sections_<name_of_the_target_module>.dat
 
 The information collected at this step will be used later to properly 
 resolve the addresses of the instructions in the report produced by TSan.
@@ -118,12 +118,12 @@ If you like, you could save more detailed information instead, not only for
 the sections but also for the symbols in the target module:
 
  # /usr/local/bin/kedr_show_target_symbols.sh \
-   <name_of_the_target_module> > symbols.dat
+   <name_of_the_target_module> > symbols_<name_of_the_target_module>.dat
 
 6.
 <do something with the target module, then unload it>
 
-kedr_st_recorder process should stop automatically when the target is 
+kedr_st_recorder process should stop automatically when the last target is 
 unloaded. If it fails to stop for some reason, send SIGINT or SIGTERM to it
 ('kill -INT <PID>' or 'kill <PID>').
 
@@ -133,7 +133,7 @@ Check if the output system has been able to save information for all events:
  # cat /sys/kernel/debug/kedr_simple_trace_recorder/events_lost
 
 If "events_lost" contains a non-zero value, you would probably want to 
-unload the target module and retry from the step 2 with a greater value of 
+unload the target modules and retry from the step 2 with a greater value of 
 "nr_data_pages" parameter.
 
 8.
@@ -188,7 +188,10 @@ things easier, you can use the information about the module's sections
 collected at the step 5 to resolve the addresses:
 
  $ kedr_symbolize_tsan_report \
-   tsan_report_raw.txt sections.dat > tsan_report.txt
+   tsan_report_raw.txt sections_<name_of_the_target_module>.dat > tsan_report.txt
+
+You may need to apply kedr_symbolize_tsan_report several times, once for
+each target module.
 
 The relevant portion of "tsan_report.txt":
 
@@ -219,7 +222,10 @@ Instead of section information, you may use more detailed symbol information
 (also obtained earlier) to resolve the addresses in the report:
 
  $ kedr_symbolize_tsan_report \
-   tsan_report_raw.txt symbols.dat > tsan_report.txt
+   tsan_report_raw.txt symbols_<name_of_the_target_module>.dat > tsan_report.txt
+
+You may need to apply kedr_symbolize_tsan_report several times, once for
+each target module.
 
 The relevant portion of "tsan_report.txt" would look like this in this case:
 

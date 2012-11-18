@@ -6,6 +6,10 @@ set(RECORDER_TEST_NAME "test_st_recorder")
 set(EVENT_GEN_NAME "test_str_event_gen")
 set(KEDR_ST_REC_KMODULE_NAME "${KMODULE_TEST_NAME}")
 
+# The directory where the tests should look for the user-mode helper
+# scripts.
+set(KEDR_UMH_DIR "${CMAKE_BINARY_DIR}/core/tests")
+
 if (KEDR_64_BIT)
 	set(KEDR_TEST_EXPECTED_TRACE 
 		"${CMAKE_CURRENT_SOURCE_DIR}/expected64.txt")
@@ -36,3 +40,4 @@ add_subdirectory(event_gen)
 add_subdirectory(output_kernel)
 add_subdirectory(output_user)
 add_subdirectory(trace_to_text)
+add_subdirectory(multiple_targets)
