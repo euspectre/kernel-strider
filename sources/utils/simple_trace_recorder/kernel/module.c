@@ -342,7 +342,7 @@ buffer_file_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	
 	vma->vm_ops = &buffer_mmap_vm_ops;
-	vma->vm_flags |= VM_RESERVED;
+	vma->vm_flags |= VM_IO;
 	return 0;
 }
 
