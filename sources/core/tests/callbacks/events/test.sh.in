@@ -93,13 +93,13 @@ cleanupAll()
 ########################################################################
 getInfoFromKoFile()
 {
-	readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
+	LC_ALL=C readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
 	if test $? -gt 1; then
 		printf "Failed to obtain the list of columns in the symbol table data.\n"
 		exit 1
 	fi
 	
-	readelf -sW "${TARGET_MODULE}" | grep -F -f "${SYMBOL_LIST}" > "${TEST_FILE_DATA}"
+	LC_ALL=C readelf -sW "${TARGET_MODULE}" | grep -F -f "${SYMBOL_LIST}" > "${TEST_FILE_DATA}"
 	if test $? -gt 1; then
 		printf "Failed to obtain the symbol table data.\n"
 		exit 1

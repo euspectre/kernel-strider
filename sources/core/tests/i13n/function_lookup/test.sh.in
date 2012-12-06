@@ -137,20 +137,22 @@ getInfoFromCore()
 ########################################################################
 getInfoFromKoFile()
 {
-	readelf -SW "${TARGET_MODULE}" | grep -E '^\s*\[\s*[0-9]+\]' > \
+	# LC_ALL=C is specified explicitly because the test assumes the
+	# strings output by readelf are not localized.
+	LC_ALL=C readelf -SW "${TARGET_MODULE}" | grep -E '^\s*\[\s*[0-9]+\]' > \
 		"${TEST_FILE_SECTIONS}"
 	if test $? -gt 1; then
 		printf "Failed to obtain information about the sections of the target.\n"
 		exit 1
 	fi
 	
-	readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
+	LC_ALL=C readelf -sW "${TARGET_MODULE}" | grep -i 'num:' > "${TEST_FILE_HEADER}"
 	if test $? -gt 1; then
 		printf "Failed to obtain the list of columns in the symbol table data.\n"
 		exit 1
 	fi
 	
-	readelf -sW "${TARGET_MODULE}" | grep -E '^\s*[0-9]+\s*:' > "${TEST_FILE_DATA}"
+	LC_ALL=C readelf -sW "${TARGET_MODULE}" | grep -E '^\s*[0-9]+\s*:' > "${TEST_FILE_DATA}"
 	if test $? -gt 1; then
 		printf "Failed to obtain the symbol table data.\n"
 		exit 1
