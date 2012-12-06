@@ -49,6 +49,34 @@ macro(is_path_inside_dir output_var dir path)
         set(${output_var} "TRUE")
     endif(_is_not_inside_dir)
 endmacro(is_path_inside_dir output_var dir path)
+########################################################################
+
+function(check_libelf_devel)
+	# Libelf and its development files are required for trace processing
+	# as well as for the tests
+	set(checking_message "Checking for libelf headers")
+	message(STATUS "${checking_message}")
+
+	if(libelf_headers)
+		set(checking_message "${checking_message} [cached] - done")
+	else(libelf_headers)
+		try_compile(libelf_compile_result # Result variable
+			"${CMAKE_BINARY_DIR}/check_libelf_devel/libelf_check" # Binary dir
+			"${CMAKE_SOURCE_DIR}/cmake/other_sources/libelf_check.c" # Source file
+			CMAKE_FLAGS "-DLINK_LIBRARIES:string=elf"
+			OUTPUT_VARIABLE libelf_compile_out)
+		if(NOT libelf_compile_result)
+			message(STATUS "${checking_message} - not found")
+			message(FATAL_ERROR
+				"Unable to find the development files for libelf library.")
+		endif(NOT libelf_compile_result)
+
+		set(libelf_headers "FOUND" CACHE INTERNAL "Whether libelf headers are installed")
+		set(checking_message "${checking_message} - done")
+	endif(libelf_headers)
+
+	message(STATUS "${checking_message}")
+endfunction(check_libelf_devel)
 
 ########################################################################
 # Test-related macros

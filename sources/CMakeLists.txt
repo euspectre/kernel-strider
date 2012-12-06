@@ -180,6 +180,9 @@ else (ADDR2LINE)
 	message (FATAL_ERROR "addr2line is not found")
 endif (ADDR2LINE)
 
+# Check if the development files for libelf are available
+check_libelf_devel()
+
 # Check if stack trace information is reliable on this system.
 # STACK_TRACE_RELIABLE will hold the result.
 # This only checks relevant configuration parameters of kernel.
