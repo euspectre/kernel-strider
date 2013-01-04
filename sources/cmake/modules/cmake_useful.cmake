@@ -52,9 +52,9 @@ endmacro(is_path_inside_dir output_var dir path)
 ########################################################################
 
 function(check_libelf_devel)
-	# Libelf and its development files are required for trace processing
+	# libelf and its development files are required for trace processing
 	# as well as for the tests
-	set(checking_message "Checking for libelf headers")
+	set(checking_message "Checking for libelf development files")
 	message(STATUS "${checking_message}")
 
 	if(libelf_headers)
@@ -77,6 +77,32 @@ function(check_libelf_devel)
 
 	message(STATUS "${checking_message}")
 endfunction(check_libelf_devel)
+
+function(check_libdw_devel)
+	# libdw and its development files are required for trace processing.
+	set(checking_message "Checking for libdw development files")
+	message(STATUS "${checking_message}")
+
+	if(libdw_headers)
+		set(checking_message "${checking_message} [cached] - done")
+	else(libdw_headers)
+		try_compile(libdw_compile_result # Result variable
+			"${CMAKE_BINARY_DIR}/check_libdw_devel/libdw_check" # Binary dir
+			"${CMAKE_SOURCE_DIR}/cmake/other_sources/libdw_check.c" # Source file
+			CMAKE_FLAGS "-DLINK_LIBRARIES:string=elf;dw"
+			OUTPUT_VARIABLE libdw_compile_out)
+		if(NOT libdw_compile_result)
+			message(STATUS "${checking_message} - not found")
+			message(FATAL_ERROR
+				"Unable to find the development files for libdw library.")
+		endif(NOT libdw_compile_result)
+
+		set(libdw_headers "FOUND" CACHE INTERNAL "Whether libdw headers are installed")
+		set(checking_message "${checking_message} - done")
+	endif(libdw_headers)
+
+	message(STATUS "${checking_message}")
+endfunction(check_libdw_devel)
 
 ########################################################################
 # Test-related macros

@@ -8,4 +8,5 @@ install(PROGRAMS
 
 add_subdirectory(symbolize)
 add_subdirectory(addr2line)
+add_subdirectory(process_trace)
 ########################################################################

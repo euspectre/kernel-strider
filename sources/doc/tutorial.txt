@@ -39,7 +39,30 @@ Prerequisites
 2. GNU make.
 
 3. Linux kernel version 2.6.32 or newer with loadable module support and 
-debugfs support enabled in the configuration. 
+debugfs support enabled in the configuration (see also the notes below). 
+
+4. Everything necessary to build Linux kernel modules for the currently
+running kernel.
+
+5. CMake 2.6 or newer (http://cmake.org/).
+
+6. readelf and addr2line. These tools are usually present (they are from 
+"binutils" package).
+
+7. Development files for libelf library. Look for a package named 
+"libelf-devel", "libelf-dev", "elfutils-libelf-devel", "libelfutils-devel",
+"lib64elfutils-devel" or something like that for your Linux distribution.
+
+8. Development files for libdw library. They may be included in some of the 
+elfutils development packages like such files for libelf or it may be 
+provided in a separate package, libdw-dev*, libdw1-dev* or the like.
+
+9. libebl* libraries (needed by libdw to determine the source lines for the 
+instruction addresses). Usually, they are installed automatically because
+libdw depends on them but if this is not the case, they should be installed
+separately.
+
+Notes.
 
 If you would like to resolve the addresses in the report on the detected
 data races, that is, to find the matching lines of the source code of the
@@ -62,18 +85,6 @@ that each function of the target module is at least 5 bytes long (size of
 the relative near jump instruction) and is therefore instrumentable by
 KernelStrider core. Sometimes it can be necessary for all the functions of
 the target module to be "visible" to KernelStrider, even the short ones.
-
-4. Everything necessary to build Linux kernel modules for the currently
-running kernel.
-
-5. CMake 2.6 or newer (http://cmake.org/).
-
-6. Readelf and Addr2line. These tools are usually present (they are from 
-"binutils" package).
-
-7. Development files for libelf library. Look for a package named 
-"libelf-devel", "libelf-dev", "elfutils-libelf-devel", "libelfutils-devel",
-"lib64elfutils-devel" or something like that for your Linux distribution.
 ========================================================================
 
 Building ThreadSanitizer
@@ -251,15 +262,13 @@ very intensive, the default value of "nr_data_pages" should be acceptable.
 3.1.1
 Load the kernel-space part of the subsystem:
 
-    # insmod /usr/local/lib/modules/`uname 
--r`/misc/kedr_simple_trace_recorder.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko
 
 If you would like to set the size of the buffer used for data transfer to, 
 say, 4096 memory pages (16 megabytes on the systems with the pages of 4
 kilobytes each), you can load this part as follows instead:
 
-    # insmod /usr/local/lib/modules/`uname 
--r`/misc/kedr_simple_trace_recorder.ko \
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko \
         nr_data_pages=4096
 
 3.1.2
@@ -276,24 +285,6 @@ Now it is time to load the target module.
     # insmod /home/user/temp/buggy01/buggy01.ko
 
 3.1.4
-The kernel modules do not have fixed load addresses. So it is recommended 
-to obtain the memory addresses at least for the loaded sections of the
-target module now, while it is loaded:
-
-    # /usr/local/bin/kedr_show_target_sections.sh \
-        buggy01 > /home/user/temp/sections.dat
-
-The information collected at this step will be used later to properly 
-resolve the addresses of the instructions in the report produced by
-ThreadSanitizer.
-
-If you like, you could save more detailed information instead, not only for 
-the sections but also for the symbols in the target module:
-
-    # /usr/local/bin/kedr_show_target_symbols.sh \
-        buggy01 > /home/user/temp/symbols.dat
-
-3.1.5
 To be able to analyze the target's code, you need to make that code execute 
 somehow. One could operate on the device that the module services, run some
 specific tests on it, etc.
@@ -309,7 +300,7 @@ When you are done with the target module, unload it:
 
     # rmmod buggy01
 
-3.1.6
+3.1.5
 The user-space part of the output system ("kedr_st_recorder" process) 
 should stop automatically when the target is unloaded. If it fails to stop
 for some reason, send SIGINT or SIGTERM to it ('kill -INT <PID>' or 'kill
@@ -323,12 +314,12 @@ If "events_lost" contains a non-zero value, you would probably want to
 unload "kedr_simple_trace_recorder" and then retry from the step 3.1.1 with
 a greater value of "nr_data_pages" parameter.
 
-3.1.7 
+3.1.6 
 If you would like to check some other operations with the target module and 
 record the corresponding trace, you can start from step 3.1.2 (probably
 with a different file to save the trace to) and go on as described above.
 
-3.1.8
+3.1.7
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
@@ -336,13 +327,29 @@ components of KernelStrider can be unloaded.
     # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
     # rmmod kedr_mem_core
 
-3.1.9
-Convert the saved trace to a format that ThreadSanitizer understands:
-    $ /usr/local/bin/kedr_convert_trace_to_tsan \
-        /home/user/temp/trace.dat > /home/user/temp/trace_tsan.tst
+3.1.8
+For the simple output subsystem, KernelStrider provides a helper tool,
+tsan_process_trace. It automatically converts the trace to the format 
+ThreadSanitizer understands, feeds the trace to the latter and outputs the 
+report. The tool looks for ThreadSanitizer (ts_offline, etc.) in $PATH by 
+default.
 
-trace_tsan.tst contains the trace in the needed format now.
+    $ /usr/local/bin/tsan_process_trace /home/user/temp/buggy01/buggy01.ko \
+        < trace.dat > tsan_report.txt
 
+tsan_report.txt will now contain the report of ThreadSanitizer. It is 
+described in the section 4 how to interpret it.
+
+The tool uses the binary file of the target module to determine the
+addresses of ELF sections and (if debug info is available in the module) the 
+appropriate source lines.
+
+To get more information about the abilities of tsan_process_trace tool,
+execute
+
+    $ /usr/local/bin/tsan_process_trace --help
+
+----------------------------------------------------------------------------
 3.2. Collecting Data Using the "Professional" Output Subsystem
 
 (See output/user/README in KernelStrider sources for more details about 
@@ -350,8 +357,7 @@ this output subsystem.)
 
 3.2.1
 Load the kernel-mode component of the output subsystem:
-    # insmod /usr/local/lib/modules/`uname 
--r`/misc/kedr_trace_sender.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_trace_sender.ko
 
 3.2.2
 At this step, we will instruct the output system to prepare to record the 
@@ -382,11 +388,19 @@ Load the target module.
     # insmod /home/user/temp/buggy01/buggy01.ko
 
 3.2.4
-Save the addresses of the sections and/or symbols contained in the target 
-module.
+The kernel modules do not have fixed load addresses. So it is recommended 
+to obtain the memory addresses at least for the loaded sections of the
+target module now, while it is loaded:
 
     # /usr/local/bin/kedr_show_target_sections.sh \
         buggy01 > /home/user/temp/sections.dat
+
+The information collected at this step will be used later to properly 
+resolve the addresses of the instructions in the report produced by
+ThreadSanitizer.
+
+If you like, you could save more detailed information instead, not only for 
+the sections but also for the symbols in the target module:
 
     # /usr/local/bin/kedr_show_target_symbols.sh \
         buggy01 > /home/user/temp/symbols.dat
@@ -423,17 +437,9 @@ Convert the saved trace to a format that ThreadSanitizer understands:
 
 trace_tsan.tst now contains the trace in the needed format.
 
-4. Analyzing the trace
+3.2.10
+Here and below we assume the current directory is /home/user/temp/.
 
-Regardless of which of the output subsystems you have used above, now you 
-have the following in /home/user/temp/:
-- trace_tsan.tst - the trace in the format that ThreadSanitizer understands;
-- sections.dat and/or symbols.dat - information about the ELF sections 
-and/or symbols in the target module.
-
-Here we assume the current directory is /home/user/temp/.
-
-4.1
 Let us use ThreadSanitizer on the trace:
     $ ts_offline  \
         --show-pc < trace_tsan.tst 2> tsan_report_raw.txt
@@ -449,7 +455,7 @@ positives), execute it as follows instead:
 The detailed description of these modes is available here: 
 http://code.google.com/p/data-race-test/wiki/PureHappensBeforeVsHybrid
 
-4.2
+3.2.11
 Now tsan_report_raw.txt contains the information about the potential data 
 races found by ThreadSanitizer.
 
@@ -478,12 +484,12 @@ because the raw reports are rarely used by themselves. The converters you
 will apply at the next steps will take care of these addresses
 automatically.
 
-4.3
+3.2.12
 It is not very convenient to analyze the raw addresses in the report. If 
 the target kernel module contains debugging information, you can use a tool
 provided with KernelStrider to resolve the appropriate lines of the source
 code. To do this, you need the information about the target's sections
-(file "sections.dat" prepared on step 3.1.4 or 3.2.4) and the binary file
+(file "sections.dat" prepared on step 3.2.4) and the binary file
 of the target module ("buggy.ko").
 
     $ /usr/local/bin/tsan_report_addr2line \
@@ -507,7 +513,7 @@ WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
     #0  sample_init_module module.c:122:  
   Location 0xffff88004b3dbda8 is 8 bytes inside a block 
   starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:159:  
+    #0  kmalloc slab_def.h:161:  
     #1  sample_init_module module.c:122:  
    Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
 }}}
@@ -519,7 +525,7 @@ found, the report should be easier to analyze.
 If the target module does not have debugging information, you still can use 
 the tools provided by KernelStrider to at least resolve section or symbol
 names in the report. "sections.dat" and "symbols.dat" prepared during step
-3.1.4 or 3.2.4 are needed here.
+3.2.4 are needed here.
 
     $ /usr/local/bin/kedr_symbolize_tsan_report \
         tsan_report_raw.txt sections.dat > tsan_report_with_sections.txt
@@ -550,7 +556,12 @@ information were available but still much better than nothing.
 If you would like to resolve symbol names instead of section names, just 
 use "symbols.dat" file instead of "sections.dat" in the command above.
 
-4.4
+4. Analyzing the trace
+
+Regardless of which of the output subsystems you have used above, now you 
+have the report listing the potential data races in tsan_report.txt.
+
+4.1
 Before you begin to analyze the report produced by ThreadSanitizer, there 
 is a couple of important points to consider.
 
@@ -596,24 +607,28 @@ annotations will still be necessary in sometimes.
 We will describe below how to use dynamic annotations in the code of the 
 target module to reduce the number of the reported false positives.
 
-4.5
+4.2
 Let us look at the report (tsan_report.txt). Here is one of the warnings 
 you are likely to encounter there:
 
 ------------------------------------
 WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
    T2 (L{}):
-    #0  sample_open module.c:43:  
+    #0  sample_open (module.c:43)
   Concurrent write(s) happened at (OR AFTER) these points:
    T1 (L{}):
-    #0  sample_init_module module.c:122:  
+    #0  sample_init_module (module.c:122)
   Location 0xffff88004b3dbda8 is 8 bytes inside a block 
   starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:159:  
-    #1  sample_init_module module.c:122:  
+    #0  kmalloc (slab_def.h:161)
+    #0  kzalloc (slab.h:340)
+    #1  sample_init_module (module.c:122)
    Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
 }}}
 ------------------------------------
+
+Note that the same index of the stack items (#0 for kmalloc and kzalloc 
+above) is used for the "calls" ("substitutions") of inline functions.
 
 ThreadSanitizer suspects there is a data race between threads T2 and T1. 
 T2 reads 4 bytes starting from address 0xffff88004b3dbda8, this happens in 
@@ -700,7 +715,7 @@ The detailed information about this relation can be found here:
 http://en.wikipedia.org/wiki/Happened-before
 http://code.google.com/p/data-race-test/wiki/ThreadSanitizerAlgorithm
 
-4.6
+4.3
 So, one needs to tell KernelStrider somehow that if the start of the 
 execution of debugfs_create_file() is observed before the start of
 execution of sample_open(), the former actually happens before the latter.
@@ -708,7 +723,7 @@ execution of sample_open(), the former actually happens before the latter.
 To do this, you can "annotate" the relevant locations in the code with the 
 special macros KernelStrider provides, rebuild "buggy01", repeat all the
 operations with it, collect a new trace and feed it to ThreadSanitizer
-again as described above, etc. (steps 1 - 4.3).
+again as described above, etc.
 
 The annotated variant of "buggy01" is in 
 "/usr/local/share/kedr/examples/buggy01_annotated".
@@ -744,7 +759,7 @@ $(MODULE_NAME)-y := module.o kedr_annotations.o
 Note that a target module containing the describe here annotations can be 
 used normally even if KernelStrider is not loaded.
 
-4.7
+4.4
 You also need to choose the identifiers for happens-before "links" ("arcs") 
 you are going to specify in the code with the annotations. An ID is a
 non-zero unsigned long value. Sometimes it is convenient to use the address
@@ -834,7 +849,7 @@ sample_exit_module(void)
 }
 ------------------------------------
 
-4.8
+4.5
 There is one more thing that you might need to tell KernelStrider about. 
 Consider "struct file" object pointed to by 'filp' in the file operation
 callbacks. The memory for this object is allocated by the kernel before
@@ -860,17 +875,17 @@ quite accurate but it is enough in this case. Here they are:
 You can see in sample_open() and sample_release() 
 ("buggy01_annotated/module.c") how these annotations are used.
 
-4.9
+4.6
 Now that you have the annotated variant of "buggy01" module, you can build 
 it and perform the steps described earlier in this tutorial once again to
 get a report listing possible data races.
 
-Note that when using "tsan_report_addr2line" tool to resolve the source 
-lines in the report, the correct ".ko" file with debug information should
-be specified. This seems obvious but still it is easy to forget and use the
-old "buggy.ko" there (especially if you have several variants of the target
-module around at the same time). As a consequence, the source lines could
-be resolved incorrectly.
+Note that when using "tsan_process_trace" or "tsan_report_addr2line" tools,
+the correct ".ko" file with debug information should be specified. This 
+seems obvious but still it is easy to forget and use the old "buggy.ko" 
+there (especially if you have several variants of the target module around
+at the same time). As a consequence, the source lines could be incorrect in
+the report.
 
 Also note that ThreadSanitizer may report not all races between accesses to 
 a given memory area. As a result, a real race may remain missing from the
@@ -886,17 +901,18 @@ warnings:
 [W1]
 WARNING: Possible data race during read of size 8 at 0xffff88003795ab80: {{{
    T2 (L{L1}):
-    #0  sample_open module.c:81:  
+    #0  sample_open (module.c:81) 
   Concurrent write(s) happened at (OR AFTER) these points:
    T1 (L{}):
-    #0  sample_init_module module.c:203:  
+    #0  sample_init_module (module.c:203)
   Location 0xffff88003795ab80 is 0 bytes inside a block 
   starting at 0xffff88003795ab80 of size 16 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:159:  
-    #1  sample_init_module module.c:174:  
+    #0  kmalloc (slab_def.h:161)
+    #0  kzalloc (slab.h:340)
+    #1  sample_init_module (module.c:174) 
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
-    #0  sample_open module.c:79:  
+    #0  sample_open (module.c:79)
    Race verifier data: 0x3ffffffa014e0da,0xffffffffa00050c5
 }}}
 
@@ -904,41 +920,43 @@ WARNING: Possible data race during read of size 8 at 0xffff88003795ab80: {{{
 WARNING: Possible data race during write of size 1 at 0xffff8800347f6700: 
 {{{
    T2 (L{L1}):
-    #0  sample_open module.c:81:  
+    #0  sample_open (module.c:81)
   Concurrent write(s) happened at (OR AFTER) these points:
    T1 (L{}):
-    #0  sample_init_module module.c:203:  
+    #0  sample_init_module (module.c:203)
   Location 0xffff8800347f6700 is 0 bytes inside a block 
   starting at 0xffff8800347f6700 of size 38 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:159:  
-    #1  sample_init_module module.c:203:  
+    #0  kmalloc (slab_def.h:161)
+    #0  kzalloc (slab.h:340)
+    #1  sample_init_module (module.c:203)
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
-    #0  sample_open module.c:79:  
+    #0  sample_open (module.c:79)
    Race verifier data: 0x3ffffffa014e0e5,0xffffffffa00050c5
 }}}
 
 [W3]
 WARNING: Possible data race during read of size 4 at 0xffff88003795ab88: {{{
    T3 (L{}):
-    #0  sample_open module.c:76:  
+    #0  sample_open (module.c:76)
   Concurrent write(s) happened at (OR AFTER) these points:
    T2 (L{L1}):
-    #0  sample_open module.c:80:  
+    #0  sample_open (module.c:80)
   Location 0xffff88003795ab88 is 8 bytes inside a block 
   starting at 0xffff88003795ab80 of size 16 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:159:  
-    #1  sample_init_module module.c:174:  
+    #0  kmalloc (slab_def.h:161)
+    #0  kzalloc (slab.h:340)
+    #1  sample_init_module (module.c:174)
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
-    #0  sample_read module.c:127:  
+    #0  sample_read (module.c:127)
    Race verifier data: 0x3ffffffa014e0a7,0xffffffffa014e0bd
 }}}
 ------------------------------------
 
 Let us analyze these warnings one by one.
 
-4.9.1
+4.6.1
 Using the information about the accessed memory location as a hint, we can 
 assume the warning [W1] is about a read from and a write to
 "some_data->buf" (the first field, i.e. the field at the offset 0, of
@@ -989,7 +1007,7 @@ So, yes, this is a race. As it is often the case for the races between
 initialization and usage of a resource, this one may have serious
 consequences.
 
-4.9.2
+4.6.2
 The lines of the source code for the conflicting accesses in the warning 
 [W2] are the same as in [W1] but a different object is accessed there.
 Indeed, consider information about the memory location and take into
@@ -1032,7 +1050,7 @@ This is also a real data race for the same reason as the race reported in
 the warning [W1]. They both are the result of a fact that the memory buffer
 is initialized after it might start being used.
 
-4.9.3
+4.6.3
 The warning [W3] concerns the accesses to "some_data->count" (the field at 
 the offset 8 of the structure "struct some_data" allocated at module.c:174).
 
