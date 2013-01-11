@@ -54,6 +54,9 @@ struct kedr_cdev_hb_id
 {
 	struct list_head list;
 	dev_t devno;
+
+	/* The target module the happens-before arcs are specified for. */
+	struct module *target;
 	
 	/* IDs for the following relation: "Registration of a callback for a 
 	 * given device starts before the execution of that callback for 
@@ -77,15 +80,20 @@ static DEFINE_SPINLOCK(cdev_ids_lock);
 
 /* Searches for the IDs corresponding to the device with the given major and
  * minor numbers ('mj' and 'mn', respectively). Returns the ID structure if 
- * found, NULL if not. */
+ * found, NULL if not.
+ * The search is limited only to the ID corresponding to the given target
+ * module. */
 static struct kedr_cdev_hb_id *
-find_ids_for_cdev(unsigned int mj, unsigned int mn)
+find_ids_for_cdev(unsigned int mj, unsigned int mn, struct module *target)
 {
 	struct kedr_cdev_hb_id *pos;
 	unsigned long flags;
 	
 	spin_lock_irqsave(&cdev_ids_lock, flags);
 	list_for_each_entry(pos, &cdev_hb_ids, list) {
+		if (pos->target != target)
+			continue;
+		
 		if (MAJOR(pos->devno) == mj && MINOR(pos->devno) == mn) {
 			spin_unlock_irqrestore(&cdev_ids_lock, flags);
 			return pos;
@@ -101,7 +109,7 @@ find_ids_for_cdev(unsigned int mj, unsigned int mn)
  * The function does not check if an ID structure already exists for the 
  * given device. */
 static struct kedr_cdev_hb_id *
-create_ids_for_cdev(unsigned int mj, unsigned int mn)
+create_ids_for_cdev(unsigned int mj, unsigned int mn, struct module *target)
 {
 	struct kedr_cdev_hb_id *item;
 	unsigned long flags;
@@ -110,8 +118,10 @@ create_ids_for_cdev(unsigned int mj, unsigned int mn)
 	item = kzalloc(sizeof(*item), GFP_KERNEL);
 	if (item == NULL)
 		return NULL;
-	
+
+	item->target = target;
 	item->devno = MKDEV(mj, mn);
+	
 	for (i = 0; i < KEDR_CB_CDEV_COUNT; ++i) {
 		item->ids_reg_start[i] = kedr_get_unique_id();
 		item->ids_end_exit[i] = kedr_get_unique_id();
@@ -125,21 +135,26 @@ create_ids_for_cdev(unsigned int mj, unsigned int mn)
 	
 	spin_lock_irqsave(&cdev_ids_lock, flags);
 	/* If a device with the same major and minor numbers is created
-	 * more than once, the item for the most recently created device
-	 * will be found by find_ids_for_cdev() because list_add()
-	 * adds it to the head of the list. */
+	 * more than once by the same target module, the item for the most
+	 * recently created device will be found by find_ids_for_cdev()
+	 * because list_add() adds it to the head of the list. */
 	list_add(&item->list, &cdev_hb_ids);
 	spin_unlock_irqrestore(&cdev_ids_lock, flags);
 	return item;
 }
 
-/* Trigger an event for each possible type of a callback. */
+/* Trigger an event for each possible type of a callback provided by a given
+ * target module. */
 static void
-trigger_reg_start_signal_events(unsigned long tid, unsigned long pc, 
-	struct kedr_cdev_hb_id *ids)
+trigger_reg_start_signal_events(
+	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids,
+	struct module *target)
 {
 	unsigned long id = 0;
 	unsigned int cbtype;
+
+	if (ids->target != target)
+		return;
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_reg_start[cbtype];	
@@ -148,11 +163,15 @@ trigger_reg_start_signal_events(unsigned long tid, unsigned long pc,
 }
 
 static void
-trigger_end_exit_wait_events(unsigned long tid, unsigned long pc, 
-	struct kedr_cdev_hb_id *ids)
+trigger_end_exit_wait_events(
+	unsigned long tid, unsigned long pc, struct kedr_cdev_hb_id *ids,
+	struct module *target)
 {
 	unsigned long id = 0;
 	unsigned int cbtype;
+
+	if (ids->target != target)
+		return;
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_end_exit[cbtype];	
@@ -173,8 +192,9 @@ struct kedr_data_cdev_del
  * 'struct file *' and probably 'struct inode *' as the arguments to 
  * generate appropriate events. */
 static void 
-fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc, 
-	struct inode *inode, struct file *filp)
+fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
+	       struct inode *inode, struct file *filp,
+	       struct module *target)
 {
 	unsigned long id;
 	struct kedr_cdev_hb_id *item;
@@ -182,15 +202,16 @@ fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 	
 	tid = kedr_get_thread_id();
 	
-	item = find_ids_for_cdev(imajor(inode), iminor(inode));
+	item = find_ids_for_cdev(imajor(inode), iminor(inode), target);
 	if (item != NULL) {
 		id = item->ids_reg_start[cb_type];
 		kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 
-	"fop_common_pre(): not found ID for the device (%u, %u)\n", 
-			imajor(inode), iminor(inode));
+		"fop_common_pre(): "
+		"not found ID for the device (%u, %u) created by %s.\n",
+			imajor(inode), iminor(inode), module_name(target));
 	}
 	
 	/* Specify that the struct file instance pointed to by 'filp' is 
@@ -206,8 +227,9 @@ fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
  * 'struct file *' and probably 'struct inode *' as the arguments to 
  * generate appropriate events. */
 static void 
-fop_common_post(enum kedr_cdev_callback_type cb_type, unsigned long pc, 
-	struct inode *inode, struct file *filp)
+fop_common_post(enum kedr_cdev_callback_type cb_type, unsigned long pc,
+		struct inode *inode, struct file *filp,
+		struct module *target)
 {
 	unsigned long id;
 	struct kedr_cdev_hb_id *item;
@@ -220,15 +242,16 @@ fop_common_post(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 	kedr_eh_on_free(tid, pc, (unsigned long)filp);
 	
 	/* HB relation */
-	item = find_ids_for_cdev(imajor(inode), iminor(inode));
+	item = find_ids_for_cdev(imajor(inode), iminor(inode), target);
 	if (item != NULL) {
 		id = item->ids_end_exit[cb_type];
 		kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 
-	"fop_common_post(): not found ID for the device (%u, %u)\n", 
-			imajor(inode), iminor(inode));
+	"fop_common_post(): "
+	"not found ID for the device (%u, %u) created by %s.\n", 
+			imajor(inode), iminor(inode), module_name(target));
 	}
 }
 
@@ -240,7 +263,8 @@ fop_open_pre(struct kedr_local_storage *ls)
 	inode = (struct inode *)KEDR_LS_ARG1(ls);
 	filp = (struct file *)KEDR_LS_ARG2(ls);
 	
-	fop_common_pre(KEDR_CB_CDEV_OPEN, ls->fi->addr, inode, filp);
+	fop_common_pre(KEDR_CB_CDEV_OPEN, ls->fi->addr, inode, filp,
+		       ls->fi->owner);
 }
 
 static void 
@@ -251,7 +275,8 @@ fop_open_post(struct kedr_local_storage *ls)
 	inode = (struct inode *)KEDR_LS_ARG1(ls);
 	filp = (struct file *)KEDR_LS_ARG2(ls);
 		
-	fop_common_post(KEDR_CB_CDEV_OPEN, ls->fi->addr, inode, filp);
+	fop_common_post(KEDR_CB_CDEV_OPEN, ls->fi->addr, inode, filp,
+		       ls->fi->owner);
 }
 
 static void 
@@ -262,7 +287,8 @@ fop_release_pre(struct kedr_local_storage *ls)
 	inode = (struct inode *)KEDR_LS_ARG1(ls);
 	filp = (struct file *)KEDR_LS_ARG2(ls);
 	
-	fop_common_pre(KEDR_CB_CDEV_RELEASE, ls->fi->addr, inode, filp);
+	fop_common_pre(KEDR_CB_CDEV_RELEASE, ls->fi->addr, inode, filp,
+		       ls->fi->owner);
 }
 
 static void 
@@ -273,7 +299,8 @@ fop_release_post(struct kedr_local_storage *ls)
 	inode = (struct inode *)KEDR_LS_ARG1(ls);
 	filp = (struct file *)KEDR_LS_ARG2(ls);
 	
-	fop_common_post(KEDR_CB_CDEV_RELEASE, ls->fi->addr, inode, filp);
+	fop_common_post(KEDR_CB_CDEV_RELEASE, ls->fi->addr, inode, filp,
+		       ls->fi->owner);
 }
 
 static void 
@@ -281,8 +308,8 @@ fop_read_pre(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_pre(KEDR_CB_CDEV_READ, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);	
+	fop_common_pre(KEDR_CB_CDEV_READ, ls->fi->addr,
+		       filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -290,8 +317,8 @@ fop_read_post(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_post(KEDR_CB_CDEV_READ, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);
+	fop_common_post(KEDR_CB_CDEV_READ, ls->fi->addr,
+			filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -299,8 +326,8 @@ fop_write_pre(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_pre(KEDR_CB_CDEV_WRITE, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);	
+	fop_common_pre(KEDR_CB_CDEV_WRITE, ls->fi->addr,
+		       filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -308,8 +335,8 @@ fop_write_post(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_post(KEDR_CB_CDEV_WRITE, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);
+	fop_common_post(KEDR_CB_CDEV_WRITE, ls->fi->addr,
+			filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -317,8 +344,8 @@ fop_llseek_pre(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_pre(KEDR_CB_CDEV_LLSEEK, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);	
+	fop_common_pre(KEDR_CB_CDEV_LLSEEK, ls->fi->addr,
+		       filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -326,8 +353,8 @@ fop_llseek_post(struct kedr_local_storage *ls)
 {
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
-	fop_common_post(KEDR_CB_CDEV_LLSEEK, ls->fi->addr, 
-		filp->f_dentry->d_inode, filp);
+	fop_common_post(KEDR_CB_CDEV_LLSEEK, ls->fi->addr,
+			filp->f_dentry->d_inode, filp, ls->fi->owner);
 }
 
 /* [NB] Mind the order of the initializers. */
@@ -400,7 +427,8 @@ static struct kedr_fh_handlers *handlers[] = {
 /* ====================================================================== */
 
 static void
-on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod)
+on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod,
+	    void **per_target)
 {
 	struct kedr_cdev_hb_id *pos;
 	unsigned long tid;
@@ -410,16 +438,19 @@ on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod)
 	pc = (unsigned long)mod->exit;
 	
 	list_for_each_entry(pos, &cdev_hb_ids, list)
-		trigger_end_exit_wait_events(tid, pc, pos);
+		trigger_end_exit_wait_events(tid, pc, pos, mod);
 }
 
 static void
-on_exit_post(struct kedr_fh_plugin *fh, struct module *mod)
+on_exit_post(struct kedr_fh_plugin *fh, struct module *mod,
+	     void ** per_target)
 {
 	struct kedr_cdev_hb_id *pos;
 	struct kedr_cdev_hb_id *tmp;
 	
 	list_for_each_entry_safe(pos, tmp, &cdev_hb_ids, list) {
+		if (pos->target != mod)
+			continue;
 		list_del(&pos->list);
 		kfree(pos);
 	}

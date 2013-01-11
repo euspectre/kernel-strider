@@ -83,20 +83,58 @@ static struct kedr_fh_handlers *handlers[] = {
 /* ====================================================================== */
 
 static void
-on_init_pre(struct kedr_fh_plugin *fh, struct module *mod)
+on_init_pre(struct kedr_fh_plugin *fh, struct module *mod,
+	    void **per_target)
 {
+	if (per_target == NULL) {
+		pr_warning("[test] on_init_pre: per_target is NULL.\n");
+		return;
+	}
+	
+	*per_target = (void *)((unsigned long)mod + 1);
+		
 	called_init_pre = 1;
 }
 
 static void
-on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod)
+on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod,
+	    void **per_target)
 {
+	void *expected = (void *)((unsigned long)mod + 1);
+	
+	if (per_target == NULL) {
+		pr_warning("[test] on_exit_pre: per_target is NULL.\n");
+		return;
+	}
+	if (*per_target != expected) {
+		pr_warning("[test] "
+		"on_exit_pre: *per_target must be %p but it is %p.\n",
+			expected, *per_target);
+		return;
+	}
+	
+	*per_target = (void *)((unsigned long)mod + 2);
+	
 	called_exit_pre = 1;
 }
 
 static void
-on_exit_post(struct kedr_fh_plugin *fh, struct module *mod)
+on_exit_post(struct kedr_fh_plugin *fh, struct module *mod,
+	     void **per_target)
 {
+	void *expected = (void *)((unsigned long)mod + 2);
+	
+	if (per_target == NULL) {
+		pr_warning("[test] on_exit_post: per_target is NULL.\n");
+		return;
+	}
+	if (*per_target != expected) {
+		pr_warning("[test] "
+		"on_exit_post: *per_target must be %p but it is %p.\n",
+			expected, *per_target);
+		return;
+	}
+	
 	called_exit_post = 1;	
 }
 /* ====================================================================== */

@@ -30,6 +30,7 @@
 #include <linux/kallsyms.h>
 #include <linux/mutex.h>
 #include <linux/list.h>
+#include <linux/slab.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/functions.h>
@@ -45,13 +46,6 @@
 
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
-/* ====================================================================== */
-
-/* ID of the happens-before arc from the end of the init function to the 
- * beginning of the exit function of the target. 
- * [NB] It seems reasonable to separate this arc from other happens-before
- * arcs involving init and/or exit function, to avoid confusion. */
-static unsigned long id_init_hb_exit = 0;
 /* ====================================================================== */
 <$if concat(header.main)$>
 <$header.main: join(\n)$>
@@ -161,43 +155,54 @@ to_lookup_search(const char *name)
 /* ====================================================================== */
 
 static void
-on_init_pre(struct kedr_fh_plugin *fh, struct module *mod)
-{
-	id_init_hb_exit = kedr_get_unique_id();
-	if (id_init_hb_exit == 0) {
-		pr_warning(KEDR_MSG_PREFIX 
-		"on_init_pre(): failed to obtain the ID.\n");
-		/* Go on after issuing this warning. The IDs of signal-wait
-		 * pairs can be unreliable as a result but it is not fatal.
-		 */
-	}
-}
-
-static void
-on_init_post(struct kedr_fh_plugin *fh, struct module *mod)
-{
-	unsigned long tid;
-	tid = kedr_get_thread_id();
-	kedr_eh_on_signal(tid, (unsigned long)mod->init,
-		id_init_hb_exit, KEDR_SWT_COMMON);
-}
-
-static void
-on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod)
+on_init_post(struct kedr_fh_plugin *fh, struct module *mod,
+	     void **per_target)
 {
 	unsigned long tid;
 	unsigned long pc;
+	unsigned long *id_ptr = (unsigned long *)per_target;
+
+	/* ID of a happens-before arc from the end of the init function to
+	 * the beginning of the exit function for a given target). */
+	*id_ptr = kedr_get_unique_id();
+	if (*id_ptr == 0) {
+		pr_warning(KEDR_MSG_PREFIX "on_init_post(): "
+	"failed to obtain ID of init-exit happens-before arc for %s.",
+			module_name(mod));
+		return;
+	}
+
+	/* Specify the relation "init happens-before cleanup" */
+	tid = kedr_get_thread_id();
+	pc = (unsigned long)mod->init;
+	
+	kedr_eh_on_signal(tid, pc, *id_ptr, KEDR_SWT_COMMON);
+}
+
+static void
+on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod,
+	    void **per_target)
+{
+	unsigned long tid;
+	unsigned long pc;
+	unsigned long *id_ptr = (unsigned long *)per_target;
+
+	if (*id_ptr == 0) {
+		pr_warning(KEDR_MSG_PREFIX "on_exit_pre(): "
+	"failed to find ID of init-exit happens-before arc for %s.",
+			module_name(mod));
+		return;
+	}	
 	
 	/* Specify the relation "init happens-before cleanup" */
 	tid = kedr_get_thread_id();
 	pc = (unsigned long)mod->exit;
 	
-	kedr_eh_on_wait(tid, pc, id_init_hb_exit, KEDR_SWT_COMMON);
+	kedr_eh_on_wait(tid, pc, *id_ptr, KEDR_SWT_COMMON);
 }
 
 static struct kedr_fh_plugin fh = {
 	.owner = THIS_MODULE,
-	.on_init_pre = on_init_pre,
 	.on_init_post = on_init_post,
 	.on_exit_pre = on_exit_pre,
 };

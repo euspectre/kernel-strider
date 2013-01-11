@@ -31,23 +31,25 @@
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
 	unsigned long pc;
 	unsigned long tid;
-	
+	struct module *target;
+		
 	pc = info->pc;
 	tid = ls->tid;
+	target = ls->fi->owner;
 	
 	/* The cdev structure could have been altered by now,
 	 * it is safer to use the data saved in the pre handler. */
 	if (data != NULL) {
 		for (i = 0; i < data->count; ++i) {
 			item = find_ids_for_cdev(data->mj, 
-				data->mn + i);
+				data->mn + i, target);
 			if (item == NULL) {
 				pr_warning(KEDR_MSG_PREFIX 
 	"cdev_del.post: not found ID for the device (%u, %u)\n", 
 					data->mj, data->mn + i);
 				continue;
 			}
-			trigger_end_exit_wait_events(tid, pc, item);	
+			trigger_end_exit_wait_events(tid, pc, item, target);	
 		}
 		kfree(data);
 	}

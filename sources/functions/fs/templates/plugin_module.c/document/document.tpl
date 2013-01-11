@@ -13,7 +13,8 @@ static struct kedr_fh_handlers *handlers[] = {
 };
 
 <$endif$><$if on_target_load$>
-static void on_init_pre(struct kedr_fh_plugin *fh, struct module *m)
+static void
+on_init_pre(struct kedr_fh_plugin *fh, struct module *m, void **per_target)
 {
 	(void)fh;
 	(void)m;
@@ -22,7 +23,8 @@ static void on_init_pre(struct kedr_fh_plugin *fh, struct module *m)
 	}
 }
 <$endif$><$if on_target_unload$>
-static void on_exit_post(struct kedr_fh_plugin *fh, struct module *m)
+static void
+on_exit_post(struct kedr_fh_plugin *fh, struct module *m, void **per_target)
 {
 	(void)fh;
 	(void)m;
@@ -31,7 +33,8 @@ static void on_exit_post(struct kedr_fh_plugin *fh, struct module *m)
 	}
 }
 <$endif$><$if on_before_exit$>
-static void on_exit_pre(struct kedr_fh_plugin *fh, struct module *m)
+static void
+on_exit_pre(struct kedr_fh_plugin *fh, struct module *m, void **per_target)
 {
 #define pc ((unsigned long)m->exit)
 #define tid (kedr_get_thread_id())

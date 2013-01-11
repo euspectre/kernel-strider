@@ -17,6 +17,8 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
+#include <linux/mutex.h>
+#include <linux/list.h>
 
 #include <kedr/kedr_mem/functions.h>
 
@@ -167,6 +169,21 @@ kedr_fh_plugins_put(void)
 		module_put(p->owner);
 	}
 }
+
+/* Returns the number of currently registered FH plugins. Can be called
+ * only if the session is active or 'session_mutex' is locked, i.e., the
+ * list of the plugins does not change. */
+size_t
+fh_plugins_count(void)
+{
+	size_t s = 0;
+	struct kedr_fh_plugin *p;
+	
+	list_for_each_entry(p, &fh_plugins, list)
+		++s;
+
+	return s;
+}
 /* ====================================================================== */
 
 /* The comparator and swapper functions needed to sort the handler table by 
@@ -271,6 +288,126 @@ destroy_handler_table(void)
 }
 /* ====================================================================== */
 
+/* Per-target data. Should only be created and used when a session is
+ * active. */
+struct kedr_per_target
+{
+	struct list_head list;
+
+	/* Target module. */
+	struct module *mod;
+
+	/* The array of per-target data blocks, one block for each
+	 * registered plugin in the same order as the plugins are in
+	 * 'fh_plugins'. */
+	void *data[1];
+};
+
+static LIST_HEAD(per_target_items);
+
+/* A mutex to serialize accesses to 'per_target_items'. */
+static DEFINE_MUTEX(per_target_mutex);
+/* ====================================================================== */
+
+/* 'per_target_*()' functions may be called from on_init / on_exit handlers
+ * only. */
+
+/* Must be used with 'per_target_mutex' locked.
+ * It seems enough to use a plain linear search here when looking for an ID
+ * for the module as on_init and on_exit callbacks should not be called very
+ * often. */
+static struct kedr_per_target *
+per_target_find_impl(struct module *mod)
+{
+	struct kedr_per_target *pt;
+	list_for_each_entry(pt, &per_target_items, list) {
+		if (pt->mod == mod)
+			return pt;
+	}
+
+	return NULL;
+}
+
+/* Returns the per-target structure for a given target module 'mod' or NULL
+ * if not found. */
+static struct kedr_per_target *
+per_target_find(struct module *mod)
+{
+	struct kedr_per_target *pt;
+	
+	if (mutex_lock_killable(&per_target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX
+			"per_target_create(): failed to lock mutex.\n");
+		return NULL;
+	}
+
+	pt = per_target_find_impl(mod);
+	
+	mutex_unlock(&per_target_mutex);
+	return pt;
+}
+
+/* Creates a per-target structure for a given module. Returns the structure
+ * if successful, NULL otherwise.
+ * NULL is also returned if there are no FH plugins (no need for such data
+ * in this case). */
+static struct kedr_per_target *
+per_target_create(struct module *mod)
+{
+	struct kedr_per_target *pt = NULL;
+	size_t s = 0;
+	size_t plugin_count;
+
+	if (mutex_lock_killable(&per_target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX
+			"per_target_create(): failed to lock mutex.\n");
+		return NULL;
+	}
+
+	plugin_count = fh_plugins_count();
+	if (plugin_count == 0)
+		goto out;
+	
+	if (per_target_find_impl(mod) != NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"per_target_create(): per-target data for %s "
+			"already exists.\n", module_name(mod));
+		goto out;
+	}
+	
+	s = sizeof(*pt) + (plugin_count - 1) * sizeof(pt->data[0]);
+	pt = kzalloc(s, GFP_KERNEL);
+	if (pt == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"per_target_create(): out of memory.\n");
+		goto out;
+	}
+
+	pt->mod = mod;
+	list_add(&pt->list, &per_target_items);
+
+out:
+	mutex_unlock(&per_target_mutex);
+	return pt;
+}
+
+/* Destroys the given per-target structure. */
+static void
+per_target_destroy(struct kedr_per_target *pt)
+{
+	if (mutex_lock_killable(&per_target_mutex) != 0) {
+		pr_warning(KEDR_MSG_PREFIX
+			"per_target_destroy(): failed to lock mutex\n");
+		return;
+	}
+
+	list_del(&pt->list);
+	kfree(pt);
+
+	mutex_unlock(&per_target_mutex);
+}
+/* ====================================================================== */
+
 void 
 kedr_fh_on_session_start(void)
 {
@@ -281,16 +418,41 @@ void
 kedr_fh_on_session_end(void)
 {
 	destroy_handler_table();
-}
 
+	if (!list_empty(&per_target_items)) {
+		struct kedr_per_target *pt;
+		struct kedr_per_target *tmp;
+		
+		WARN_ON(1);
+		
+		/* Cleanup anyway */
+		list_for_each_entry_safe(pt, tmp, &per_target_items, list)
+			per_target_destroy(pt);
+	}
+}
 
 static void
 do_call_init_pre(struct module *mod)
 {
 	struct kedr_fh_plugin *p = NULL;
+	struct kedr_per_target *pt = NULL;
+	size_t index = 0;
+
+	if (list_empty(&fh_plugins))
+		return;
+
+	pt = per_target_create(mod);
+	if (pt == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"on_init_pre() callbacks will not be called.\n");
+		return;
+	}
+	
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p->on_init_pre)
-			p->on_init_pre(p, mod);
+			p->on_init_pre(p, mod, &pt->data[index]);
+
+		++index;
 	}
 }
 
@@ -298,9 +460,25 @@ static void
 do_call_init_post(struct module *mod)
 {
 	struct kedr_fh_plugin *p = NULL;
+	struct kedr_per_target *pt = NULL;
+	size_t index = 0;
+
+	if (list_empty(&fh_plugins))
+		return;
+
+	pt = per_target_find(mod);
+	if (pt == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"No per-target data for module %s. "
+			"on_init_post() callbacks will not be called.\n",
+			module_name(mod));
+		return;
+	}
+	
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p->on_init_post)
-			p->on_init_post(p, mod);
+			p->on_init_post(p, mod, &pt->data[index]);
+		++index;
 	}
 }
 
@@ -308,9 +486,25 @@ static void
 do_call_exit_pre(struct module *mod)
 {
 	struct kedr_fh_plugin *p = NULL;
+	struct kedr_per_target *pt = NULL;
+	size_t index = 0;
+
+	if (list_empty(&fh_plugins))
+		return;
+
+	pt = per_target_find(mod);
+	if (pt == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"No per-target data for module %s. "
+			"on_exit_pre() callbacks will not be called.\n",
+			module_name(mod));
+		return;
+	}
+	
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p->on_exit_pre)
-			p->on_exit_pre(p, mod);
+			p->on_exit_pre(p, mod, &pt->data[index]);
+		++index;
 	}
 }
 
@@ -318,14 +512,32 @@ static void
 do_call_exit_post(struct module *mod)
 {
 	struct kedr_fh_plugin *p = NULL;
+	struct kedr_per_target *pt = NULL;
+	size_t index = 0;
+
+	if (list_empty(&fh_plugins))
+		return;
+
+	pt = per_target_find(mod);
+	if (pt == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"No per-target data for module %s. "
+			"on_exit_post() callbacks will not be called.\n",
+			module_name(mod));
+		return;
+	}
+	
 	list_for_each_entry(p, &fh_plugins, list) {
 		if (p->on_exit_post)
-			p->on_exit_post(p, mod);
+			p->on_exit_post(p, mod, &pt->data[index]);
+		++index;
 	}
+
+	per_target_destroy(pt);
 }
 
 /* If the target module has init function, "init post" handlers will be 
- * called by our replacement for it. Otherwise, they will not be called. 
+ * called for it. Otherwise, they will not be called. 
  * Similar rule applies to the handlers for the exit function. */
 void
 kedr_fh_on_target_load(struct module *mod)

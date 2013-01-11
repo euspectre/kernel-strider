@@ -163,33 +163,51 @@ struct kedr_fh_plugin
 	 * target as the arguments. If a callback is NULL, it will be
 	 * ignored.
 	 *
-	 * The core of the system ensures that such callbacks (be they from
-	 * the same or from different plugins) are never executed
-	 * concurrently.
+	 * Note that such callbacks can be executed concurrently if they
+	 * are called for different target modules. 
+	 * If the callbacks access some common data, the provider of 
+	 * the callbacks is responsible for appropriate synchronization of 
+	 * such accesses.
+	 *
+	 * 'per_target' is a pointer to a data of at least sizeof(void *)
+	 * bytes in size. Can be used to store target-specific data the
+	 * plugin needs in its on_init/on_exit callbacks.
+	 * Different plugins get different data blocks of this kind and each
+	 * plugin gets different data blocks for different target modules.
+	 * One of the common use cases would be to store something in
+	 * '*per_target' in on_init_pre() and use that in on_init_post(),
+	 * on_exit_pre() and on_exit_post(). After the target module has
+	 * been unloaded, the corresponding data block can no longer be
+	 * used.
+	 * 'per_target' will never be NULL.
 	 *
 	 * The callbacks are allowed to sleep / schedule. */
 
 	/* Called after the target module has been loaded into memory but
 	 * before it starts its initalization. */
-	void (*on_init_pre)(struct kedr_fh_plugin *fh, struct module *mod);
+	void (*on_init_pre)(struct kedr_fh_plugin *fh, struct module *mod,
+			    void **per_target);
 
 	/* Called right after the target module has completed its
 	 * initialization. 
 	 * [NB] This callback may not be called if the target module has no 
 	 * init function or if the init function is too small to be 
 	 * instrumented. */
-	void (*on_init_post)(struct kedr_fh_plugin *fh, struct module *mod);
+	void (*on_init_post)(struct kedr_fh_plugin *fh, struct module *mod,
+			     void **per_target);
 
 	/* Called right before the target module starts executing its exit
 	 * function. 
 	 * [NB] This callback may not be called if the target module has no 
 	 * exit function or if the exit function is too small to be 
 	 * instrumented. */
-	void (*on_exit_pre)(struct kedr_fh_plugin *fh, struct module *mod);
+	void (*on_exit_pre)(struct kedr_fh_plugin *fh, struct module *mod,
+			    void **per_target);
 
 	/* Called when the target module has executed its exit function and
 	 * is about to be unloaded. */
-	void (*on_exit_post)(struct kedr_fh_plugin *fh, struct module *mod);
+	void (*on_exit_post)(struct kedr_fh_plugin *fh, struct module *mod,
+			     void **per_target);
 };
 
 /* Registration and deregistration of a plugin.
