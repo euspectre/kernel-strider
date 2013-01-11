@@ -73,31 +73,21 @@ private:
 	
 	struct kedr_tr_event_header *read_record(FILE *fd);
 	unsigned int get_tsan_thread_id(
-		struct kedr_tr_event_header *record);
+		const struct kedr_tr_event_header *record);
 	void output_tsan_event(const char *name, unsigned int tid, 
 			       unsigned long pc, unsigned long addr_id, 
 			       unsigned long size);
 	
-	void report_memory_events(unsigned int tid, 
-				  const struct kedr_tr_event_mem *ev);
-	void report_block_event(unsigned int tid, 
-				const struct kedr_tr_event_block *ev);
-	void report_call_pre_event(unsigned int tid, 
-				   const struct kedr_tr_event_call *ev);
-	void report_call_post_event(unsigned int tid, 
-				    const struct kedr_tr_event_call *ev);
-	void report_alloc_event(unsigned int tid, 
-				const struct kedr_tr_event_alloc_free *ev);
-	void report_free_event(unsigned int tid, 
-			       const struct kedr_tr_event_alloc_free *ev);
-	void report_signal_event(unsigned int tid, 
-				 const struct kedr_tr_event_sync *ev);
-	void report_wait_event(unsigned int tid, 
-			       const struct kedr_tr_event_sync *ev);
-	void report_lock_event(unsigned int tid, 
-			       const struct kedr_tr_event_sync *ev);
-	void report_unlock_event(unsigned int tid, 
-				 const struct kedr_tr_event_sync *ev);
+	void report_memory_events(const struct kedr_tr_event_mem *ev);
+	void report_block_event(const struct kedr_tr_event_block *ev);
+	void report_call_pre_event(const struct kedr_tr_event_call *ev);
+	void report_call_post_event(const struct kedr_tr_event_call *ev);
+	void report_alloc_event(const struct kedr_tr_event_alloc_free *ev);
+	void report_free_event(const struct kedr_tr_event_alloc_free *ev);
+	void report_signal_event(const struct kedr_tr_event_sync *ev);
+	void report_wait_event(const struct kedr_tr_event_sync *ev);
+	void report_lock_event(const struct kedr_tr_event_sync *ev);
+	void report_unlock_event(const struct kedr_tr_event_sync *ev);
 	
 	void handle_target_load_event(struct kedr_tr_event_module *ev);
 	void handle_target_unload_event(struct kedr_tr_event_module *ev);
