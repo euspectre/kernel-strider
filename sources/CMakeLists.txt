@@ -149,7 +149,8 @@ set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
 #######################################################################
 # Perform basic checks
 
-# Check if we use kernel version 2.6.32 or newer
+# Check if we use kernel version 2.6.32 or newer.
+# This macro also set KERNEL_VERSION.
 check_kernel_version(2 6 32)
 
 # Check if kernel modules can be built on this system
@@ -160,6 +161,18 @@ check_kernel_config()
 
 # Check if the ring buffer functionality is available
 check_ring_buffer()
+
+# Find out which memory allocator is used by the kernel. It is needed
+# because, for example, the order of arguments to kmem_cache_alloc*_trace()
+# may be different depending on the allocator.
+check_allocator()
+
+if (${KERNEL_MEMORY_ALLOCATOR} STREQUAL "slab" AND
+	KERNEL_VERSION VERSION_LESS "3.7.0")
+	set (KMCA_TRACE_SIZE_FIRST 1)
+else ()
+	set (KMCA_TRACE_KMC_FIRST 1)
+endif ()
 
 # readelf can also be necessary when building and testing the package
 message (STATUS "Checking for readelf")

@@ -15,3 +15,11 @@
 
 /* Path to the trace receiver program */
 #define KEDR_TRACE_RECEIVER_PATH "@KEDR_TRACE_RECEIVER_PATH@"
+
+/* Specifies whether kmem_cache_alloc*_trace() functions get 'size' as
+ * their first argument. */
+#cmakedefine KMCA_TRACE_SIZE_FIRST
+
+/* Specifies whether kmem_cache_alloc*_trace() functions get 'kmem_cache *'
+ * pointer as their first argument. */
+#cmakedefine KMCA_TRACE_KMC_FIRST

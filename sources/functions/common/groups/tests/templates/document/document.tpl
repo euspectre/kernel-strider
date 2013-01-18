@@ -27,6 +27,8 @@
 #include <linux/errno.h>
 #include <linux/sort.h>
 
+#include "config.h"
+
 <$if concat(header)$><$header: join(\n)$><$endif$>
 /* ====================================================================== */
 

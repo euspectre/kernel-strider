@@ -14,6 +14,8 @@
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
 
+#include "config.h"
+
 <$if concat(header)$><$header: join(\n)$><$endif$>
 /* ====================================================================== */
 

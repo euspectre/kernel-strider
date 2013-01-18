@@ -8,24 +8,24 @@
 	# The variables for the arguments are declared in the template.
 	prepare_args.pre =>>
 		struct kmem_cache *mc; 
-#if defined(CONFIG_SLAB)
+#if defined(KMCA_TRACE_SIZE_FIRST)
 		mc = (struct kmem_cache *)KEDR_LS_ARG2(ls);
-#elif defined(CONFIG_SLUB)
+#elif defined(KMCA_TRACE_KMC_FIRST)
 		mc = (struct kmem_cache *)KEDR_LS_ARG1(ls);
 #else
-#error "kmem_cache_alloc_trace() should not be defined"
+#  error "Unspecified order of the arguments of kmem_cache_alloc*_trace()"
 #endif		
 		size = (size_t)kmem_cache_size(mc);
 	<<
 	
 	prepare_args.post =>>
 		struct kmem_cache *mc; 
-#if defined(CONFIG_SLAB)
+#if defined(KMCA_TRACE_SIZE_FIRST)
 		mc = (struct kmem_cache *)KEDR_LS_ARG2(ls);
-#elif defined(CONFIG_SLUB)
+#elif defined(KMCA_TRACE_KMC_FIRST)
 		mc = (struct kmem_cache *)KEDR_LS_ARG1(ls);
 #else
-#error "kmem_cache_alloc_trace() should not be defined"
+#  error "Unspecified order of the arguments of kmem_cache_alloc*_trace()"
 #endif		
 		size = (size_t)kmem_cache_size(mc);
 		addr = KEDR_LS_RET_VAL(ls);

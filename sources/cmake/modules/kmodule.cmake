@@ -262,6 +262,8 @@ endmacro(check_module_build)
 
 # Check if the version of the kernel is acceptable
 # The macro sets variable 'KERNEL_VERSION_OK'.
+# It also sets 'KERNEL_VERSION', which is the version of the kernel in the
+# form "major.minor.micro".
 macro(check_kernel_version kversion_major kversion_minor kversion_micro)
 	set(check_kernel_version_string 
 "${kversion_major}.${kversion_minor}.${kversion_micro}"
@@ -270,20 +272,21 @@ macro(check_kernel_version kversion_major kversion_minor kversion_micro)
 "Checking if the kernel version is ${check_kernel_version_string} or newer"
 	)
 	message(STATUS "${check_kernel_version_message}")
+
+	string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+"
+		KERNEL_VERSION
+		"${KBUILD_VERSION_STRING}"
+	)
+	
 	if (DEFINED KERNEL_VERSION_OK)
 		set(check_kernel_version_message 
 "${check_kernel_version_message} [cached] - ${KERNEL_VERSION_OK}"
 		)
 	else (DEFINED KERNEL_VERSION_OK)
-		string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" 
-			real_kernel_version_string
-			"${KBUILD_VERSION_STRING}"
-		)
-
-		if (real_kernel_version_string VERSION_LESS check_kernel_version_string)
+		if (KERNEL_VERSION VERSION_LESS check_kernel_version_string)
 			set(KERNEL_VERSION_OK "no")
 			message(FATAL_ERROR 
-"Kernel version is ${real_kernel_version_string} but ${check_kernel_version_string} or newer is required."
+"Kernel version is ${KERNEL_VERSION} but ${check_kernel_version_string} or newer is required."
 			)
 		else ()
 			set(KERNEL_VERSION_OK "yes" CACHE INTERNAL

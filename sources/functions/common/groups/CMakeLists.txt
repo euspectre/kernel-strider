@@ -42,9 +42,11 @@ function(add_tests_for_group group_name functions_to_test)
 			"${test_data_file}" > "module.c"
 		DEPENDS "${test_data_file}"
 	)
-	
+
+	kbuild_include_directories("${CMAKE_BINARY_DIR}")
 	kbuild_add_module(${test_module}
 		"module.c"
+		"${CMAKE_BINARY_DIR}/config.h"
 	)  
 	kedr_test_add_target(test_func_drd_${group_name})
 endfunction(add_tests_for_group group_name functions_to_test)

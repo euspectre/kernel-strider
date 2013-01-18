@@ -7,12 +7,12 @@ trigger.code =>>
 
 	if (mem_cache != NULL)
 	{
-#if defined(CONFIG_SLAB)
+#if defined(KMCA_TRACE_SIZE_FIRST)
 		p = kmem_cache_alloc_node_trace(32, mem_cache, GFP_KERNEL, numa_node_id());
-#elif defined(CONFIG_SLUB)
+#elif defined(KMCA_TRACE_KMC_FIRST)
 		p = kmem_cache_alloc_node_trace(mem_cache, GFP_KERNEL, numa_node_id(), 32);
 #else
-#error "kmem_cache_alloc_node_trace() should not be defined"
+#  error "Unspecified order of the arguments of kmem_cache_alloc*_trace()"
 #endif
 		if (p != NULL)
 		{
