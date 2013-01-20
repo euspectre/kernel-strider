@@ -108,6 +108,13 @@ endfunction(file_components filepath)
 # "${name}.c" source file.
 
 function(kbuild_add_module name)
+    # Enable Sparse if requested
+    if (KEDR_USE_SPARSE)
+    	set(kedr_sparse_check "C=1")
+    else ()
+    	set(kedr_sparse_check "")
+    endif (KEDR_USE_SPARSE)
+    
     set(symvers_file ${CMAKE_CURRENT_BINARY_DIR}/Module.symvers)
 	# Global target
 	add_custom_target(${name} ALL
@@ -268,7 +275,8 @@ function(kbuild_add_module name)
 		OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${name}.ko ${symvers_file}
 		${cmd_create_command}
 		${symvers_command}
-		COMMAND $(MAKE) ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE} 
+		COMMAND $(MAKE) ${kedr_sparse_check} 
+			ARCH=${KEDR_ARCH} CROSS_COMPILE=${KEDR_CROSS_COMPILE} 
 			-C ${KBUILD_BUILD_DIR} M=${CMAKE_CURRENT_BINARY_DIR} modules
 		DEPENDS ${depend_files}
 	)

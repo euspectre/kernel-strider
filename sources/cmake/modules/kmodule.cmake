@@ -15,8 +15,8 @@ if (CMAKE_CROSSCOMPILING)
 endif (CMAKE_CROSSCOMPILING)
 
 # kmodule_try_compile(RESULT_VAR bindir srcfile
-#           [COMPILE_DEFINITIONS flags]
-#           [OUTPUT_VARIABLE var]
+# 			[COMPILE_DEFINITIONS flags]
+# 			[OUTPUT_VARIABLE var]
 #			[COPY_FILE filename])
 
 # Similar to try_module in simplified form, but compile srcfile as
@@ -249,7 +249,9 @@ macro(check_module_build)
 		else (module_build_supported_impl)
 			set(MODULE_BUILD_SUPPORTED "no")
 			message(FATAL_ERROR 
-				"Kernel modules cannot be built on this system"
+"There are problems with building kernel modules on this system. "
+"Please check that the appropriate kernel headers and build tools "
+"are installed."
 			)
 		endif (module_build_supported_impl)
 				
@@ -383,7 +385,7 @@ function(check_ring_buffer)
 			"the kernel (CONFIG_RING_BUFFER is not set in the kernel "
 			"config file).\n"
 			"Ring buffer support is needed for the components collecting "
-			"the data obtained by the core. \n")
+			"the data obtained by the core.\n")
 	endif (NOT RING_BUFFER_IMPLEMENTED)
 
 endfunction(check_ring_buffer)
