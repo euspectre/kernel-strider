@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 static const char *test_file = "/sys/kernel/debug/buggy01/data";
 
@@ -35,7 +36,7 @@ test_buggy01(void)
 	if (fd == -1) {
 		fprintf(stderr, "Failed to open %s: %s\n", test_file, 
 			strerror(errno));
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 	
 	if (read(fd, &buf[0], sizeof(buf) - 1) == -1) {
@@ -49,6 +50,7 @@ int
 main(int argc, char *argv[])
 {
 	pid_t pid;
+	pid_t p;
 		
 	if (argc > 2) {
 		usage();
@@ -64,12 +66,22 @@ main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 	else if (pid == 0) {
-		/* Child process */
+		/* Child process.
+		 * [NB] It is recommended to call _exit() rather than exit()
+		 * in the child process, esp. if an error is detected. Details:
+		 * http://www.unixguide.net/unix/programming/1.1.3.shtml */
 		test_buggy01();
-		exit(EXIT_SUCCESS);
+		_exit(EXIT_SUCCESS);
 	}
 	
 	/* Parent process */
 	test_buggy01();
-	return 0;
+
+	p = waitpid(pid, NULL, 0);
+	if (p == -1) {
+		fprintf(stderr,
+			"Failed to wait for the child process to finish\n");
+		return EXIT_FAILURE;
+	}
+	return EXIT_SUCCESS;
 }
