@@ -172,3 +172,32 @@ macro (kedr_test_add_subdirectory subdir)
 	endif (NOT CMAKE_CROSSCOMPILING)
 endmacro (kedr_test_add_subdirectory subdir)
 ########################################################################
+
+# Looks for ThreadSanitizer offline and sets '${output_var}' accordingly.
+# The format is the same as for 'find_program'.
+function (find_tsan output_var)
+	set (tsan_app)
+	set (checking_message "Checking for ThreadSanitizer offline")
+	message (STATUS "${checking_message}")
+
+	# First look for <arch>-linux-debug-ts_offline, then - for ts_offline.
+	if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+		set (tsan_app_name "amd64-linux-debug-ts_offline")
+	else ()
+		set (tsan_app_name "x86-linux-debug-ts_offline")
+	endif()
+
+	find_program(tsan_app ${tsan_app_name})
+	if (NOT tsan_app)
+		find_program(tsan_app "ts_offline")
+	endif ()
+
+	if (tsan_app)
+		message (STATUS "${checking_message} - ${tsan_app}")
+	else ()
+		message (STATUS "${checking_message} - not found")
+	endif ()
+	
+	set("${output_var}" "${tsan_app}" PARENT_SCOPE)
+endfunction (find_tsan output_var) 
+########################################################################

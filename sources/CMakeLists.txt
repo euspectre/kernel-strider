@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 2.6)
 
 enable_language(C)
 enable_language(CXX)
-
 #######################################################################
+
 # Prohibit a common type of an in-source build.
 # Note that building in a subdirectory in the source tree is still allowed 
 # as it can be convenient.
@@ -15,8 +15,8 @@ if (in_source)
 "if they are there and then use some other directory to build KEDR."
 )
 endif () 
-
 #######################################################################
+
 # Names and versions
 set(KEDR_PACKAGE_NAME "kedr")
 set(KEDR_KS_PACKAGE_NAME "KernelStrider")
@@ -31,8 +31,8 @@ set(KEDR_KS_VERSION_SUFFIX "-devel" CACHE STRING
 set(KEDR_KS_PACKAGE_VERSION 
 "${KEDR_KS_VERSION_MAJOR}.${KEDR_KS_VERSION_MINOR}${KEDR_KS_VERSION_SUFFIX}"
 )
-
 #######################################################################
+
 # ARCH and CROSS_COMPILE variables that can be used when building 
 # kernel modules. It is convenient to have them as environment variables
 # because Makefiles will be able to use them directly.
@@ -48,7 +48,6 @@ if (CMAKE_SIZEOF_VOID_P EQUAL 8)
 else ()
 	set (KEDR_64_BIT "no")
 endif()
-
 #######################################################################
 
 # [NB] Sparse is usually not installed by default. If you are going to
@@ -68,34 +67,34 @@ include(kmodule)
 
 include(path_prefixes)
 #######################################################################
-#######################################################################
+
 # Initialize test-related stuff
 kedr_test_init()
-
 #######################################################################
-#kedr_install_library(library_name)
+
+# kedr_install_library(library_name)
 function(kedr_install_library library_name)
 	install(TARGETS ${library_name} LIBRARY
 			DESTINATION ${KEDR_INSTALL_PREFIX_LIB})
 endfunction(kedr_install_library library_name)
-#kedr_install_headers(install_subdir header_file [..])
+# kedr_install_headers(install_subdir header_file [..])
 function(kedr_install_headers install_subdir)
 	install(FILES ${header_file} ${ARGN}
 			DESTINATION ${KEDR_INSTALL_PREFIX_INCLUDE}/${install_subdir})
 endfunction(kedr_install_headers install_subdir)
-#kedr_install_kmodule(kmodule_name)
+# kedr_install_kmodule(kmodule_name)
 function(kedr_install_kmodule kmodule_name)
 	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${kmodule_name}.ko"
 			DESTINATION "${KEDR_INSTALL_PREFIX_KMODULE}")
 endfunction(kedr_install_kmodule kmodule_name)
-#kedr_install_symvers(kmodule_name)
+# kedr_install_symvers(kmodule_name)
 function(kedr_install_symvers kmodule_name)
 	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Module.symvers"
 			DESTINATION "${KEDR_INSTALL_PREFIX_KSYMVERS}"
 			RENAME "${kmodule_name}.symvers")
 endfunction(kedr_install_symvers kmodule_name)
-
 #######################################################################
+
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
@@ -113,8 +112,8 @@ add_custom_target (uninstall)
 # 'uninstall_dirs' target is defined in cmake/modules/path_prefixes.cmake.
 add_dependencies (uninstall_dirs uninstall_files)
 add_dependencies (uninstall uninstall_dirs)
-
 #######################################################################
+
 include_directories("${CMAKE_BINARY_DIR}/include")
 kbuild_include_directories("${CMAKE_BINARY_DIR}/include")
 
@@ -122,6 +121,7 @@ kbuild_include_directories("${CMAKE_BINARY_DIR}/include")
 include_directories("${CMAKE_BINARY_DIR}")
 kbuild_include_directories("${CMAKE_BINARY_DIR}")
 #######################################################################
+
 # Make "Release" the default build type
 if (NOT CMAKE_BUILD_TYPE)
     set (CMAKE_BUILD_TYPE "Release" CACHE STRING
@@ -151,13 +151,12 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall")
-
-
 #######################################################################
+
 # The path where the user-mode helper scripts are to be installed
 set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
-
 #######################################################################
+
 # Perform basic checks
 
 # Check if we use kernel version 2.6.32 or newer.
@@ -213,7 +212,14 @@ check_libdw_devel()
 # This only checks relevant configuration parameters of kernel.
 #check_stack_trace()
 
+# Find ThreadSanitizer offline if the user did not specify the path to it.
+# ${TSAN_APP} is the path to the application if found, a false value
+# otherwise.
+if (NOT TSAN_APP)
+	find_tsan(TSAN_APP)
+endif (NOT TSAN_APP)
 #######################################################################
+
 # kedr_gen (this time - for building KEDR itself)
 if (KEDR_GEN)
 # If cross-compiling for a different architecture, kedr_gen tool 

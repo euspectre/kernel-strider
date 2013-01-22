@@ -1,0 +1,370 @@
+#!/bin/sh
+
+########################################################################
+# This test checks if KernelStrider with TSan detect data races in
+# the modules "kedr_sample_target" and "buggy01" used in the same session.
+# 
+# Usage: 
+#   sh test_sample_and_buggy01.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${MODULE_SAMPLE}"; then
+		printf "The target module is missing: ${MODULE_SAMPLE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_BUGGY}"; then
+		printf "The target module is missing: ${MODULE_BUGGY}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_CORE}"; then
+		printf "The core module is missing: ${MODULE_CORE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${MODULE_FH_COMMON}"; then
+		printf "The FH module is missing: ${MODULE_FH_COMMON}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_FH_CDEV}"; then
+		printf "The FH module is missing: ${MODULE_FH_CDEV}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_REC}"; then
+		printf "The trace recorder module is missing: ${MODULE_REC}\n"
+		exit 1
+	fi
+
+	if test ! -e "${TEST_APP_SAMPLE}"; then
+		printf "The application for testing kedr_sample_target is missing: ${TEST_APP_SAMPLE}\n"
+		exit 1
+	fi
+
+	if test ! -e "${TEST_APP_BUGGY}"; then
+		printf "The application for testing buggy01 is missing: ${TEST_APP_BUGGY}\n"
+		exit 1
+	fi
+
+	if test ! -e "${APP_REC}"; then
+		printf "The trace recorder application is missing: ${APP_REC}\n"
+		exit 1
+	fi
+
+	if test ! -e "${APP_PROCESS_TRACE}"; then
+		printf "The trace processing application is missing: ${APP_PROCESS_TRACE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# is_process_running pid
+# True if the given process started from the same shell as this script
+# is currently running, false otherwise.
+########################################################################
+isProcessRunning()
+{
+    nlines=$(ps -p "$1" | wc -l)
+    test "$nlines" -eq 2
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+
+	lsmod | grep "kedr_sample_target" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_sample_target"
+	fi
+
+	lsmod | grep "buggy01" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "buggy01"
+	fi
+
+	if test -n "${RECORDER_PID}"; then
+		if isProcessRunning ${RECORDER_PID}; then
+			kill ${RECORDER_PID}
+
+			# Give the user-space application some time to finish
+			sleep 1
+
+			# If it is still running, force it to stop
+			if isProcessRunning ${RECORDER_PID}; then
+				kill -9 ${RECORDER_PID}
+			fi
+		fi
+	fi
+
+	lsmod | grep "kedr_simple_trace_recorder" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_simple_trace_recorder"
+	fi
+
+	lsmod | grep "kedr_fh_drd_cdev" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_fh_drd_cdev"
+	fi
+
+	lsmod | grep "kedr_fh_drd_common" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_fh_drd_common"
+	fi
+
+	lsmod | grep "kedr_mem_core" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_mem_core"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	# Just in case
+	chmod +x "${TEST_APP_SAMPLE}"
+	chmod +x "${TEST_APP_BUGGY}"
+	chmod +x "${APP_REC}"
+	chmod +x "${APP_PROCESS_TRACE}"
+	
+	insmod "${MODULE_CORE}" \
+		targets=buggy01,kedr_sample_target \
+		umh_dir="${UMH_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to load the core module: ${MODULE_CORE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${MODULE_FH_COMMON}"
+	if test $? -ne 0; then
+		printf "Failed to load the FH plugin for common operations: ${MODULE_FH_COMMON}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${MODULE_FH_CDEV}"
+	if test $? -ne 0; then
+		printf "Failed to load the FH plugin for cdev operations: ${MODULE_FH_CDEV}\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	insmod "${MODULE_REC}"
+	if test $? -ne 0; then
+		printf "Failed to load the kernel-space part of the output system.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	RECORDER_PID=""
+	"${APP_REC}" "${TRACE_FILE}" &
+	RECORDER_PID=$!
+
+	insmod "${MODULE_SAMPLE}"
+	if test $? -ne 0; then
+		printf "Failed to load \"kedr_sample_target\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${MODULE_BUGGY}"
+	if test $? -ne 0; then
+		printf "Failed to load \"buggy01\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	"${TEST_APP_BUGGY}" "${TEST_DEBUGFS_FILE}"
+	if test $? -ne 0; then
+		printf "Error occurred while running ${TEST_APP_BUGGY}.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	"${TEST_APP_SAMPLE}"
+	if test $? -ne 0; then
+		printf "Error occurred while running ${TEST_APP_SAMPLE}.\n"
+		cleanupAll
+		exit 1
+	fi
+	
+	rmmod buggy01
+	if test $? -ne 0; then
+		printf "Failed to unload \"buggy01\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Use kedr_sample_target again, should trigger the same race in
+	# cfake_open as the previous execution of this test application.
+	"${TEST_APP_SAMPLE}"
+	if test $? -ne 0; then
+		printf "Error occurred while running ${TEST_APP_SAMPLE}.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod kedr_sample_target
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_sample_target\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if isProcessRunning ${RECORDER_PID}; then
+		# Give the output system some time.
+		sleep 1
+
+		if isProcessRunning ${RECORDER_PID}; then
+			printf "Something wrong happened: "
+			printf "the user-space part of the output system is still running.\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+
+	EVENTS_LOST=$(cat "${EVENTS_LOST_FILE}")
+	if test -z "${EVENTS_LOST}"; then
+		printf "Failed to read lost event count from ${EVENTS_LOST_FILE}.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if test "t${EVENTS_LOST}" != "t0"; then
+		printf "The output system lost ${EVENTS_LOST} event(s), test failed.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the modules, they are no longer needed.
+	rmmod kedr_simple_trace_recorder
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_simple_trace_recorder\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod kedr_fh_drd_common
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_fh_drd_common\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod kedr_fh_drd_cdev
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_fh_drd_cdev\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod kedr_mem_core
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_mem_core\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Process the collected trace and obtain the report.
+	"${APP_PROCESS_TRACE}" -e "@TSAN_APP@" \
+		"${MODULE_BUGGY}" \
+		"${MODULE_SAMPLE}" < "${TRACE_FILE}" > "${REPORT_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to process the trace.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	printf "Checking the report (${REPORT_FILE})\n"
+	LC_ALL=C awk -f "${SCRIPT_DIR}/check_sample_and_buggy01.awk" < "${REPORT_FILE}"
+	if test $? -ne 0; then
+		# The script should have already reported the error.
+		cleanupAll
+		exit 1
+	fi
+	printf "The report is OK.\n"
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: $0"
+	exit 1
+fi
+
+BINARY_DIR="@CMAKE_BINARY_DIR@"
+SCRIPT_DIR="@CMAKE_CURRENT_SOURCE_DIR@"
+
+MODULE_SAMPLE="${BINARY_DIR}/tests/sample_target/kedr_sample_target.ko"
+TEST_APP_SAMPLE="${BINARY_DIR}/tests/bug_bench/test_sample_target/test_sample_target"
+
+MODULE_BUGGY="${BINARY_DIR}/examples/buggy01_annotated/tests/buggy01.ko"
+TEST_APP_BUGGY="${BINARY_DIR}/examples/test_buggy01/test_buggy01"
+
+MODULE_CORE="${BINARY_DIR}/core/kedr_mem_core.ko"
+UMH_DIR="${BINARY_DIR}/core/um_helpers/"
+
+MODULE_FH_COMMON="${BINARY_DIR}/functions/common/kedr_fh_drd_common.ko"
+MODULE_FH_CDEV="${BINARY_DIR}/functions/cdev/kedr_fh_drd_cdev.ko"
+
+MODULE_REC="${BINARY_DIR}/utils/simple_trace_recorder/kernel/kedr_simple_trace_recorder.ko"
+APP_REC="${BINARY_DIR}/utils/simple_trace_recorder/user/kedr_st_recorder"
+
+APP_PROCESS_TRACE="${BINARY_DIR}/utils/for_tsan/process_trace/tsan_process_trace"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+TEST_DEBUGFS_FILE="/sys/kernel/debug/buggy01/data"
+EVENTS_LOST_FILE="/sys/kernel/debug/kedr_simple_trace_recorder/events_lost"
+
+TRACE_FILE="${TEST_TMP_DIR}/trace_sample_and_buggy01.dat"
+REPORT_FILE="${TEST_TMP_DIR}/report_sample_and_buggy01.txt"
+
+RECORDER_PID=""
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_TMP_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create directory ${TEST_TMP_DIR}.\n"
+	exit 1
+fi
+
+# Mount debugfs to /sys/kernel/debug if it is not already mounted there,
+# the output system needs that.
+# The real users will need to mount it there too.
+mount | grep '/sys/kernel/debug' > /dev/null
+if test $? -ne 0; then
+	mount -t debugfs none /sys/kernel/debug
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to /sys/kernel/debug.\n"
+		exit 1
+	fi
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0
