@@ -26,4 +26,5 @@ add_subdirectory(callbacks)
 add_subdirectory(stack_on_call)
 add_subdirectory(sampling)
 add_subdirectory(multiple_targets)
+add_subdirectory(no_code)
 ########################################################################

@@ -66,7 +66,7 @@ alloc_fallback_areas(struct kedr_i13n *i13n)
 	 * module loader may make the code of the module read only, so we 
 	 * cannot uninstrument it and pass control there in runtime either.
 	 */
-	if (mod->module_init != NULL) {
+	if (kedr_has_init_text(mod)) {
 		i13n->fallback_init_area = kedr_module_alloc(
 			mod->init_text_size);
 		if (i13n->fallback_init_area == NULL)
@@ -76,7 +76,7 @@ alloc_fallback_areas(struct kedr_i13n *i13n)
 			mod->init_text_size);
 	}
 	
-	if (mod->module_core != NULL) {
+	if (kedr_has_core_text(mod)) {
 		i13n->fallback_core_area = kedr_module_alloc(
 			mod->core_text_size);
 		if (i13n->fallback_core_area == NULL)

@@ -316,7 +316,7 @@ create_special_items(struct kedr_i13n *i13n, struct list_head *items_list)
 	 * To estimate the sizes of the functions, we therefore need the 
 	 * "end addresses" (more exactly, start address + size) of these 
 	 * areas among other things. */
-	if (target->module_init != NULL) {
+	if (kedr_has_init_text(target)) {
 		item = construct_special_item(
 			(unsigned long)target->module_init + 
 			target->init_text_size);
@@ -328,7 +328,7 @@ create_special_items(struct kedr_i13n *i13n, struct list_head *items_list)
 		++num;
 	}
 
-	if (target->module_core != NULL) {
+	if (kedr_has_core_text(target)) {
 		item = construct_special_item(
 			(unsigned long)target->module_core + 
 			target->core_text_size);

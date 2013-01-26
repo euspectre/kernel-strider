@@ -3,6 +3,8 @@
 #ifndef UTIL_H_1633_INCLUDED
 #define UTIL_H_1633_INCLUDED
 
+#include <linux/module.h>
+
 #include <kedr/asm/insn.h> /* instruction analysis facilities */
 
 #include "ifunc.h"
@@ -101,6 +103,20 @@ kedr_choose_work_register(unsigned int mask_choose_from,
 		mask_used | X86_REG_MASK(base));
 }
 /* ====================================================================== */
+
+/* The functions kedr_has_*_text() return non-zero if the given module has 
+ * code in the corresponding area, 0 otherwise. */
+static inline int
+kedr_has_init_text(struct module *mod)
+{
+	return (mod->module_init != NULL && mod->init_text_size > 0);
+}
+
+static inline int
+kedr_has_core_text(struct module *mod)
+{
+	return (mod->module_core != NULL && mod->core_text_size > 0);
+}
 
 /* Nonzero if 'addr' is the address of some location in the code of the 
  * given module in the "init" area, 0 otherwise. */

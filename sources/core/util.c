@@ -12,7 +12,6 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
-#include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/bug.h> /* BUG_ON */
 
@@ -108,7 +107,7 @@ int
 kedr_is_init_text_address(unsigned long addr, struct module *mod)
 {
 	BUG_ON(mod == NULL);
-	if ((mod->module_init != NULL) &&
+	if (kedr_has_init_text(mod) &&
 	    (addr >= (unsigned long)(mod->module_init)) &&
 	    (addr < (unsigned long)(mod->module_init) + mod->init_text_size))
 		return 1;
@@ -121,7 +120,7 @@ kedr_is_core_text_address(unsigned long addr, struct module *mod)
 {
 	BUG_ON(mod == NULL);
 
-	if ((mod->module_core != NULL) &&
+	if (kedr_has_core_text(mod) &&
 	    (addr >= (unsigned long)(mod->module_core)) &&
 	    (addr < (unsigned long)(mod->module_core) + mod->core_text_size))
 		return 1;
