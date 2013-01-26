@@ -218,7 +218,7 @@ doTest()
 		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY},${TARGET_NAME_BROKEN}" \
 		umh_dir="@KEDR_UMH_DIR@"
 	if test $? -ne 0; then
-		printf "Failed to unload the core module: ${CORE_MODULE}\n"
+		printf "Failed to load the core module: ${CORE_MODULE}\n"
 		cleanupAll
 		exit 1
 	fi
