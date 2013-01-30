@@ -25,7 +25,7 @@ add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
 # _GNU_SOURCE is needed because at least getopt_long() is GNU extension.
 set_target_properties(${PROJECT_NAME} PROPERTIES
-	COMPILE_FLAGS "-Wall -Wextra -D_GNU_SOURCE"
+	COMPILE_FLAGS "-Wall -Wextra -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64"
 )
 
 target_link_libraries(${PROJECT_NAME} "elf" "dw")
