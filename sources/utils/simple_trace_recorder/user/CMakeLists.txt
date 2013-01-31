@@ -10,7 +10,7 @@ add_executable(${RECORDER_NAME}
 )
 
 set_target_properties(${RECORDER_NAME} PROPERTIES 
-	COMPILE_FLAGS "-Wall -Wextra --std=gnu99 -D_POSIX_SOURCE"
+	COMPILE_FLAGS "-Wall -Wextra --std=gnu99 -D_POSIX_SOURCE -D_FILE_OFFSET_BITS=64"
 )
 
 install(TARGETS ${RECORDER_NAME} 
