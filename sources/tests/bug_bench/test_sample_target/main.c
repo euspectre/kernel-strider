@@ -44,7 +44,9 @@ main(int argc, char *argv[])
 {
 	pid_t pid;
 	pid_t p;
-		
+
+	(void)argv;
+	
 	if (argc > 1) {
 		usage();
 		return EXIT_FAILURE;

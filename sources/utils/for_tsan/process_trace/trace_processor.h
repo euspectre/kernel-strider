@@ -91,6 +91,8 @@ private:
 	
 	void handle_target_load_event(struct kedr_tr_event_module *ev);
 	void handle_target_unload_event(struct kedr_tr_event_module *ev);
+
+	void handle_fexit_event(struct kedr_tr_event_func *ev);
 	
 private:
 	int in_pipe[2];

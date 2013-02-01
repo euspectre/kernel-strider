@@ -49,14 +49,6 @@ TraceProcessor::TraceProcessor(const std::vector<const char *> &args)
 	args_n.push_back(NULL);
 	const char * const *argv = &args_n[0];
 	
-/*	cerr << "Processing the trace with " << file;
-	const char * const *arg = argv;
-	for (++arg; *arg != NULL; ++arg) {
-		cerr << " " << *arg;
-	}
-	cerr << endl;
-*/
-	
 	int ret = 0;
 
 	ret = pipe(in_pipe);
@@ -365,7 +357,7 @@ TraceProcessor::put_line(const string &s)
 	 * step or fail. Note that write() will block if the application
 	 * is not ready to consume the data yet (i.e. the pipe is full). */
 	ssize_t ret = write(in_pipe[1], s.c_str(), s.size());
-	
+
 	if (ret == -1) {
 		throw TraceProcessor::Error(
 		string("Failed to pass data to the handler application: ") + 
@@ -686,6 +678,12 @@ TraceProcessor::handle_target_unload_event(struct kedr_tr_event_module *ev)
 {
 	ModuleInfo::on_module_unload(ev->name);
 }
+
+void
+TraceProcessor::handle_fexit_event(struct kedr_tr_event_func *ev)
+{
+	ModuleInfo::on_function_exit(ev->func);
+}
 /* ====================================================================== */
 
 /* A simple class that wraps a pointer to a malloc'ed memory block and frees
@@ -741,6 +739,11 @@ TraceProcessor::process_trace()
 		}
 		
 		switch (record->type) {
+		case KEDR_TR_EVENT_FEXIT:
+			handle_fexit_event(
+				(struct kedr_tr_event_func *)record);
+			break;
+
 		case KEDR_TR_EVENT_BLOCK_ENTER:
 			report_block_event(
 				(struct kedr_tr_event_block *)record);

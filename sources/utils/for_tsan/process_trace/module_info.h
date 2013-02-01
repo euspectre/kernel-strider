@@ -160,6 +160,10 @@ public:
 	{ }
 
 public:
+	bool is_loaded()
+	{ return loaded; }
+	
+public:
 	/* The main ModuleInfo API. 
 	 * The functions throw ModuleInfo::Error on error. */
 	
@@ -178,9 +182,14 @@ public:
 		const std::string &name, 
 		unsigned int init_addr, unsigned int init_size,
 		unsigned int core_addr, unsigned int core_size);
-		
+			
 	/* Handle "target_unload" event. */
 	static void on_module_unload(const std::string &name);
+	
+	/* If the function that has finished is the init function of a
+	 * target module, mark the init area of that module as freed, do
+	 * nothing otherwise. */
+	static void on_function_exit(unsigned int addr);
 	
 	/* Find the module this code address (a.k.a. program counter, PC)
 	 * belongs to and return the effective address for it.
@@ -205,9 +214,6 @@ public:
 	 * index. */
 	static void print_call_stack_item(unsigned int index, 
 					  unsigned int addr_eff);
-	
-	// TODO: remove when the app is complete
-	static void debug();
 };
 
 /* A wrapper around a handle to libdw/libdwfl that closes the handle on 

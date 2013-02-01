@@ -50,14 +50,15 @@ const unsigned int addr_eff_align = 0x1000;
 
 typedef std::map<std::string, rc_ptr<ModuleInfo> > TModuleMap;
 typedef std::map<unsigned int, rc_ptr<ModuleInfo> > TAddrMap;
+typedef std::map<unsigned int, std::string> TInitMap;
 
-/* {module name => module info} mapping. */
+/* {module name => module info}. */
 static TModuleMap module_map;
 
-/* {real address of a code area => module info} mapping. */
+/* {real address of a code area => module info}. */
 static TAddrMap real_addr_map;
 
-/* {effective address of a code area => module info} mapping. */
+/* {effective address of a code area => module info}. */
 static TAddrMap eff_addr_map;
 /* ====================================================================== */
 
@@ -65,7 +66,7 @@ static TAddrMap eff_addr_map;
 static rc_ptr<DwflWrapper> dwfl; 
 /* ====================================================================== */
 
-//<>
+/*
 static void 
 print_section(const rc_ptr<SectionInfo> &si)
 {
@@ -88,7 +89,6 @@ ModuleInfo::debug()
 			<< (void *)(unsigned long)it->second->init_ca.addr_eff
 			<< ", eff. core at "
 			<< (void *)(unsigned long)it->second->core_ca.addr_eff
-			/*<< ", refcount is " << it->second.ref_count()*/
 			<< ", the file is "
 			<< it->second->path << "\n";
 		cout << "[DBG]   Sections:\n";
@@ -115,7 +115,7 @@ ModuleInfo::debug()
 			<< ": " << pos->second->name << "\n";
 	}
 }
-//<>
+*/
 
 /* Align 'value' to the multiple of 'align' and return the result.
  * 'align' must be a power of 2. */
@@ -471,8 +471,12 @@ ModuleInfo::add_module(const string &mod_path, const string &mod_dir)
 static void 
 assign_effective_address(rc_ptr<ModuleInfo> &mi, ModuleInfo::CodeArea &ca)
 {
-	if (ca.size == 0)
+	if (ca.addr_real == 0 || ca.size == 0)
 		return; /* No such code area - nothing to do. */
+	/* [NB] There are modules (e.g. "crc*") that have no code in their
+	 * init area but the area itself is present for some reason. That is
+	 * why it is needed to check the size of the code area rather than
+	 * just its address. */
 	
 	ca.addr_eff = addr_eff;
 	addr_eff = align_value(addr_eff + ca.size, addr_eff_align);
@@ -488,18 +492,18 @@ assign_effective_address(rc_ptr<ModuleInfo> &mi, ModuleInfo::CodeArea &ca)
 }
 
 static void
-add_real_address(rc_ptr<ModuleInfo> &mi, unsigned int addr)
+add_real_address(rc_ptr<ModuleInfo> &mi, const ModuleInfo::CodeArea &ca)
 {
-	if (addr == 0)
+	if (ca.addr_real == 0 || ca.size == 0)
 		return; /* no code area - nothing to do */
 	
 	bool ok;
-	ok = real_addr_map.insert(make_pair(addr, mi)).second;
+	ok = real_addr_map.insert(make_pair(ca.addr_real, mi)).second;
 	if (!ok) {
 		/* May happen if some "target unload" events were lost. */
 		ostringstream err;
 		err << "\"" << mi->name << "\": the address of a code area "
-			<< "(" << (void *)(unsigned long)addr 
+			<< "(" << (void *)(unsigned long)ca.addr_real 
 			<< ") seems to belong to another module. "
 			<< "Corrupted or incomplete trace?";
 		throw ModuleInfo::Error(err.str());
@@ -507,28 +511,30 @@ add_real_address(rc_ptr<ModuleInfo> &mi, unsigned int addr)
 }
 
 static void
-remove_real_address(rc_ptr<ModuleInfo> &mi, unsigned int addr)
+remove_real_address(rc_ptr<ModuleInfo> &mi, const ModuleInfo::CodeArea &ca)
 {
-	if (addr == 0)
+	if (ca.addr_real == 0 || ca.size == 0)
 		return; /* no code area - nothing to do */
 	
 	TAddrMap::iterator it;
-	it = real_addr_map.find(addr);
+	it = real_addr_map.find(ca.addr_real);
 	if (it == real_addr_map.end()) {
 		cerr << "Internal error: address " 
-			<< (void *)(unsigned long)addr
+			<< (void *)(unsigned long)ca.addr_real
 			<< " is missing from the map." << endl;
 		assert(false);
+		return;
 	}
 	
 	string owner = it->second->name;
 	if (owner != mi->name) {
 		cerr << "Internal error: address "
-			<< (void *)(unsigned long)addr
+			<< (void *)(unsigned long)ca.addr_real
 			<< " belongs to \"" << owner 
 			<< "\" rather than to \"" << mi->name
 			<< "\"." << endl;
 		assert(false);
+		return;
 	}
 	
 	real_addr_map.erase(it);
@@ -585,10 +591,11 @@ ModuleInfo::on_module_load(
 		mi->init_ca.size = init_size;
 	}
 
-	/* Either both or neither of the code areas must have the effective
-	 * addresses assigned to them. */
-	assert( (mi->core_ca.addr_eff == 0 && mi->init_ca.addr_eff == 0) || 
-		(mi->core_ca.addr_eff != 0 && mi->init_ca.addr_eff != 0));
+	mi->core_ca.addr_real = core_addr;
+	mi->init_ca.addr_real = init_addr;
+
+	add_real_address(mi, mi->core_ca);
+	add_real_address(mi, mi->init_ca);
 	
 	/* If the module has not been assigned the effective addresses yet,
 	 * do so now. */
@@ -598,12 +605,6 @@ ModuleInfo::on_module_load(
 		
 		set_section_addresses(mi);
 	}
-	
-	mi->core_ca.addr_real = core_addr;
-	mi->init_ca.addr_real = init_addr;
-
-	add_real_address(mi, core_addr);
-	add_real_address(mi, init_addr);
 	
 	mi->loaded = true;
 }
@@ -628,13 +629,61 @@ ModuleInfo::on_module_unload(const std::string &name)
 		throw ModuleInfo::Error(err.str());
 	}
 	
-	remove_real_address(mi, mi->core_ca.addr_real);
-	remove_real_address(mi, mi->init_ca.addr_real);
+	remove_real_address(mi, mi->core_ca);
+	remove_real_address(mi, mi->init_ca);
 	
 	mi->core_ca.addr_real = 0;
 	mi->init_ca.addr_real = 0;
 	
 	mi->loaded = false;
+}
+
+/* This function should be called just before the init function of the given
+ * target module finishes (usually - in a handler of FEXIT event).
+ * The kernel will free the init area of that module soon.
+ * This function adjusts the information about the code areas of the module
+ * accordingly.
+ * Note that the freed memory can later be reused by some other target
+ * module. */
+static void
+on_module_init_complete(rc_ptr<ModuleInfo> &mi)
+{
+	if (!mi->is_loaded()) {
+		ostringstream err;
+		err << "Encountered the end of the init function for the "
+			<< "module \"" << mi->name << "\" "
+			<< "that seems not to be loaded.";
+		throw ModuleInfo::Error(err.str());
+	}
+
+	remove_real_address(mi, mi->init_ca);
+	mi->init_ca.addr_real = 0;
+}
+
+void
+ModuleInfo::on_function_exit(unsigned int addr)
+{
+	TAddrMap::const_iterator it;
+	it = real_addr_map.find(addr);
+	if (it == real_addr_map.end())
+		return; /* There is no code area with this address. */
+
+	string name = it->second->name;
+
+	TModuleMap::const_iterator mit;
+	mit = module_map.find(name);
+	if (mit == module_map.end()) {
+		throw ModuleInfo::Error(
+			string("Unknown module: \"") + name + string("\""));
+	}
+	
+	rc_ptr<ModuleInfo> mi = mit->second;
+	if (mi->init_ca.addr_real != addr)
+		return; 
+
+	/* 'addr' is the address of the init area of the module we have
+	 * found. */
+	on_module_init_complete(mi);
 }
 
 unsigned int 
