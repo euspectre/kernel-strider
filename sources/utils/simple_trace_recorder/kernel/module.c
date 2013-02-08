@@ -495,11 +495,11 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 	if (et == KEDR_TR_EVENT_TARGET_LOAD) {
 		ev->init_addr = (__u32)(unsigned long)mod->module_init;
 		if (ev->init_addr != 0)
-			ev->init_size = (__u32)mod->init_size;
+			ev->init_size = (__u32)mod->init_text_size;
 
 		ev->core_addr = (__u32)(unsigned long)mod->module_core;
 		if (ev->core_addr != 0)
-			ev->core_size = (__u32)mod->core_size;
+			ev->core_size = (__u32)mod->core_text_size;
 	}
 	
 	wp += size;

@@ -115,7 +115,8 @@
  *	init=<%p> init_size=<%lu> core=<%p> core_size=<%lu>
  * 'init', 'core' - addresses of the "init" and "core" area of the loaded
  * module (see 'module_init' and 'module_core' in struct module),
- * 'init_size' and 'core_size' are the sizes of these areas, respectively.
+ * 'init_size' and 'core_size' are the sizes of the code in these areas,
+ * respectively.
  * This information allows to later determine the addresses of the ELF
  * sections using the binary file of the module.
  * 
@@ -1504,10 +1505,10 @@ report_load_event(struct module *mod)
 	if (wol->init_addr == NULL)
 		wol->init_size = 0;
 	else
-		wol->init_size = mod->init_size;
+		wol->init_size = mod->init_text_size;
 
 	wol->core_addr = mod->module_core;
-	wol->core_size = mod->core_size;
+	wol->core_size = mod->core_text_size;
 	
 	INIT_WORK(&wol->work, work_func_load);
 	queue_work(wq, &wol->work);

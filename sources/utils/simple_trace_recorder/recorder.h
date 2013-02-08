@@ -154,8 +154,11 @@ struct kedr_tr_event_module
 	 * characters. C-style string. */
 	char name[KEDR_TARGET_NAME_LEN + 1];
 
-	/* Addresses and sizes of "init" and "core" areas of the module.
-	 * Both the address and the size are 0 if there is no such area.
+	/* Addresses of "init" and "core" areas of the module and size of
+	 * the code contained in these areas. 
+	 * If an area exists but contains no code, the address will be
+	 * non-zero but the size will be 0. If there is no such area at all,
+	 * both the address and the size will be 0.
 	 * 
 	 * Meaningful for "target load" events only.
 	 * 
