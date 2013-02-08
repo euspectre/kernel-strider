@@ -77,7 +77,8 @@ BEGIN {
 	code_loc = $2 " " $3
 
 	for (idx in loc) {
-		if (code_loc == loc[idx] && access == acc[idx]) {
+		if ((code_loc == loc[idx] && access == acc[idx]) ||
+		    (code_loc == loc_alt[idx] && access == acc_alt[idx])) {
 			detected[idx] = 1
 			found = idx
 			break
