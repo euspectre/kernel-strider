@@ -375,7 +375,7 @@ is_stack_address(unsigned long addr)
 		: "memory"
 	);
 
-	if (in_interrupt()) {
+	if (in_irq()) {
 		return (KEDR_PTR_ALIGN(addr, IRQ_STACK_SIZE) == 
 			KEDR_PTR_ALIGN(sp, IRQ_STACK_SIZE));
 	}

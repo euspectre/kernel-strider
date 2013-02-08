@@ -14,7 +14,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/hardirq.h>	/* in_interrupt() */
+#include <linux/hardirq.h>	/* in_irq() */
 #include <linux/smp.h>		/* smp_processor_id() */
 #include <linux/sched.h>	/* current */
 
@@ -32,10 +32,17 @@
 #include "tid.h"
 /* ====================================================================== */
 
+/* [NB] We only need to process the handlers for hardware interrupts
+ * separately from the code running in process and softirq contexts. The
+ * code running in these contexts runs in the appropriate threads, 'current'
+ * is valid there.
+ * In addition, it is undesirable to use in_interrupt() here as it may
+ * return non-zero in the process context too, e.g., in the critical
+ * sections with a spinlock locked with spin_lock_bh(). */
 unsigned long
 kedr_get_thread_id(void)
 {
-	return (in_interrupt() 	? (unsigned long)smp_processor_id() 
+	return (in_irq() ? (unsigned long)smp_processor_id()
 				: (unsigned long)current);
 }
 EXPORT_SYMBOL(kedr_get_thread_id);
