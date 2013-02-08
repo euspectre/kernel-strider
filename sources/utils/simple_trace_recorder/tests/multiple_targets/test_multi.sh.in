@@ -461,6 +461,7 @@ doTest()
 	else
 		printf "Error occurred during the comparison "
 		printf "of the obtained event trace and the expected one.\n"
+		cleanupAll
 		exit 1
 	fi
 }
