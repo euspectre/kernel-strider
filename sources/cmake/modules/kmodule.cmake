@@ -514,6 +514,47 @@ macro(check_kernel_config)
 				"\tCONFIG_KALLSYMS (loading of kernel symbols in the kernel image)\n"
 			)
 		endif (kernel_config_impl)
-	endif (DEFINED KERNEL_CONFIG_OK) # TODO
+	endif (DEFINED KERNEL_CONFIG_OK)
 endmacro(check_kernel_config)
+
+# Check whether the virtual memory split configuration is acceptable.
+function(check_vm_split)
+	set(check_vm_split_message
+		"Checking if the virtual memory split configuration is acceptable"
+	)
+	message(STATUS "${check_vm_split_message}")
+	if (DEFINED VM_SPLIT_OK)
+		set(check_vm_split_message
+"${check_vm_split_message} [cached] - ${VM_SPLIT_OK}"
+		)
+	else (DEFINED VM_SPLIT_OK)
+		kmodule_try_compile(vm_split_ok_impl
+			"${CMAKE_BINARY_DIR}/check_vm_split"
+			"${kmodule_test_sources_dir}/check_vm_split/module.c"
+		)
+		if (vm_split_ok_impl)
+			set(VM_SPLIT_OK "yes" CACHE INTERNAL
+				"Is current VM split configuration supported?"
+			)
+		else (vm_split_ok_impl)
+			set(VM_SPLIT_OK "no" CACHE INTERNAL
+				"Is current VM split configuration supported?"
+			)
+		endif (vm_split_ok_impl)
+
+		set(check_vm_split_message
+"${check_vm_split_message} - ${VM_SPLIT_OK}"
+		)
+	endif (DEFINED VM_SPLIT_OK)
+	message(STATUS "${check_vm_split_message}")
+
+	if (NOT VM_SPLIT_OK)
+		message(FATAL_ERROR
+			"\n[WARNING]\n"
+			"The kernels with CONFIG_VMSPLIT_2G_OPT=y or CONFIG_VMSPLIT_1G=y "
+			"are not supported by the thread handling subsystem of the core.\n"
+		)
+	endif (NOT VM_SPLIT_OK)
+
+endfunction(check_vm_split)
 ############################################################################

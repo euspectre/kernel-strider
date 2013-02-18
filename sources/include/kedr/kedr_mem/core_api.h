@@ -209,6 +209,22 @@ struct kedr_event_handlers
 	void (*on_thread_join_post)(struct kedr_event_handlers *eh,
 		unsigned long tid, unsigned long pc, 
 		unsigned long child_tid);
+
+	/* Thread start / thread end events.
+	 * "thread start" is generated for each new thread that enters one
+	 * of the target modules.
+	 * 'comm' - name of the thread (a null-terminated string). To be
+	 * exact, it is &task_struct::comm[0] (see <linux/sched.h>).
+	 *
+	 * "thread end" is generated for the threads that executed the code
+	 * of one or more target modules but have ended. 
+	 * This event is generated only if the core is sure the thread has
+	 * ended. So, not all "thread start" events may have matching
+	 * "thread end" events. */
+	void (*on_thread_start)(struct kedr_event_handlers *eh,
+		unsigned long tid, const char *comm);
+	void (*on_thread_end)(struct kedr_event_handlers *eh,
+		unsigned long tid);
 };
 
 /* Registers the set of event handlers with the core. 
@@ -496,6 +512,22 @@ kedr_eh_on_thread_join(unsigned long tid, unsigned long pc,
 {
 	kedr_eh_on_thread_join_pre(tid, pc, child_tid);
 	kedr_eh_on_thread_join_post(tid, pc, child_tid);
+}
+
+static inline void
+kedr_eh_on_thread_start(unsigned long tid, const char *comm)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_start != NULL)
+		eh->on_thread_start(eh, tid, comm);
+}
+
+static inline void
+kedr_eh_on_thread_end(unsigned long tid)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_thread_end != NULL)
+		eh->on_thread_end(eh, tid);
 }
 /* ====================================================================== */
 

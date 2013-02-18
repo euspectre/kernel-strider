@@ -163,14 +163,17 @@ set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
 # This macro also set KERNEL_VERSION.
 check_kernel_version(2 6 32)
 
-# Check if kernel modules can be built on this system
+# Check if kernel modules can be built on this system.
 check_module_build()
 
-# Check kernel configuration
+# Check kernel configuration.
 check_kernel_config()
 
-# Check if the ring buffer functionality is available
+# Check if the ring buffer functionality is available.
 check_ring_buffer()
+
+# Check if the VM split configuration is acceptable.
+check_vm_split()
 
 # Find out which memory allocator is used by the kernel. It is needed
 # because, for example, the order of arguments to kmem_cache_alloc*_trace()

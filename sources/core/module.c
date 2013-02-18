@@ -134,6 +134,11 @@ module_param(process_um_accesses, int, S_IRUGO);
  * the performance degradation can be significant here. */
 unsigned int sampling_rate = 0;
 module_param(sampling_rate, uint, S_IRUGO);
+
+/* The timeout of the timer used for garbage collection in the thread
+ * handling subsystem (see tid.c), in milliseconds. */
+unsigned int gc_msec = 2000;
+module_param(gc_msec, uint, S_IRUGO);
 /* ====================================================================== */
 
 /* An structure that identifies an analysis session for the target module. 
@@ -768,9 +773,10 @@ session_start(void)
 		providers_put();
 		return ret;
 	}
-	
+
 	kedr_eh_on_session_start();
 	kedr_fh_on_session_start();
+	kedr_thread_handling_start();
 	
 	blocks_total = 0;
 	blocks_skipped = 0;
@@ -780,6 +786,7 @@ session_start(void)
 static void
 session_end(void)
 {
+	kedr_thread_handling_stop();
 	kedr_fh_on_session_end();
 	kedr_eh_on_session_end();
 	
@@ -1433,7 +1440,7 @@ core_init_module(void)
 	if (ret != 0)
 		goto out_cleanup_sections;
 
-	ret = kedr_init_tid_sampling();
+	ret = kedr_thread_handling_init(gc_msec);
 	if (ret != 0)
 		goto out_cleanup_alloc;
 
@@ -1492,7 +1499,7 @@ out_unlock:
 	mutex_unlock(&module_mutex);
 
 out_cleanup_tid:
-	kedr_cleanup_tid_sampling();
+	kedr_thread_handling_cleanup();
 
 out_cleanup_alloc:
 	kedr_cleanup_module_ms_alloc();
@@ -1524,7 +1531,7 @@ core_exit_module(void)
 	/* [NB] Unregister notifications before cleaning up the rest. */
 	unregister_module_notifier(&detector_nb);
 
-	kedr_cleanup_tid_sampling();
+	kedr_thread_handling_cleanup();
 	kedr_cleanup_module_ms_alloc();
 	kedr_cleanup_section_subsystem();
 

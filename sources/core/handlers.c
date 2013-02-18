@@ -218,33 +218,33 @@ load_arg_regs(struct kedr_local_storage *ls, struct kedr_prologue_data *pd)
 static __used unsigned long
 kedr_on_function_entry(struct kedr_prologue_data *pd)
 {
+	int ret;
 	struct kedr_local_storage *ls;
 	void (*pre_handler)(struct kedr_local_storage *);
 		
 	ls = ls_allocator->alloc_ls(ls_allocator);
 	if (ls == NULL)
 		return 0;
+
+	ret = kedr_thread_handle_changes();
+	if (ret != 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+"Failed to process the thread with ID 0x%lx, error code: %d\n",
+				kedr_get_thread_id(), ret);
+			ls_allocator->free_ls(ls_allocator, ls);
+			return 0;
+	}
 	
-	ls->fi = pd->fi;
 	ls->tid = kedr_get_thread_id();
+	ls->fi = pd->fi;
 	
 	/* Load everything necessary to be able to obtain the 
 	 * arguments of the function with KEDR_LS_ARGn() in pre- and/or post
 	 * handlers for callbacks, etc. */
 	load_arg_regs(ls, pd);
 	
-	if (sampling_rate != 0) {
-		long tindex;
-		tindex = kedr_get_tindex();
-		if (tindex < 0) {
-			pr_warning(KEDR_MSG_PREFIX 
-"Failed to obtain index of the thread with ID 0x%lx, error code: %d\n",
-				ls->tid, (int)tindex);
-			ls_allocator->free_ls(ls_allocator, ls);
-			return 0;
-		}
-		ls->tindex = (unsigned long)tindex;
-	}
+	if (sampling_rate != 0)
+		ls->tindex = kedr_get_tindex();
 	
 	kedr_eh_on_function_entry(ls->tid, ls->fi->addr);
 	
@@ -375,7 +375,7 @@ is_stack_address(unsigned long addr)
 		: "memory"
 	);
 
-	if (in_irq()) {
+	if (kedr_in_interrupt()) {
 		return (KEDR_PTR_ALIGN(addr, IRQ_STACK_SIZE) == 
 			KEDR_PTR_ALIGN(sp, IRQ_STACK_SIZE));
 	}
