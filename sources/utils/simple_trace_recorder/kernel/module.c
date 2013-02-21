@@ -19,10 +19,11 @@
  * pages written and also when "target unload" event is received. */
 
 /* ========================================================================
+ * Copyright (C) 2013, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  * Authors: 
- *      Eugene A. Shatokhin <spectre@ispras.ru>
- *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -1034,6 +1035,67 @@ on_wait_post(struct kedr_event_handlers *eh, unsigned long tid,
 		type);
 }
 
+static void
+on_thread_start(struct kedr_event_handlers *eh, unsigned long tid,
+	const char *comm)
+{
+	__u32 wp;
+	__u32 rp;
+	unsigned long irq_flags;
+	struct kedr_tr_event_tstart *ev;
+	unsigned int size = (unsigned int)sizeof(*ev);
+
+	spin_lock_irqsave(&eh_lock, irq_flags);
+	rp = get_read_pos();
+	wp = record_write_common(start_page->write_pos, rp, size);
+	if (wp == (__u32)(-1))
+		goto out;
+
+	ev = buffer_pos_to_addr(wp);
+	memset(ev, 0, size);
+	
+	ev->header.type = KEDR_TR_EVENT_THREAD_START;
+	ev->header.event_size = size;
+	ev->header.tid = (__u64)tid;
+
+	/* The trailing 0 has been already written by memset. */
+	strncpy(&ev->comm[0], comm, KEDR_COMM_LEN);
+
+	wp += size;
+	set_write_pos_and_notify(wp, rp);
+out:
+	spin_unlock_irqrestore(&eh_lock, irq_flags);
+
+}
+
+static void
+on_thread_end(struct kedr_event_handlers *eh, unsigned long tid)
+{
+	__u32 wp;
+	__u32 rp;
+	unsigned long irq_flags;
+	struct kedr_tr_event_tend *ev;
+	unsigned int size = (unsigned int)sizeof(*ev);
+
+	spin_lock_irqsave(&eh_lock, irq_flags);
+	rp = get_read_pos();
+	wp = record_write_common(start_page->write_pos, rp, size);
+	if (wp == (__u32)(-1))
+		goto out;
+
+	ev = buffer_pos_to_addr(wp);
+	memset(ev, 0, size);
+
+	ev->header.type = KEDR_TR_EVENT_THREAD_END;
+	ev->header.event_size = size;
+	ev->header.tid = (__u64)tid;
+
+	wp += size;
+	set_write_pos_and_notify(wp, rp);
+out:
+	spin_unlock_irqrestore(&eh_lock, irq_flags);
+}
+
 struct kedr_event_handlers eh = {
 	.owner 			= THIS_MODULE,
 
@@ -1074,7 +1136,10 @@ struct kedr_event_handlers eh = {
 	.on_signal_post 	= on_signal_post,
 	.on_wait_pre 		= on_wait_pre,
 	.on_wait_post 		= on_wait_post,
-	
+
+	.on_thread_start	= on_thread_start,
+	.on_thread_end		= on_thread_end,
+
 	/* [NB] Add more handlers here if necessary. */
 };
 /* ====================================================================== */

@@ -502,6 +502,11 @@ do_convert(FILE *fd)
 				(struct kedr_tr_event_block *)record);
 			break;
 
+        case KEDR_TR_EVENT_THREAD_START:
+        case KEDR_TR_EVENT_THREAD_END:
+            /* For now, ignore these events in the tests. */
+            break;
+        
 		default: 
 			cerr << "Record #" << nrec << 
 				": unknown event type: " << record->type <<

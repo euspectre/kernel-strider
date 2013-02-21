@@ -16,11 +16,12 @@
  * also saves the remaining available data before exiting. */
 
 /* ========================================================================
+ * Copyright (C) 2013, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  *
  * Authors: 
- *      Eugene A. Shatokhin <spectre@ispras.ru>
- *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published

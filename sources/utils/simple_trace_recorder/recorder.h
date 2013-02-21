@@ -18,6 +18,12 @@
  * is longer, only the first KEDR_TARGET_NAME_LEN will be used here. */
 #define KEDR_TARGET_NAME_LEN 31
 
+/* Maximum length of a command name (application name) to be reported, not
+ * counting the terminating nul character. As the name is commonly obtained
+ * from struct task_struct::comm, it makes little sense to make the limit
+ * larger than (TASK_COMM_LEN - 1), which is 15 as of kernel 3.7. */
+#define KEDR_COMM_LEN 15
+
 /* Meaning of the commonly used fields of the event structures:
  *   tid - thread ID;
  *   pc - program counter (aka PC, instruction pointer, IP) - address of 
@@ -62,76 +68,89 @@ enum kedr_tr_event_type
 	 * even the event header to fit in, the contents of this space will
 	 * be unspecified and the reader should also skip to the next page. 
 	 */
-	KEDR_TR_EVENT_SKIP		= 0,
+	KEDR_TR_EVENT_SKIP = 0,
 	
 	/* "Target module has just loaded", "Target module is about to 
 	 * unload" events.
 	 * Structure: kedr_tr_event_module. */
-	KEDR_TR_EVENT_TARGET_LOAD	= 1,
+	KEDR_TR_EVENT_TARGET_LOAD = 1,
 	KEDR_TR_EVENT_TARGET_UNLOAD	= 2,
 	
 	/* Function entry and exit. 
 	 * Structure: kedr_tr_event_func. */
-	KEDR_TR_EVENT_FENTRY 		= 3,
-	KEDR_TR_EVENT_FEXIT 		= 4,
+	KEDR_TR_EVENT_FENTRY = 3,
+	KEDR_TR_EVENT_FEXIT = 4,
 	
 	/* Call pre, call post. 
 	 * Structure: kedr_tr_event_call. */
-	KEDR_TR_EVENT_CALL_PRE		= 5,
-	KEDR_TR_EVENT_CALL_POST		= 6,
+	KEDR_TR_EVENT_CALL_PRE = 5,
+	KEDR_TR_EVENT_CALL_POST	= 6,
 	
 	/* A sequence of memory read/write events (no more than 32 events).
 	 * Structure: kedr_tr_event_mem. */
-	KEDR_TR_EVENT_MEM		= 7,
+	KEDR_TR_EVENT_MEM = 7,
 	
 	/* A locked memory access event.
 	 * Structure: kedr_tr_event_mem. */
-	KEDR_TR_EVENT_MEM_LOCKED	= 8,
+	KEDR_TR_EVENT_MEM_LOCKED = 8,
 	
 	/* An memory access event from an I/O operation.
 	 * Structure: kedr_tr_event_mem. */
-	KEDR_TR_EVENT_MEM_IO		= 9,
+	KEDR_TR_EVENT_MEM_IO = 9,
 	
 	/* Memory barrier, pre/post events. 
 	 * Structure: kedr_tr_event_barrier. */
-	KEDR_TR_EVENT_BARRIER_PRE	= 10,
-	KEDR_TR_EVENT_BARRIER_POST	= 11,
+	KEDR_TR_EVENT_BARRIER_PRE = 10,
+	KEDR_TR_EVENT_BARRIER_POST = 11,
 	
 	/* Memory allocation and freeing, pre/post events.
 	 * Structure: kedr_tr_event_alloc_free. */
-	KEDR_TR_EVENT_ALLOC_PRE		= 12,
-	KEDR_TR_EVENT_ALLOC_POST	= 13,
-	KEDR_TR_EVENT_FREE_PRE		= 14,
-	KEDR_TR_EVENT_FREE_POST		= 15,
+	KEDR_TR_EVENT_ALLOC_PRE = 12,
+	KEDR_TR_EVENT_ALLOC_POST = 13,
+	KEDR_TR_EVENT_FREE_PRE = 14,
+	KEDR_TR_EVENT_FREE_POST = 15,
 	
 	/* Lock and unlock, pre/post events.
 	 * Structure: kedr_tr_event_sync. */
-	KEDR_TR_EVENT_LOCK_PRE		= 16,
-	KEDR_TR_EVENT_LOCK_POST		= 17,
-	KEDR_TR_EVENT_UNLOCK_PRE	= 18,
-	KEDR_TR_EVENT_UNLOCK_POST	= 19,
+	KEDR_TR_EVENT_LOCK_PRE = 16,
+	KEDR_TR_EVENT_LOCK_POST = 17,
+	KEDR_TR_EVENT_UNLOCK_PRE = 18,
+	KEDR_TR_EVENT_UNLOCK_POST = 19,
 	
 	/* Signal and wait, pre/post events.
 	 * Structure: kedr_tr_event_sync. */
-	KEDR_TR_EVENT_SIGNAL_PRE	= 20,
-	KEDR_TR_EVENT_SIGNAL_POST	= 21,
-	KEDR_TR_EVENT_WAIT_PRE		= 22,
-	KEDR_TR_EVENT_WAIT_POST		= 23,
+	KEDR_TR_EVENT_SIGNAL_PRE = 20,
+	KEDR_TR_EVENT_SIGNAL_POST = 21,
+	KEDR_TR_EVENT_WAIT_PRE = 22,
+	KEDR_TR_EVENT_WAIT_POST = 23,
 	
 	/* "Block enter" event. Reported before the first memory access in 
 	 * a "block" - a multiple entry, multiple exit fragment of the code 
 	 * containing no constructs that transfer control outside of the 
 	 * function, no barriers, no backward jumps.
 	 * Structure: kedr_tr_event_block. */
-	KEDR_TR_EVENT_BLOCK_ENTER	= 24,
+	KEDR_TR_EVENT_BLOCK_ENTER = 24,
 
 	/* "Session start" and "session end" events. The former is generated
 	 * when the first of the target modules has been loaded (before 
 	 * "target load" event). The latter is generated when the only
 	 * loaded target module is about to unload (after "target unload"
-	 * event). */
-	KEDR_TR_EVENT_SESSION_START	= 25,
-	KEDR_TR_EVENT_SESSION_END	= 26,
+	 * event).
+	 * Structure: kedr_tr_event_session. */
+	KEDR_TR_EVENT_SESSION_START = 25,
+	KEDR_TR_EVENT_SESSION_END = 26,
+
+	/* "Thread start" event. Generated right before the thread enters the
+	 * code of the target modules the first time.
+	 * Structure: kedr_tr_event_tstart. */
+	KEDR_TR_EVENT_THREAD_START = 27,
+
+	/* "Thread end" event. Generated when the core detects the thread has
+	 * ended. It is possible that this event is not reported for some
+	 * threads, so there can be "thread start" events without matching
+	 * "thread end" events.
+	 * Structure: kedr_tr_event_tend. */
+	KEDR_TR_EVENT_THREAD_END = 28,
 
 	/* The number of event types defined so far. */
 	KEDR_TR_EVENT_MAX
@@ -263,6 +282,21 @@ struct kedr_tr_event_block
 {
 	struct kedr_tr_event_header header;
 	__u32 pc;
+} __attribute__ ((packed));
+
+/* "Thread start".
+ * 'comm' - the name of the thread or the first part of it if the name is
+ * longer than KEDR_COMM_LEN characters. */
+struct kedr_tr_event_tstart
+{
+	struct kedr_tr_event_header header;
+	char comm[KEDR_COMM_LEN + 1];
+} __attribute__ ((packed));
+
+/* "Thread end" */
+struct kedr_tr_event_tend
+{
+	struct kedr_tr_event_header header;
 } __attribute__ ((packed));
 /* ====================================================================== */
 
