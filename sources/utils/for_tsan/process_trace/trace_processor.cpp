@@ -162,6 +162,7 @@ TraceProcessor::~TraceProcessor()
 	
 	try {
 		process_remaining_output();
+		output_thread_list();
 	}
 	catch (runtime_error &e) {
 		cerr << e.what() << endl;
@@ -532,11 +533,52 @@ TraceProcessor::get_tsan_thread_id(
 	it = tid_map.find(record->tid);
 	
 	if (it == tid_map.end()) {
-		++nr_tids;
-		it = tid_map.insert(make_pair(record->tid, nr_tids)).first;
-		output_tsan_event("THR_START", nr_tids, 0, 0, 0);
+		ostringstream err;
+		err << "Found an event with a real thread ID "
+			<< (void *)(unsigned long)record->tid
+	<< " with no previous \"thread start\" event for that thread.";
+		throw TraceProcessor::Error(err.str());
 	}
 	return it->second;
+}
+
+void
+TraceProcessor::handle_thread_start_event(struct kedr_tr_event_tstart *ev)
+{
+	tid_map_t::iterator it;
+	it = tid_map.find(ev->header.tid);
+
+	if (it != tid_map.end()) {
+		ostringstream err;
+		err << "Found \"thread start\" event with a real thread ID "
+			<< (void *)(unsigned long)ev->header.tid
+			<< " but there were events with this thread ID "
+			<< "before without \"thread end\". ";
+		err << "Missing \"thread end\" event?";
+		throw TraceProcessor::Error(err.str());
+	}
+
+	++nr_tids;
+	it = tid_map.insert(make_pair(ev->header.tid, nr_tids)).first;
+	thread_names.push_back(&ev->comm[0]);
+	output_tsan_event("THR_START", nr_tids, 0, 0, 0);
+}
+
+void
+TraceProcessor::handle_thread_end_event(struct kedr_tr_event_tend *ev)
+{
+	tid_map_t::size_type n;
+	n = tid_map.erase(ev->header.tid);
+
+	if (n != 1) {
+		ostringstream err;
+		err << "Found \"thread end\" event "
+			<< "with an unknown real thread ID: "
+			<< (void *)(unsigned long)ev->header.tid;
+		throw TraceProcessor::Error(err.str());
+	}
+
+	/* It is currently not needed to pass THR_END event to TSan. */
 }
 
 void
@@ -718,6 +760,8 @@ TraceProcessor::process_trace()
 	
 	/* A fake "main" thread, T0 */
 	output_tsan_event("THR_START", 0, 0, 0, 0);
+	thread_names.clear();
+	thread_names.push_back("A fake \"main\" thread, T0");
 	
 	while(true) {
 		MemHelper r(read_record(stdin));
@@ -798,11 +842,36 @@ TraceProcessor::process_trace()
 			report_unlock_event(
 				(struct kedr_tr_event_sync *)record);
 			break;
-		
+
+		case KEDR_TR_EVENT_THREAD_START:
+			handle_thread_start_event(
+				(struct kedr_tr_event_tstart *)record);
+			break;
+
+		case KEDR_TR_EVENT_THREAD_END:
+			handle_thread_end_event(
+				(struct kedr_tr_event_tend *)record);
+			break;
+			
 		default: 
 			break;
 		}
 	}
+}
+
+/* Output the list of threads with names. */
+void 
+TraceProcessor::output_thread_list()
+{
+	if (thread_names.empty())
+		return;
+
+	cout << "=======================================================\n";
+	cout << "\nList of threads:\n\n";
+	
+
+	for (size_t i = 1; i < thread_names.size(); ++i)
+		cout << "T" << i << "\t" << thread_names[i] << "\n";
 }
 /* ====================================================================== */
 

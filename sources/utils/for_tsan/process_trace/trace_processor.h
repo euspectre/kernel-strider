@@ -70,6 +70,7 @@ private:
 	void do_report_line();
 	bool data_available();
 	void process_remaining_output();
+	void output_thread_list();
 	
 	struct kedr_tr_event_header *read_record(FILE *fd);
 	unsigned int get_tsan_thread_id(
@@ -93,6 +94,9 @@ private:
 	void handle_target_unload_event(struct kedr_tr_event_module *ev);
 
 	void handle_fexit_event(struct kedr_tr_event_func *ev);
+
+	void handle_thread_start_event(struct kedr_tr_event_tstart *ev);
+	void handle_thread_end_event(struct kedr_tr_event_tend *ev);
 	
 private:
 	int in_pipe[2];
@@ -105,6 +109,9 @@ private:
 	 * and the IDs used by TSan offline. */
 	typedef std::map<__u64, unsigned int> tid_map_t;
 	tid_map_t tid_map;
+
+	/* Names of the threads corresponding to the IDs used by TSan */
+	std::vector<std::string> thread_names;
 };
 /* ====================================================================== */
 
