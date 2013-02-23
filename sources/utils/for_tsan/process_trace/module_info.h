@@ -152,11 +152,15 @@ private:
 	/* true if the module was loaded when the current event was 
 	 * generated, false otherwise. */
 	bool loaded;
+	
+	/* The lower 32 bits of the real address of the target's init 
+	 * function, if present. 0 if not present or not yet found. */
+	unsigned int init_func;
 
 public:
 	ModuleInfo(const std::string &mod_name)
 		: name(mod_name), dwfl_mod(NULL), has_debug_info(false),
-		  loaded(false)
+		  loaded(false), init_func(0)
 	{ }
 
 public:
@@ -186,6 +190,10 @@ public:
 	/* Handle "target_unload" event. */
 	static void on_module_unload(const std::string &name);
 	
+	/* This function is needed to find the init function of the target
+	 * module. */
+	static void on_function_entry(unsigned int addr);
+	
 	/* If the function that has finished is the init function of a
 	 * target module, mark the init area of that module as freed, do
 	 * nothing otherwise. */
@@ -214,6 +222,10 @@ public:
 	 * index. */
 	static void print_call_stack_item(unsigned int index, 
 					  unsigned int addr_eff);
+
+private:
+	static rc_ptr<ModuleInfo> module_for_real_address(
+		unsigned int addr);
 };
 
 /* A wrapper around a handle to libdw/libdwfl that closes the handle on 

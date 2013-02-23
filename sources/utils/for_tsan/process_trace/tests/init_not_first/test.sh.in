@@ -1,0 +1,248 @@
+#!/bin/sh
+
+########################################################################
+# This test checks that 'tsan_process_trace' detects the init function of
+# the target module properly even if that function is not the first one in
+# the init area.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_CORE}"; then
+		printf "The core module is missing: ${MODULE_CORE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${MODULE_REC}"; then
+		printf "The trace recorder module is missing: ${MODULE_REC}\n"
+		exit 1
+	fi
+
+	if test ! -e "${APP_REC}"; then
+		printf "The trace recorder application is missing: ${APP_REC}\n"
+		exit 1
+	fi
+
+	if test ! -e "${APP_PROCESS_TRACE}"; then
+		printf "The trace processing application is missing: ${APP_PROCESS_TRACE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# is_process_running pid
+# True if the given process started from the same shell as this script
+# is currently running, false otherwise.
+########################################################################
+isProcessRunning()
+{
+    nlines=$(ps -p "$1" | wc -l)
+    test "$nlines" -eq 2
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+
+	lsmod | grep "${TARGET_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME}"
+	fi
+
+	if test -n "${RECORDER_PID}"; then
+		if isProcessRunning ${RECORDER_PID}; then
+			kill ${RECORDER_PID}
+
+			# Give the user-space application some time to finish
+			sleep 1
+
+			# If it is still running, force it to stop
+			if isProcessRunning ${RECORDER_PID}; then
+				kill -9 ${RECORDER_PID}
+			fi
+		fi
+	fi
+
+	lsmod | grep "kedr_simple_trace_recorder" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_simple_trace_recorder"
+	fi
+
+	lsmod | grep "kedr_mem_core" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "kedr_mem_core"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	# Just in case
+	chmod +x "${APP_REC}"
+	chmod +x "${APP_PROCESS_TRACE}"
+	
+	insmod "${MODULE_CORE}" \
+		targets=${TARGET_NAME} \
+		umh_dir="${UMH_DIR}"
+	if test $? -ne 0; then
+		printf "Failed to load the core module: ${MODULE_CORE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${MODULE_REC}"
+	if test $? -ne 0; then
+		printf "Failed to load the kernel-space part of the output system.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	RECORDER_PID=""
+	"${APP_REC}" "${TRACE_FILE}" &
+	RECORDER_PID=$!
+
+	insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load \"${TARGET_NAME}\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod ${TARGET_NAME}
+	if test $? -ne 0; then
+		printf "Failed to unload \"${TARGET_NAME}\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if isProcessRunning ${RECORDER_PID}; then
+		# Give the output system some time.
+		sleep 1
+
+		if isProcessRunning ${RECORDER_PID}; then
+			printf "Something wrong happened: "
+			printf "the user-space part of the output system is still running.\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+
+	EVENTS_LOST=$(cat "${EVENTS_LOST_FILE}")
+	if test -z "${EVENTS_LOST}"; then
+		printf "Failed to read lost event count from ${EVENTS_LOST_FILE}.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	if test "t${EVENTS_LOST}" != "t0"; then
+		printf "The output system lost ${EVENTS_LOST} event(s), test failed.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the modules, they are no longer needed.
+	rmmod kedr_simple_trace_recorder
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_simple_trace_recorder\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod kedr_mem_core
+	if test $? -ne 0; then
+		printf "Failed to unload \"kedr_mem_core\" module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Process the collected trace and obtain the report.
+	"${APP_PROCESS_TRACE}" -e "@TSAN_APP@" \
+		"${TARGET_MODULE}" < "${TRACE_FILE}" > "${REPORT_FILE}"
+	if test $? -ne 0; then
+		printf "Failed to process the trace.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	printf "Successfully processed the trace.\n"
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: $0"
+	exit 1
+fi
+
+BINARY_DIR="@CMAKE_BINARY_DIR@"
+SCRIPT_DIR="@CMAKE_CURRENT_SOURCE_DIR@"
+
+TARGET_NAME=test_init_not_first
+TARGET_MODULE="@CMAKE_CURRENT_BINARY_DIR@/target/${TARGET_NAME}.ko"
+MODULE_CORE="${BINARY_DIR}/core/kedr_mem_core.ko"
+UMH_DIR="${BINARY_DIR}/core/um_helpers/"
+
+MODULE_REC="${BINARY_DIR}/utils/simple_trace_recorder/kernel/kedr_simple_trace_recorder.ko"
+APP_REC="${BINARY_DIR}/utils/simple_trace_recorder/user/kedr_st_recorder"
+
+APP_PROCESS_TRACE="${BINARY_DIR}/utils/for_tsan/process_trace/tsan_process_trace"
+
+TEST_TMP_DIR="@KEDR_TEST_TEMP_DIR@"
+EVENTS_LOST_FILE="/sys/kernel/debug/kedr_simple_trace_recorder/events_lost"
+
+TRACE_FILE="${TEST_TMP_DIR}/trace.dat"
+REPORT_FILE="${TEST_TMP_DIR}/report.txt"
+
+RECORDER_PID=""
+
+checkPrereqs
+
+rm -rf "${TEST_TMP_DIR}"
+mkdir -p "${TEST_TMP_DIR}"
+if test $? -ne 0; then
+	printf "Failed to create directory ${TEST_TMP_DIR}.\n"
+	exit 1
+fi
+
+# Mount debugfs to /sys/kernel/debug if it is not already mounted there,
+# the output system needs that.
+# The real users will need to mount it there too.
+mount | grep '/sys/kernel/debug' > /dev/null
+if test $? -ne 0; then
+	mount -t debugfs none /sys/kernel/debug
+	if test $? -ne 0; then
+		printf "Failed to mount debugfs to /sys/kernel/debug.\n"
+		exit 1
+	fi
+fi
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

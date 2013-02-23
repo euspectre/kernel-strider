@@ -635,6 +635,8 @@ ModuleInfo::on_module_unload(const std::string &name)
 	mi->core_ca.addr_real = 0;
 	mi->init_ca.addr_real = 0;
 	
+	mi->init_func = 0;
+	
 	mi->loaded = false;
 }
 
@@ -661,33 +663,41 @@ on_module_init_complete(rc_ptr<ModuleInfo> &mi)
 }
 
 void
+ModuleInfo::on_function_entry(unsigned int addr)
+{
+	rc_ptr<ModuleInfo> mi = module_for_real_address(addr);
+	
+	if (mi->init_func != 0)
+		/* Already found the init function. */
+		return;
+	
+	if (!mi->init_ca.contains(addr))
+		/* The function is not in init area, skipping. */
+		return;
+	
+	/* The first function in the init area that is executed must be
+	 * the init function of the module. 
+	 * [NB] We are not interested in the init functions that reside 
+	 * in the core area, because there should be no code in the init 
+	 * area in this case anyway. It is possible to create such kernel
+	 * module but it seems to make no sense. */
+	mi->init_func = addr;
+}
+
+void
 ModuleInfo::on_function_exit(unsigned int addr)
 {
-	TAddrMap::const_iterator it;
-	it = real_addr_map.find(addr);
-	if (it == real_addr_map.end())
-		return; /* There is no code area with this address. */
-
-	string name = it->second->name;
-
-	TModuleMap::const_iterator mit;
-	mit = module_map.find(name);
-	if (mit == module_map.end()) {
-		throw ModuleInfo::Error(
-			string("Unknown module: \"") + name + string("\""));
-	}
+	rc_ptr<ModuleInfo> mi = module_for_real_address(addr);
 	
-	rc_ptr<ModuleInfo> mi = mit->second;
-	if (mi->init_ca.addr_real != addr)
-		return; 
-
-	/* 'addr' is the address of the init area of the module we have
-	 * found. */
+	if (mi->init_func == 0 || mi->init_func != addr)
+		return;
+	
+	/* Got an exit from the init function of the module. */
 	on_module_init_complete(mi);
 }
 
-unsigned int 
-ModuleInfo::effective_address(unsigned int addr)
+rc_ptr<ModuleInfo>
+ModuleInfo::module_for_real_address(unsigned int addr)
 {
 	if (real_addr_map.empty()) {
 		ostringstream err;
@@ -711,7 +721,16 @@ ModuleInfo::effective_address(unsigned int addr)
 	
 	--it;
 	rc_ptr<ModuleInfo> mi = it->second;
+	
+	return mi;
+}
 
+
+unsigned int 
+ModuleInfo::effective_address(unsigned int addr)
+{
+	rc_ptr<ModuleInfo> mi = module_for_real_address(addr);
+	
 	if (mi->core_ca.contains(addr)) {
 		return mi->core_ca.effective_address(addr);
 	}

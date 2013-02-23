@@ -34,3 +34,6 @@ target_link_libraries(${PROJECT_NAME} "elf" "dw")
 install(TARGETS ${PROJECT_NAME}
 	DESTINATION ${KEDR_INSTALL_PREFIX_EXEC})
 #######################################################################
+
+kedr_test_add_subdirectory(tests)
+########################################################################

@@ -722,6 +722,12 @@ TraceProcessor::handle_target_unload_event(struct kedr_tr_event_module *ev)
 }
 
 void
+TraceProcessor::handle_fentry_event(struct kedr_tr_event_func *ev)
+{
+	ModuleInfo::on_function_entry(ev->func);
+}
+
+void
 TraceProcessor::handle_fexit_event(struct kedr_tr_event_func *ev)
 {
 	ModuleInfo::on_function_exit(ev->func);
@@ -783,6 +789,11 @@ TraceProcessor::process_trace()
 		}
 		
 		switch (record->type) {
+		case KEDR_TR_EVENT_FENTRY:
+			handle_fentry_event(
+				(struct kedr_tr_event_func *)record);
+			break;
+
 		case KEDR_TR_EVENT_FEXIT:
 			handle_fexit_event(
 				(struct kedr_tr_event_func *)record);
