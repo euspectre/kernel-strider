@@ -42,7 +42,7 @@ happens_before_post(struct kedr_local_storage *ls)
 	 * is expected to be right before the latter), so we report "SIGNAL"
 	 * event here rather than in the pre handler. */
 	obj_id = KEDR_LS_ARG1(ls);
-	kedr_eh_on_signal(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
+	kedr_happens_before(ls->tid, info->pc, obj_id);
 }
 
 static void 
@@ -55,7 +55,7 @@ happens_after_pre(struct kedr_local_storage *ls)
 	 * is expected to be right after the latter), so we report "WAIT"
 	 * event here rather than in the post handler. */
 	obj_id = KEDR_LS_ARG1(ls);
-	kedr_eh_on_wait(ls->tid, info->pc, obj_id, KEDR_SWT_COMMON);
+	kedr_happens_after(ls->tid, info->pc, obj_id);
 }
 
 static void 

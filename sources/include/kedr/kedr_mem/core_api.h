@@ -529,6 +529,20 @@ kedr_eh_on_thread_end(unsigned long tid)
 	if (eh->on_thread_end != NULL)
 		eh->on_thread_end(eh, tid);
 }
+
+/* Convenience functions to express happens-before relationships. */
+static inline void
+kedr_happens_before(unsigned long tid, unsigned long pc, unsigned long id)
+{
+	kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
+}
+
+static inline void
+kedr_happens_after(unsigned long tid, unsigned long pc, unsigned long id)
+{
+	kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
+}
+
 /* ====================================================================== */
 
 /* Creates an identifier which is guaranteed to be unique during a session

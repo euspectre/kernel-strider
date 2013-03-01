@@ -158,7 +158,7 @@ trigger_reg_start_signal_events(
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_reg_start[cbtype];	
-		kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
+		kedr_happens_before(tid, pc, id);
 	}
 }
 
@@ -175,7 +175,7 @@ trigger_end_exit_wait_events(
 	
 	for (cbtype = 0; cbtype < KEDR_CB_CDEV_COUNT; ++cbtype) {
 		id = ids->ids_end_exit[cbtype];	
-		kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
+		kedr_happens_after(tid, pc, id);
 	}
 }
 
@@ -205,7 +205,7 @@ fop_common_pre(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 	item = find_ids_for_cdev(imajor(inode), iminor(inode), target);
 	if (item != NULL) {
 		id = item->ids_reg_start[cb_type];
-		kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
+		kedr_happens_after(tid, pc, id);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 
@@ -245,7 +245,7 @@ fop_common_post(enum kedr_cdev_callback_type cb_type, unsigned long pc,
 	item = find_ids_for_cdev(imajor(inode), iminor(inode), target);
 	if (item != NULL) {
 		id = item->ids_end_exit[cb_type];
-		kedr_eh_on_signal(tid, pc, id, KEDR_SWT_COMMON);
+		kedr_happens_before(tid, pc, id);
 	}
 	else {
 		pr_warning(KEDR_MSG_PREFIX 

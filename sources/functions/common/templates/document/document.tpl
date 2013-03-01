@@ -176,7 +176,7 @@ on_init_post(struct kedr_fh_plugin *fh, struct module *mod,
 	tid = kedr_get_thread_id();
 	pc = (unsigned long)mod->init;
 	
-	kedr_eh_on_signal(tid, pc, *id_ptr, KEDR_SWT_COMMON);
+	kedr_happens_before(tid, pc, *id_ptr);
 }
 
 static void
@@ -198,7 +198,7 @@ on_exit_pre(struct kedr_fh_plugin *fh, struct module *mod,
 	tid = kedr_get_thread_id();
 	pc = (unsigned long)mod->exit;
 	
-	kedr_eh_on_wait(tid, pc, *id_ptr, KEDR_SWT_COMMON);
+	kedr_happens_after(tid, pc, *id_ptr);
 }
 
 static struct kedr_fh_plugin fh = {
