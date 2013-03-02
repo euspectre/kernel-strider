@@ -76,6 +76,7 @@ struct kedr_func_info
 	 * core of our system. It is the respinsibility of these components
 	 * to agree on some policy on setting these handlers (whether to
 	 * set new handlers if some handlers have already been set, etc.)
+	 * and the data.
 	 *
 	 * Execution of these handlers will be performed in the RCU
 	 * read-side section. Treat the addresses of the handlers as the
@@ -94,7 +95,11 @@ struct kedr_func_info
 	void (*pre_handler)(struct kedr_local_storage *);
 	void (*post_handler)(struct kedr_local_storage *);
 
-	/* A lock to protect the update of the handlers. */
+	/* The per-function data the handlers may use. The pointer should
+	 * be used in an RCU-aware way, like the handlers themselves. */
+	void *data;
+	
+	/* A lock to protect the update of the handlers and the data. */
 	spinlock_t handler_lock;
 };
 

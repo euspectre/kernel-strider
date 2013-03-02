@@ -138,18 +138,40 @@ check_args_post(struct kedr_local_storage *ls)
 static void 
 test_first_pre(struct kedr_local_storage *ls)
 {
-	first_pre_ok = 1;
+	void *data;
+	
+	data = rcu_dereference(ls->fi->data);
+	if (data == (void *)THIS_MODULE) {
+		first_pre_ok = 1;
+	}
+	else {
+		pr_warning(KEDR_MSG_PREFIX 
+		"test_first_pre(): data should be %p but it is %p\n",
+			(void *)THIS_MODULE, data);
+	}
 }
 
 static void 
 test_first_post(struct kedr_local_storage *ls)
 {
-	first_post_ok = 1;
+	void *data;
+	
+	data = rcu_dereference(ls->fi->data);
+	if (data == (void *)THIS_MODULE) {
+		first_post_ok = 1;
+	}
+	else {
+		pr_warning(KEDR_MSG_PREFIX 
+		"test_first_post(): data should be %p but it is %p\n",
+			(void *)THIS_MODULE, data);
+	}
 }
 
 static void 
 test_second_pre(struct kedr_local_storage *ls)
 {
+	void *data;
+	
 	if (check_args_pre(ls) != 0)
 		return;
 	
@@ -158,6 +180,14 @@ test_second_pre(struct kedr_local_storage *ls)
 	 * and on x86-64. */
 	ls->data = KEDR_LS_ARG8(ls);
 	
+	data = rcu_dereference(ls->fi->data);
+	if (data != (void *)&first_post_ok) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"test_second_pre(): data should be %p but it is %p\n",
+			(void *)&first_post_ok, data);
+		return;
+	}
+	
 	/* This part of the test has passed. */
 	second_pre_ok = 1;
 }
@@ -165,6 +195,7 @@ test_second_pre(struct kedr_local_storage *ls)
 static void 
 test_second_post(struct kedr_local_storage *ls)
 {
+	void *data;
 	unsigned long ret_val = 0;
 
 	if (check_args_post(ls) != 0)
@@ -187,6 +218,14 @@ test_second_post(struct kedr_local_storage *ls)
 		return;
 	}
 	
+	data = rcu_dereference(ls->fi->data);
+	if (data != (void *)&first_post_ok) {
+		pr_warning(KEDR_MSG_PREFIX 
+		"test_second_pre(): data should be %p but it is %p\n",
+			(void *)&first_post_ok, data);
+		return;
+	}
+	
 	second_post_ok = 1;
 }
 /* ====================================================================== */
@@ -194,7 +233,8 @@ test_second_post(struct kedr_local_storage *ls)
 static void 
 set_handlers_for_callback(struct kedr_func_info *fi, 
 	void (*pre_handler)(struct kedr_local_storage *),
-	void (*post_handler)(struct kedr_local_storage *))
+	void (*post_handler)(struct kedr_local_storage *),
+	void *data)
 {
 	unsigned long flags;
 	
@@ -203,6 +243,8 @@ set_handlers_for_callback(struct kedr_func_info *fi,
 		rcu_assign_pointer(fi->pre_handler, pre_handler);
 	if (fi->post_handler == NULL)
 		rcu_assign_pointer(fi->post_handler, post_handler);
+	
+	fi->data = data;
 	spin_unlock_irqrestore(&fi->handler_lock, flags);
 }
 
@@ -220,14 +262,16 @@ test_pre(struct kedr_local_storage *ls)
 		fi = kedr_find_func_info((unsigned long)cbh_ops->first);
 		if (fi != NULL)
 			set_handlers_for_callback(fi, 
-				test_first_pre, test_first_post);
+				test_first_pre, test_first_post,
+				THIS_MODULE);
 	}
 	
 	if (cbh_ops->second != NULL) {
 		fi = kedr_find_func_info((unsigned long)cbh_ops->second);
 		if (fi != NULL)
 			set_handlers_for_callback(fi, 
-				test_second_pre, test_second_post);
+				test_second_pre, test_second_post,
+				&first_post_ok);
 	}
 }
 
