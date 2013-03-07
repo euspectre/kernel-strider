@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = mod_timer_pinned
+	
+	code.pre =>>
+	handle_add_mod_timer(ls, "mod_timer_pinned");
+	<<
+#######################################################################

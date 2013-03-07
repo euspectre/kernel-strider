@@ -1,0 +1,10 @@
+[group]
+	# Name of the target function
+	function.name = try_to_del_timer_sync
+	
+	code.post =>>
+	int ret = (int)KEDR_LS_RET_VAL(ls);
+	if (ret >= 0)
+		handle_del_timer_sync(ls, "try_to_del_timer_sync");
+	<<
+#######################################################################

@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = add_timer_on
+	
+	code.pre =>>
+	handle_add_mod_timer(ls, "add_timer_on");
+	<<
+#######################################################################

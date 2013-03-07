@@ -17,6 +17,7 @@ set(FUNCTION_GROUPS
 	"dup"
 	"strings"
 	"thread"
+	"timer"
 )
 
 set(HANDLER_C_FILES)

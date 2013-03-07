@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = del_timer_sync
+	
+	code.post =>>
+	handle_del_timer_sync(ls, "del_timer_sync");
+	<<
+#######################################################################
