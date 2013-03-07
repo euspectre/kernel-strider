@@ -143,12 +143,22 @@ doTest()
 
 	rmmod "${CORE_MODULE_NAME}" || exit 1
 	
-	cat "${TEST_TRACE_FILE}" | tr -d '\n' | grep -E '@TEST_MATCH_EXPR@' > /dev/null
-	if test $? -ne 0; then
-		printf "No matching substring has been found in the trace for the "
-		printf "expression \"@TEST_MATCH_EXPR@\".\n"
-		exit 1
-	fi 
+	printf "Checking the trace in ${TEST_TRACE_FILE}.\n"
+	if test -n "${TEST_CHECKER_SCRIPT}"; then
+		LC_ALL=C awk -f "${TEST_CHECKER_SCRIPT}" < "${TEST_TRACE_FILE}"
+		if test $? -ne 0; then
+			# The script should have already reported the error.
+			exit 1
+		fi
+	else 
+		cat "${TEST_TRACE_FILE}" | tr -d '\n' | grep -E '@TEST_MATCH_EXPR@' > /dev/null
+		if test $? -ne 0; then
+			printf "No matching substring has been found in the trace for the "
+			printf "expression \"@TEST_MATCH_EXPR@\".\n"
+			exit 1
+		fi 
+	fi
+	printf "The trace is OK.\n"
 }
 ########################################################################
 # main
@@ -179,9 +189,16 @@ TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
 TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
 TEST_TRACE_FILE="${TEST_TMP_DIR}/trace.txt"
 
-if test -z "@TEST_MATCH_EXPR@"; then
-	printf "The expression to be matched is empty.\n"
-	exit 1
+# An AWK script to check the results. If not specified (empty), this
+# test scenario will try to just match TEST_MATCH_EXPR against the 
+# trace.
+TEST_CHECKER_SCRIPT="@TEST_CHECKER_SCRIPT@"
+
+if test -z "${TEST_CHECKER_SCRIPT}"; then
+	if test -z "@TEST_MATCH_EXPR@"; then
+		printf "The expression to be matched is empty.\n"
+		exit 1
+	fi
 fi
 
 rm -rf "${TEST_TMP_DIR}"
