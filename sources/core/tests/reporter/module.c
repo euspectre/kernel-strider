@@ -8,10 +8,10 @@
  * parameters will be reported;
  * - if the parameter has a non-empty value (name of the function), only the
  * events starting from the first entry to the function and up to the exit
- * from that function in the same thread will be reported (and only the 
- * events from that thread will be reported) if enabled by "report_*".
+ * from that function  if enabled by "report_*". Note that the events from 
+ * other threads happening during that time will also be reported.
  * 
- * Note that in the second mode, the reporter cannot handle the targets 
+ * In the second mode, the reporter cannot handle the targets 
  * where that function is called recursively (the reporter must not crash
  * but the report itself is likely to contain less data than expected).
  *
@@ -296,10 +296,6 @@ static unsigned long target_start = 0;
 
 #define KEDR_ALL_THREADS ((unsigned long)(-1))
 #define KEDR_NO_THREADS ((unsigned long)(-1))
-
-/* The ID of the thread to report the events for. If it is KEDR_ALL_THREADS,
- * no restriction on thread ID is imposed. */
-static unsigned long target_tid = KEDR_ALL_THREADS;
 
 /* The target. */
 static struct module *target = NULL;
@@ -1448,7 +1444,7 @@ report_event_allowed(unsigned long tid)
 	    (target->module_init != NULL && resolve_symbols != 0))
 		return 0;
 	
-	return (within_target_func && (tid == target_tid));
+	return within_target_func;
 }
 /* ====================================================================== */
 
@@ -1457,7 +1453,6 @@ on_session_start(struct kedr_event_handlers *eh)
 {
 	reset_counters();
 	target_start = 0;
-	target_tid = KEDR_ALL_THREADS;
 
 	debug_util_clear();
 }
@@ -1611,7 +1606,6 @@ on_function_entry(struct kedr_event_handlers *eh, unsigned long tid,
 		 * The report may contain less data than expected. */
 		WARN_ON_ONCE(within_target_func != 0);
 		within_target_func = 1;
-		target_tid = tid;
 		reset_counters();
 		
 		/* Add a command to the wq to clear the output */
@@ -1679,12 +1673,11 @@ on_function_exit(struct kedr_event_handlers *eh, unsigned long tid,
 	queue_work(wq, &wof->work);
 
 out:	
-	if (func == target_start && tid == target_tid) {
+	if (func == target_start) {
 		/* Warn if it is an exit from the target function but no 
 		 * entry event has been received for it. */
 		WARN_ON_ONCE(within_target_func == 0);
 		within_target_func = 0;
-		target_tid = KEDR_ALL_THREADS;
 	}
 	spin_unlock_irqrestore(&wq_lock, irq_flags);
 }
