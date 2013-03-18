@@ -794,7 +794,6 @@ session_end(void)
 	
 	kedr_fh_plugins_put();
 	providers_put();
-	clear_id_pool();
 }
 
 /* on_module_load() handles loading of the target module. This function is
@@ -1544,8 +1543,8 @@ core_exit_module(void)
 	
 	cleanup_session();
 	kfree(loaded_targets);
+	clear_id_pool();
 
-	WARN_ON(!list_empty(&id_pool));
 	return;
 }
 

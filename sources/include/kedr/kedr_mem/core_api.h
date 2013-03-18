@@ -545,24 +545,19 @@ kedr_happens_after(unsigned long tid, unsigned long pc, unsigned long id)
 
 /* ====================================================================== */
 
-/* Creates an identifier which is guaranteed to be unique during a session
- * with the target module, i.e. from the moment the target module is about 
- * to begin its initialization to the moment when its cleanup is completed.
+/* It is recommended to use addresses of the objects as the IDs of 
+ * happens-before arcs involving these objects. Several IDs can be obtained 
+ * this way for a given object: &obj, &obj + 1, ... &obj + sizeof(obj) - 1.
+ * No collisions with other IDs created this way will happen.
+ * 
+ * If, for some reason, such scheme is not desirable for a given set of 
+ * arcs, kedr_get_unique_id() can be used.  It returns an address of a 
+ * dynamcally allocated object that is only deallocated when our system is 
+ * unloaded. Therefore, such IDs will never conflict with the IDs chosen
+ * with the above scheme.
  * 
  * The function returns a non-zero value on success, 0 if the ID cannot be
  * obtained.
- * 
- * Note that if the target is unloaded and then loaded again, the IDs 
- * should be requested again too. The ones obtained before (during the
- * previous session with the target) can no longer be used. 
- *
- * The ID is an address of a dynamcally allocated object that is only 
- * deallocated when the target module has been unloaded. The ID is therefore 
- * guaranteed to differ from the addresses of other dynamically allocated 
- * objects. This can be helpful if one obtains some of the IDs using this
- * function and besides that uses the addresses of some objects (e.g. struct
- * file, struct device, etc.) as IDs too. The former group of IDs will never
- * collide with the latter.
  *
  * There is another consequence of the IDs being the addresses. The objects
  * they refer to are guaranteed to be at least sizeof(unsigned long) bytes
@@ -570,7 +565,7 @@ kedr_happens_after(unsigned long tid, unsigned long pc, unsigned long id)
  * id, id + 1, ... id + sizeof(unsigned long) - 1, where 'id' is the return
  * value of the function.
  *
- * [NB] The function cannot be called from atomic context. */
+ * The function cannot be called from atomic context. */
 unsigned long
 kedr_get_unique_id(void);
 /* ====================================================================== */
