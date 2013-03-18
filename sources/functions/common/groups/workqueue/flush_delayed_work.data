@@ -1,0 +1,13 @@
+[group]
+	# bool flush_delayed_work(struct delayed_work *dwork);
+	
+	# Name of the target function
+	function.name = flush_delayed_work
+	
+	code.post =>>
+	struct delayed_work *dw =
+		(struct delayed_work *)KEDR_LS_ARG1(ls);
+	if (dw != NULL)
+		on_flush_or_cancel_work(ls, &dw->work);
+	<<
+#######################################################################

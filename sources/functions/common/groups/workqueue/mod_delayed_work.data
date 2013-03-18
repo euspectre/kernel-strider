@@ -1,0 +1,17 @@
+[group]
+	# bool mod_delayed_work(struct workqueue_struct *wq,
+	# 	struct delayed_work *dwork, unsigned long delay);
+	
+	# Name of the target function
+	function.name = mod_delayed_work
+	
+	code.pre =>>
+	struct workqueue_struct *wq =
+		(struct workqueue_struct *)KEDR_LS_ARG1(ls);
+	struct delayed_work *dw =
+		(struct delayed_work *)KEDR_LS_ARG2(ls);
+
+	if (dw != NULL)
+		on_queue_work(ls, &dw->work, workqueue_get_id(wq));
+	<<
+#######################################################################

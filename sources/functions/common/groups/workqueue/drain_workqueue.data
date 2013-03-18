@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = drain_workqueue
+	
+	code.post =>>
+	on_wq_flush_drain(ls, KEDR_LS_ARG1(ls));
+	<<
+#######################################################################

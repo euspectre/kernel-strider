@@ -1,0 +1,12 @@
+[group]
+	# bool schedule_work(struct work_struct *work);
+	
+	# Name of the target function
+	function.name = schedule_work
+	
+	code.pre =>>
+	struct work_struct *work = (struct work_struct *)KEDR_LS_ARG1(ls);
+
+	on_queue_work(ls, work, kedr_system_wq_id);
+	<<
+#######################################################################

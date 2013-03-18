@@ -1,0 +1,14 @@
+[group]
+	# Name of the target function
+	function.name = __create_workqueue_key
+	
+	code.post =>>
+	struct workqueue_struct *wq =
+		(struct workqueue_struct *)KEDR_LS_RET_VAL(ls);
+
+	int ordered = (int)KEDR_LS_ARG2(ls);
+
+	if (wq != NULL)
+		workqueue_add_info(wq, ordered);
+	<<
+#######################################################################

@@ -23,3 +23,7 @@
 /* Specifies whether kmem_cache_alloc*_trace() functions get 'kmem_cache *'
  * pointer as their first argument. */
 #cmakedefine KMCA_TRACE_KMC_FIRST
+
+/* Specifies whether __alloc_workqueue_key() accepts a variable argument
+ * list. Ignored if the function is not present in the system. */
+#cmakedefine KEDR_ALLOC_WQ_KEY_VARARG

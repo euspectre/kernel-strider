@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = flush_scheduled_work
+	
+	code.post =>>
+	on_wq_flush_drain(ls, kedr_system_wq_id);
+	<<
+#######################################################################

@@ -1,0 +1,13 @@
+# schedule_work(&w1);
+SIGNAL w1
+
+# [work_func]
+WAIT w1
+WAIT w1_2
+
+SIGNAL w1_1
+SIGNAL w1_2
+SIGNAL sys_wq
+
+# flush_scheduled_work();
+WAIT sys_wq

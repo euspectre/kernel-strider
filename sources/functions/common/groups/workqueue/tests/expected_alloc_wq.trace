@@ -1,0 +1,40 @@
+# [queue w1]
+SIGNAL w1
+	  
+# [work func]
+WAIT w1
+WAIT w1_2
+
+SIGNAL w1_1
+SIGNAL w1_2
+SIGNAL wq_norm
+
+# [queue w2]
+SIGNAL w2
+
+# [work func]
+WAIT w2
+WAIT w2_2
+WAIT wq_ord
+
+SIGNAL w2_1
+SIGNAL w2_2
+SIGNAL wq_ord
+
+# [destroy wq_ord]
+WAIT wq_ord
+
+# [queue w2]
+SIGNAL w2
+
+# [work func]
+WAIT w2
+WAIT w2_2
+
+SIGNAL w2_1
+SIGNAL w2_2
+SIGNAL wq_norm2
+
+# [destroy]
+WAIT wq_norm2
+WAIT wq_norm

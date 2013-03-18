@@ -557,4 +557,43 @@ function(check_vm_split)
 	endif (NOT VM_SPLIT_OK)
 
 endfunction(check_vm_split)
+
+# Check if __alloc_workqueue_key() accepts a variable argument list and
+# if so, set KEDR_ALLOC_WQ_KEY_VARARG.
+function(check_alloc_wq_key)
+	set(check_alloc_wq_key_message 
+		"Checking if __alloc_workqueue_key() accepts variable argument list"
+	)
+	message(STATUS "${check_alloc_wq_key_message}")
+	if (DEFINED ALLOC_WQ_KEY_VARARG)
+		set(check_alloc_wq_key_message 
+"${check_alloc_wq_key_message} [cached] - ${ALLOC_WQ_KEY_VARARG}"
+		)
+	else ()
+		kmodule_try_compile(alloc_wq_key_vararg_impl 
+			"${CMAKE_BINARY_DIR}/check_alloc_wq_key"
+			"${kmodule_test_sources_dir}/check_alloc_workqueue_key/module.c"
+		)
+		if (alloc_wq_key_vararg_impl)
+			set(ALLOC_WQ_KEY_VARARG "yes" CACHE INTERNAL
+				"Does __alloc_workqueue_key() accept variable argument list?"
+			)
+		else ()
+			set(ALLOC_WQ_KEY_VARARG "no" CACHE INTERNAL
+				"Does __alloc_workqueue_key() accept variable argument list?"
+			)
+		endif (alloc_wq_key_vararg_impl)
+				
+		set(check_alloc_wq_key_message 
+"${check_alloc_wq_key_message} - ${ALLOC_WQ_KEY_VARARG}"
+		)
+	endif (DEFINED ALLOC_WQ_KEY_VARARG)
+	message(STATUS "${check_alloc_wq_key_message}")
+	
+	if (ALLOC_WQ_KEY_VARARG)
+		set(KEDR_ALLOC_WQ_KEY_VARARG 1 CACHE INTERNAL 
+			"Preprocessor symbol for ALLOC_WQ_KEY_VARARG."
+		)
+	endif ()
+endfunction(check_alloc_wq_key)
 ############################################################################

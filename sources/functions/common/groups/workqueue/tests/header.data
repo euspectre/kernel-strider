@@ -1,0 +1,31 @@
+header =>>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
+
+/* Timer interval for delayed work items, in milliseconds. */
+static unsigned long
+test_timeout_msec = 50;
+
+/* How long the test must wait, in milliseconds. */
+static unsigned long
+wait_timeout_msec = 1000;
+
+static void
+work_func1(struct work_struct *work)
+{
+	/* The following is just to make sure the function long enough to
+	 * be instrumentable. */
+	if (work == NULL)
+		pr_info("[DBG] This should never be printed.\n");
+}
+
+static void
+work_func2(struct work_struct *work)
+{
+	/* The following is just to make sure the function long enough to
+	 * be instrumentable. */
+	if (work == NULL)
+		pr_info("[DBG] This should never be printed too, %p.\n",
+			(void *)&work_func1);
+}
+<<

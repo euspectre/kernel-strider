@@ -1,0 +1,16 @@
+[group]
+	# Name of the target function
+	function.name = destroy_workqueue
+	
+	code.pre =>>
+	/* It is safer to handle release of a resource before this operation
+	 * is actually performed (see other free-like functions). */
+	struct workqueue_struct *wq =
+		(struct workqueue_struct *)KEDR_LS_ARG1(ls);
+	workqueue_remove_info(wq);
+	<<
+
+	code.post =>>
+	on_wq_flush_drain(ls, KEDR_LS_ARG1(ls));
+	<<
+#######################################################################

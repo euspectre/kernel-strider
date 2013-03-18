@@ -18,6 +18,7 @@ set(FUNCTION_GROUPS
 	"strings"
 	"thread"
 	"timer"
+	"workqueue"
 )
 
 set(HANDLER_C_FILES)

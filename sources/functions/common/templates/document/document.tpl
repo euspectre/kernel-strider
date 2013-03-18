@@ -44,6 +44,11 @@
 #define KEDR_MSG_PREFIX "[kedr_fh_drd_common] "
 /* ====================================================================== */
 
+/* IDs of the particular happens-before arcs. */
+/* The arcs involving the system-wide workqueues. */
+unsigned long kedr_system_wq_id = 0;
+/* ====================================================================== */
+
 MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
@@ -232,13 +237,24 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
 	return 0;
 }
 /* ====================================================================== */
-
+<$if concat(cleanup_func)$>
+/* Group-specific cleanup functions. */
+<$cleanupDecl: join(\n)$>
+/* ====================================================================== */
+<$endif$>
 static int __init
 func_drd_init_module(void)
 {
 	int ret = 0;
 	size_t size = ARRAY_SIZE(to_lookup) - 1;
 	size_t i;
+
+	kedr_system_wq_id = kedr_get_unique_id();
+	if (kedr_system_wq_id == 0) {
+		pr_warning(KEDR_MSG_PREFIX 
+"Failed to get a unique ID for HB arcs involving system-wide wqs.\n");
+		return -ENOMEM;
+	}
 
 	/* Sort 'to_lookup[]' array (except the "NULL" element) in 
 	 * ascending order by the function names. */
@@ -268,7 +284,9 @@ static void __exit
 func_drd_exit_module(void)
 {
 	kedr_fh_plugin_unregister(&fh);
-	
+	<$if concat(cleanup_func)$>
+	<$cleanupCall: join(\n\t)$>
+	<$endif$>
 	/* [NB] If additional cleanup is needed, do it here. */
 	return;
 }

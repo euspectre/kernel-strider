@@ -1,0 +1,16 @@
+[group]
+	# bool
+	# queue_work(struct workqueue_struct *wq, struct work_struct *work)
+	
+	# Name of the target function
+	function.name = queue_work
+	
+	code.pre =>>
+	struct workqueue_struct *wq =
+		(struct workqueue_struct *)KEDR_LS_ARG1(ls);
+	struct work_struct *work =
+		(struct work_struct *)KEDR_LS_ARG2(ls);
+
+	on_queue_work(ls, work, workqueue_get_id(wq));
+	<<
+#######################################################################

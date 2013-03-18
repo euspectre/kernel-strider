@@ -1,0 +1,13 @@
+[group]
+	# bool cancel_work_sync(struct work_struct *work);
+	
+	# Name of the target function
+	function.name = cancel_work_sync
+	
+	code.post =>>
+	struct work_struct *work =
+		(struct work_struct *)KEDR_LS_ARG1(ls);
+
+	on_flush_or_cancel_work(ls, work);
+	<<
+#######################################################################

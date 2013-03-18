@@ -1,0 +1,15 @@
+[group]
+	# bool schedule_delayed_work(struct delayed_work *work,
+	#	unsigned long delay);
+
+	# Name of the target function
+	function.name = schedule_delayed_work
+	
+	code.pre =>>
+	struct delayed_work *dw =
+		(struct delayed_work *)KEDR_LS_ARG1(ls);
+
+	if (dw != NULL)
+		on_queue_work(ls, &dw->work, kedr_system_wq_id);
+	<<
+#######################################################################

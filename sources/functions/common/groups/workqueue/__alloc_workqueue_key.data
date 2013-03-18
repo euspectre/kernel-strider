@@ -1,0 +1,22 @@
+[group]
+	# Name of the target function
+	function.name = __alloc_workqueue_key
+	
+	code.post =>>
+	struct workqueue_struct *wq =
+		(struct workqueue_struct *)KEDR_LS_RET_VAL(ls);
+
+#if defined(KEDR_ALLOC_WQ_KEY_VARARG)
+	unsigned int flags = (unsigned int)KEDR_LS_ARG2_VA(ls);
+	int max_active = (int)KEDR_LS_ARG3_VA(ls);
+#else
+	unsigned int flags = (unsigned int)KEDR_LS_ARG2(ls);
+	int max_active = (int)KEDR_LS_ARG3(ls);
+#endif
+
+	int ordered = (flags & WQ_UNBOUND) && (max_active == 1);
+	
+	if (wq != NULL)
+		workqueue_add_info(wq, ordered);
+	<<
+#######################################################################
