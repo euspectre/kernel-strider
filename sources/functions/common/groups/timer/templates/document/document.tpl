@@ -38,7 +38,7 @@
 static void
 timer_function_pre(struct kedr_local_storage *ls)
 {
-	unsigned long tid = kedr_get_thread_id();
+	unsigned long tid = ls->tid;
 	unsigned long pc = ls->fi->addr;
 	void *data;
 	
@@ -59,7 +59,7 @@ timer_function_pre(struct kedr_local_storage *ls)
 static void
 timer_function_post(struct kedr_local_storage *ls)
 {
-	unsigned long tid = kedr_get_thread_id();
+	unsigned long tid = ls->tid;
 	unsigned long pc = ls->fi->addr;
 	void *data;
 
