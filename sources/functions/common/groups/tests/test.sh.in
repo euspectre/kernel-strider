@@ -145,7 +145,7 @@ doTest()
 	
 	printf "Checking the trace in ${TEST_TRACE_FILE}.\n"
 	if test -n "${TEST_CHECKER_SCRIPT}"; then
-		LC_ALL=C awk -f "${TEST_CHECKER_SCRIPT}" < "${TEST_TRACE_FILE}"
+		sh "${TEST_CHECKER_SCRIPT}" "${TARGET_FUNCTION}" "${TEST_TRACE_FILE}"
 		if test $? -ne 0; then
 			# The script should have already reported the error.
 			exit 1
@@ -189,7 +189,7 @@ TEST_DEBUGFS_DIR="${TEST_TMP_DIR}/debug"
 TEST_DEBUGFS_FILE="${TEST_DEBUGFS_DIR}/kedr_test_reporter/output"
 TEST_TRACE_FILE="${TEST_TMP_DIR}/trace.txt"
 
-# An AWK script to check the results. If not specified (empty), this
+# A shell script to check the results. If not specified (empty), this
 # test scenario will try to just match TEST_MATCH_EXPR against the 
 # trace.
 TEST_CHECKER_SCRIPT="@TEST_CHECKER_SCRIPT@"
@@ -209,6 +209,12 @@ if test $? -ne 0; then
 fi
 
 checkPrereqs
+
+# A checker script may make use of these environment variables. This allows
+# to provide the script "as is", without the need to configure them to
+# insert these paths there.
+export CMAKE_BINARY_DIR="@CMAKE_BINARY_DIR@"
+export CMAKE_SOURCE_DIR="@CMAKE_SOURCE_DIR@"
 
 doTest
 

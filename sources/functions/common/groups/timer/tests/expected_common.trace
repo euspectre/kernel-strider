@@ -1,0 +1,9 @@
+# mod_timer(&timer, jiffies + msecs_to_jiffies(test_timeout_msec));
+SIGNAL t1
+
+# [timer_func]
+WAIT t1
+SIGNAL t1_1
+
+# del_timer_sync(&timer);
+WAIT t1_1
