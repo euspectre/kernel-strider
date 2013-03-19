@@ -54,6 +54,12 @@
  "--hybrid=<yes|no>\n\t" \
  "Specify whether ThreadSanitizer should operate in pure happens-before\n\t" \
  "mode (default) of in the hybrid mode. See the description of the\n\t" \
- "corresponding option of ThreadSanitizer.\n\n" 
+ "corresponding option of ThreadSanitizer.\n\n"  \
+ "" \
+ "--debug\n\t" \
+ "Enable the debug mode. In this mode, the tool does not invoke\n\t" \
+ "ThreadSanitizer but outputs the trace that would have been passed to\n\t" \
+ "it to stdout. Additional information (effective addresses of the\n\t" \
+ "sections in the target modules, etc.) will be output to stderr.\n\n"
 
 #endif /* PROCESS_TRACE_H_1623_INCLUDED */

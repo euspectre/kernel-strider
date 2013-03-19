@@ -36,12 +36,18 @@
 using namespace std;
 /* ====================================================================== */
 
+extern bool debug_mode;
+/* ====================================================================== */
+
 /* [NB] The failures in the child process will not be detected until the
  * main process tries to pass the data to the child. */
 TraceProcessor::TraceProcessor(const std::vector<const char *> &args)
 	: nrec(0), nr_tids(0)
 {
 	assert(!args.empty());
+
+	if (debug_mode)
+		return;
 	
 	const char *file = args[0];
 	
@@ -150,6 +156,16 @@ TraceProcessor::TraceProcessor(const std::vector<const char *> &args)
  * report them and go on. */
 TraceProcessor::~TraceProcessor()
 {
+	if (debug_mode) {
+		cerr << "\nList of threads:\n\n";
+		for (size_t i = 1; i < thread_names.size(); ++i)
+			cerr << "T" << i << "\t" << thread_names[i] << "\n";
+		
+		fflush(stdout);
+		fflush(stderr);
+		return;
+	}
+	
 	int ret;
 	ret = close(in_pipe[1]); 
 	if (ret == -1) {
@@ -467,7 +483,13 @@ TraceProcessor::output_tsan_event(const char *name, unsigned int tid,
 	ostringstream out;
 	out << name << hex << " " << tid << " " << pc << " " << addr_id
 		<< " " << size;
-	do_line(out.str());
+	
+	if (!debug_mode) {
+		do_line(out.str());
+	}
+	else {
+		cout << out.str() << "\n";
+	}
 }
 
 /* Allocates memory for an event record and reads the record from the file.

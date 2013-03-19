@@ -55,6 +55,11 @@ static bool sections_only = false;
 static string hybrid_arg = "";
 /* ====================================================================== */
 
+/* Debug mode can be used to debug the software that has collected the trace
+ * as well as this application, tsan_process_trace. See "--debug" option. */
+bool debug_mode = false;
+/* ====================================================================== */
+
 static string
 find_tsan_in_dirs(const string &name, const vector<string> &dirs)
 {
@@ -128,6 +133,7 @@ process_args(int argc, char *argv[])
 		{"tsan", required_argument, NULL, 'e'},
 		{"sections-only", no_argument, NULL, 's'},
 		{"hybrid", required_argument, NULL, 'y'},
+		{"debug", no_argument, NULL, 'b'},
 		{NULL, 0, NULL, 0}
 	};
 	
@@ -174,6 +180,9 @@ process_args(int argc, char *argv[])
 				return false;
 			}
 			break;
+		case 'b':
+			debug_mode = true;
+			break;
 		case '?':
 			/* Unknown option, getopt_long() should have already 
 			printed an error message. */
@@ -213,7 +222,7 @@ process_args(int argc, char *argv[])
 	}
 	
 	/* Find TSan if the path to it is not specified. */
-	if (tsan_app.empty()) {
+	if (tsan_app.empty() && !debug_mode) {
 		tsan_app = find_tsan_in_path();
 		if (tsan_app.empty()) {
 			cerr << 

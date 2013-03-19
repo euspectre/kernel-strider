@@ -42,6 +42,9 @@
 using namespace std;
 /* ====================================================================== */
 
+extern bool debug_mode;
+/* ====================================================================== */
+
 /* The next effective address that can be assigned to a core area.
  * Should always be a multiple of 0x1000; cannot be 0. Each assigned
  * address should be greater than the previously assigned ones. */
@@ -65,57 +68,6 @@ static TAddrMap eff_addr_map;
 /* NULL means DWARF debug info should not be used. */
 static rc_ptr<DwflWrapper> dwfl; 
 /* ====================================================================== */
-
-/*
-static void 
-print_section(const rc_ptr<SectionInfo> &si)
-{
-	cout << "[DBG]      " << si->name << " at " 
-		<< (void *)(unsigned long)si->addr
-		<< " , size is " << (void *)(unsigned long)si->size
-		<< " , dw_addr is " << (void *)(unsigned long)si->dw_addr
-		<< "\n";
-}
-
-void 
-ModuleInfo::debug()
-{
-	cout << "[DBG] modules:\n\n";
-	
-	TModuleMap::const_iterator it;
-	for (it = module_map.begin(); it != module_map.end(); ++it) {
-		cout << "[DBG]   " << it->first << ": " 
-			<< "eff. init at " 
-			<< (void *)(unsigned long)it->second->init_ca.addr_eff
-			<< ", eff. core at "
-			<< (void *)(unsigned long)it->second->core_ca.addr_eff
-			<< ", the file is "
-			<< it->second->path << "\n";
-		cout << "[DBG]   Sections:\n";
-		for_each(it->second->sections.begin(), 
-			 it->second->sections.end(),
-			 print_section);
-		cout << "\n";
-	}
-	
-	TAddrMap::const_iterator pos;
-	
-	cout << "[DBG] {real address => module}:\n";
-	for (pos = real_addr_map.begin(); pos != real_addr_map.end(); ++pos)
-	{
-		cout << "[DBG]   " 
-			<< (void *)(unsigned long)pos->first 
-			<< ": " << pos->second->name << "\n";
-	}
-	
-	cout << "[DBG] {effective address => module}:\n";
-	for (pos = eff_addr_map.begin(); pos != eff_addr_map.end(); ++pos) {
-		cout << "[DBG]   " 
-			<< (void *)(unsigned long)pos->first 
-			<< ": " << pos->second->name << "\n";
-	}
-}
-*/
 
 /* Align 'value' to the multiple of 'align' and return the result.
  * 'align' must be a power of 2. */
@@ -540,6 +492,15 @@ remove_real_address(rc_ptr<ModuleInfo> &mi, const ModuleInfo::CodeArea &ca)
 	real_addr_map.erase(it);
 }
 
+static void 
+print_section(const rc_ptr<SectionInfo> &si)
+{
+	cerr << "\t" << si->name << " at " 
+		<< (void *)(unsigned long)si->addr
+		<< " , size is " << (void *)(unsigned long)si->size
+		<< "\n";
+}
+
 void 
 ModuleInfo::on_module_load(
 	const std::string &name, 
@@ -597,6 +558,10 @@ ModuleInfo::on_module_load(
 	add_real_address(mi, mi->core_ca);
 	add_real_address(mi, mi->init_ca);
 	
+	if (debug_mode) {
+		cerr << "Target loaded: " << name << "\n";
+	}
+	
 	/* If the module has not been assigned the effective addresses yet,
 	 * do so now. */
 	if (mi->core_ca.addr_eff == 0 && mi->init_ca.addr_eff == 0) {
@@ -604,6 +569,12 @@ ModuleInfo::on_module_load(
 		assign_effective_address(mi, mi->init_ca);
 		
 		set_section_addresses(mi);
+		
+		if (debug_mode) {
+			for_each(mi->sections.begin(), mi->sections.end(),
+			 	print_section);
+			cerr << "\n";
+		}
 	}
 	
 	mi->loaded = true;
@@ -636,6 +607,10 @@ ModuleInfo::on_module_unload(const std::string &name)
 	mi->init_ca.addr_real = 0;
 	
 	mi->init_func = 0;
+	
+	if (debug_mode) {
+		cerr << "Target unloaded: " << name << "\n";
+	}
 	
 	mi->loaded = false;
 }
