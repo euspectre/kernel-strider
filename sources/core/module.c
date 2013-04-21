@@ -890,10 +890,10 @@ on_module_unload(struct kedr_target *t)
 	
 out:
 	t->mod = NULL;
-	
-	--session.num_loaded;
 	if (session_ends)
 		session_end();
+	
+	--session.num_loaded;
 }
 
 /* A callback function to handle loading and unloading of a module. */
