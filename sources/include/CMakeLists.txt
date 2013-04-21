@@ -20,6 +20,7 @@ set(KEDR_INCLUDE_FILES_SRC
 	kedr_trace_reader/kedr_trace_reader.h
 	utils/template_parser.h
 	utils/uuid.h
+	fh_drd/common.h
 )
 
 # List of include files to be installed.
@@ -29,6 +30,7 @@ set(KEDR_INCLUDE_FILES_INSTALL
 	kedr_mem/local_storage.h
 	kedr_mem/block_info.h
 	kedr_mem/functions.h
+	fh_drd/common.h
 )
 
 # Copy the headers from the src tree into the build tree

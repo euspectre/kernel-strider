@@ -15,4 +15,8 @@
 		lock_type = KEDR_LT_WLOCK;
 		lock_id = KEDR_LS_ARG1(ls);
 	<<
+
+	aux_code.pre =>>
+		kedr_irq_disabled_end(ls->tid, info->pc);
+	<<
 #######################################################################

@@ -3,6 +3,15 @@ SIGNAL t1
 
 # [timer_func]
 WAIT t1
+
+# <BH start>
+WAIT func
+WAIT bh
+
+# <BH end>
+SIGNAL bh
+SIGNAL func
+
 SIGNAL t1_1
 
 # del_timer_sync(&timer);

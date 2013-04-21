@@ -15,6 +15,7 @@
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
+#include <kedr/fh_drd/common.h>
 #include <kedr/object_types.h>
 /* ====================================================================== */
 
@@ -54,6 +55,7 @@ timer_function_pre(struct kedr_local_storage *ls)
 		pr_warning(KEDR_MSG_PREFIX
 			"timer_function_pre(): 'data' is NULL.\n");
 	}
+	kedr_bh_start(tid, pc);
 }
 
 static void
@@ -62,6 +64,8 @@ timer_function_post(struct kedr_local_storage *ls)
 	unsigned long tid = ls->tid;
 	unsigned long pc = ls->fi->addr;
 	void *data;
+
+	kedr_bh_end(tid, pc);
 
 	data = rcu_dereference(ls->fi->data);
 	if (data != NULL) {

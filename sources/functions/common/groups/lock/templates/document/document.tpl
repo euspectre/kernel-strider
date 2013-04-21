@@ -12,6 +12,7 @@
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
+#include <kedr/fh_drd/common.h>
 #include <kedr/object_types.h>
 
 <$if concat(header)$><$header: join(\n)$><$endif$>

@@ -15,4 +15,8 @@
 		lock_type = KEDR_LT_SPINLOCK;
 		lock_id = KEDR_LS_ARG1(ls);
 	<<
+
+	aux_code.post =>>
+		kedr_irq_disabled_start(ls->tid, info->pc);
+	<<
 #######################################################################
