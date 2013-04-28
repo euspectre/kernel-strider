@@ -1,2 +1,6 @@
+header =>>
+#include <linux/workqueue.h>
+<<
+
 # Specify the name of the cleanup function.
 cleanup_func = kedr_fh_drd_workqueue_cleanup
