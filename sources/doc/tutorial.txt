@@ -426,7 +426,7 @@ with a different path to save the trace to) and go on as described above.
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # rmmod kedr_simple_trace_recorder 
+    # rmmod kedr_trace_sender
     # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
     # rmmod kedr_mem_core
 
