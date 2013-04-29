@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = enable_irq
+	
+	code.pre =>>
+		unsigned int irq = (unsigned int)KEDR_LS_ARG1(ls);
+		on_enable_irq(ls, irq);
+	<<
+#######################################################################

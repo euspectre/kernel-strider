@@ -1,0 +1,6 @@
+header =>>
+#include <linux/interrupt.h>
+<<
+
+# Specify the name of the cleanup function.
+cleanup_func = kedr_fh_drd_irq_cleanup

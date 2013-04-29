@@ -1,0 +1,13 @@
+[group]
+	# Name of the target function
+	function.name = devm_request_threaded_irq
+	
+	code.pre =>>
+		unsigned int irq = (unsigned int)KEDR_LS_ARG2(ls);
+		void *dev_id = (void *)KEDR_LS_ARG7(ls);
+		irq_handler_t handler = (irq_handler_t)KEDR_LS_ARG3(ls);
+		irq_handler_t thread_fn = (irq_handler_t)KEDR_LS_ARG4(ls);
+
+		on_request_irq(ls, irq, dev_id, handler, thread_fn);
+	<<
+#######################################################################
