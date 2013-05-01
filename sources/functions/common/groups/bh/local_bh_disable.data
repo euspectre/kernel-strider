@@ -1,0 +1,10 @@
+[group]
+	# Name of the target function
+	function.name = local_bh_disable
+	
+	code.post =>>
+	struct kedr_call_info *info = 
+		(struct kedr_call_info *)(ls->info);
+	kedr_bh_disabled_start(ls->tid, info->pc);
+	<<
+#######################################################################
