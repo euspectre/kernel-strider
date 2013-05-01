@@ -21,6 +21,7 @@ set(FUNCTION_GROUPS
 	"workqueue"
 	"irq"
 	"bh"
+	"tasklet"
 )
 
 set(HANDLER_C_FILES)

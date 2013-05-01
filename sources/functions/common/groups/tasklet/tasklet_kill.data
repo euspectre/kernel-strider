@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = tasklet_kill
+	
+	code.post =>>
+	handle_kill(ls, "tasklet_kill");
+	<<
+#######################################################################

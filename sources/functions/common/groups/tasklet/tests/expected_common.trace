@@ -1,0 +1,18 @@
+# tasklet_*schedule()
+SIGNAL t1
+
+# [tasklet]
+WAIT t1
+
+# <BH start>
+WAIT func
+WAIT bh
+
+# <BH end>
+SIGNAL bh
+SIGNAL func
+
+SIGNAL t1_1
+
+# tasklet_kill()
+WAIT t1_1

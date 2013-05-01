@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = __tasklet_hi_schedule
+	
+	code.pre =>>
+	handle_schedule(ls, "__tasklet_hi_schedule");
+	<<
+#######################################################################

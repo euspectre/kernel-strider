@@ -1,0 +1,18 @@
+header =>>
+#include <linux/interrupt.h>
+#include <linux/delay.h>
+
+/* How long the test must wait, in milliseconds. */
+static unsigned long
+wait_timeout_msec = 1000;
+
+/* The common tasklet function */
+static void
+test_tasklet_fn(unsigned long arg)
+{
+	/* The following is just to make sure the function long enough to
+	 * be instrumentable. */
+	if (arg == 0xbaadf00d)
+		pr_info("[DBG] This should never be printed.\n");
+}
+<<
