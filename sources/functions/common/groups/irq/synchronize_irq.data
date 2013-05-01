@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = synchronize_irq
+
+	code.post =>>
+		unsigned int irq = (unsigned int)KEDR_LS_ARG1(ls);
+		on_disable_or_sync_irq(ls, irq);
+	<<
+#######################################################################

@@ -1,0 +1,10 @@
+[group]
+	# Name of the target function
+	function.name = free_irq
+	
+	code.post =>>
+		unsigned int irq = (unsigned int)KEDR_LS_ARG1(ls);
+		void *dev_id = (void *)KEDR_LS_ARG2(ls);
+		on_free_irq(ls, irq, dev_id);
+	<<
+#######################################################################
