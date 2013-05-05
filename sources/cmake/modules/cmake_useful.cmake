@@ -1,3 +1,5 @@
+set(cmake_this_dir "${CMAKE_SOURCE_DIR}/cmake/modules/")
+
 #Create rule for obtain one file by copying another one
 function(rule_copy_file target_file source_file)
     add_custom_command(OUTPUT ${target_file}
@@ -201,3 +203,53 @@ function (find_tsan output_var)
 	set("${output_var}" "${tsan_app}" PARENT_SCOPE)
 endfunction (find_tsan output_var) 
 ########################################################################
+
+# check_struct_has_member()
+# Checks if there is a member 'member' in the struct of type 'type'
+# defined in the given header file in the kernel.
+# The result will be available in 'result_var'.
+########################################################################
+function (check_struct_has_member type member header result_var)
+	set (checking_message "Checking if '${type}' contains '${member}'")
+	message (STATUS "${checking_message}")
+
+	set (has_var_impl "${type}_has_${member}")
+	string (REPLACE " " "_" has_var "${has_var_impl}")
+	
+	if (DEFINED ${has_var})
+		message (STATUS "${checking_message} [cached] - ${${has_var}}")
+	else ()
+		set (workdir "${CMAKE_BINARY_DIR}/check_struct_has_member/${has_var}")
+		file (MAKE_DIRECTORY "${workdir}")
+		
+		# Generate the source file for try_compile()
+		execute_process(COMMAND sh 
+			"${cmake_this_dir}/kmodule_files/scripts/gen_check_member_code.sh"
+			"${type}" "${member}" "${header}"
+			OUTPUT_FILE "${workdir}/module.c"
+			RESULT_VARIABLE res)
+
+		if (NOT res EQUAL 0)
+			message (FATAL_ERROR 
+				"Failed to generate code to check if '${type}' contains '${member}'."
+				"Exit status of the script: ${res}.")
+		endif ()
+		
+		kmodule_try_compile(compile_result
+			"${workdir}/build" # Binary dir
+			"${workdir}/module.c" # Source file
+			OUTPUT_VARIABLE compile_out)
+		if (compile_result)
+			set ("${result_var}" "yes")
+		else()
+			set ("${result_var}" "no")
+		endif()
+		
+		set ("${has_var}" "${${result_var}}" CACHE INTERNAL "Does '${type}' have member '${member}'?")
+		set ("${result_var}" "${${result_var}}" PARENT_SCOPE)
+		message (STATUS "${checking_message} - ${${result_var}}")
+	endif ()
+	
+	set ("${result_var}" "${${has_var}}" PARENT_SCOPE)
+endfunction ()
+
