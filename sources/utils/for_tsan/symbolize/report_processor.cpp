@@ -6,7 +6,7 @@
 #include <cerrno>
 
 #include "report_processor.h"
-#include "config.h"
+#include "symbolize_config.h"
 
 using namespace std;
 ///////////////////////////////////////////////////////////////////////

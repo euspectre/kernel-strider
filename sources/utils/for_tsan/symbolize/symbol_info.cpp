@@ -9,7 +9,7 @@
 #include <cerrno>
 
 #include "symbol_info.h"
-#include "config.h"
+#include "symbolize_config.h"
 
 using namespace std;
 ///////////////////////////////////////////////////////////////////////
