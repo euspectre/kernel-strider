@@ -133,7 +133,6 @@ static void
 destroy_fi_table(struct kedr_i13n *i13n)
 {
 	struct hlist_head *head;
-	struct hlist_node *node;
 	struct hlist_node *tmp;
 	struct kedr_fi_table_item *item;
 	int i;
@@ -143,7 +142,7 @@ destroy_fi_table(struct kedr_i13n *i13n)
 	
 	for (i = 0; i < KEDR_FUNC_INFO_TABLE_SIZE; ++i) {
 		head = &i13n->fi_table[i];
-		hlist_for_each_entry_safe(item, node, tmp, head, hlist) {
+		kedr_hlist_for_each_entry_safe(item, tmp, head, hlist) {
 			hlist_del(&item->hlist);
 			kfree(item);
 		}
@@ -181,13 +180,12 @@ struct kedr_func_info *
 kedr_i13n_func_info_for_addr(struct kedr_i13n *i13n, unsigned long addr)
 {
 	struct hlist_head *head;
-	struct hlist_node *node;
 	struct kedr_fi_table_item *item;
 	unsigned long bucket;
 	
 	bucket = hash_ptr((void *)addr, KEDR_FUNC_INFO_HASH_BITS);
 	head = &i13n->fi_table[bucket];
-	hlist_for_each_entry(item, node, head, hlist) {
+	kedr_hlist_for_each_entry(item, head, hlist) {
 		if (item->fi->addr == addr)
 			return item->fi;
 	}

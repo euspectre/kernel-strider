@@ -215,6 +215,10 @@ check_libdw_devel()
 # This only checks relevant configuration parameters of kernel.
 #check_stack_trace()
 
+# Check the signatures of hlist_for_each_entry*() macros, they changed 
+# in the kernel 3.9.
+check_hlist_for_each_entry()
+
 # Find ThreadSanitizer offline if the user did not specify the path to it.
 # ${TSAN_APP} is the path to the application if found, a false value
 # otherwise.

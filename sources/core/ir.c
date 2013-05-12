@@ -84,11 +84,10 @@ static struct kedr_ir_node *
 node_map_lookup(unsigned long orig_addr, struct hlist_head *node_map)
 {
 	struct kedr_ir_node *node = NULL;
-	struct hlist_node *tmp = NULL;
 	
 	unsigned long bucket = 
 		hash_ptr((void *)(orig_addr), KEDR_IF_HASH_BITS);
-	hlist_for_each_entry(node, tmp, &node_map[bucket], hlist) {
+	kedr_hlist_for_each_entry(node, &node_map[bucket], hlist) {
 		if (node->orig_addr == orig_addr)
 			return node;
 	}
