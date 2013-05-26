@@ -11,7 +11,7 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 list(LENGTH functions num_funcs)
 if (num_funcs)
 	# Rules to generate handlers_cdev.c and its prerequisites.
-	create_handlers_group(${GROUP_NAME} ${functions})
+	group_create_handlers(${GROUP_NAME} ${functions})
 	
 	kbuild_use_symbols("${CMAKE_BINARY_DIR}/core/Module.symvers")
 	kbuild_add_dependencies("kedr_mem_core")

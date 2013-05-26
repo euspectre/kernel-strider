@@ -11,7 +11,7 @@ set(functions_to_test
 # for the trace to match this expression.
 set(TEST_MATCH_EXPR " FREE PRE.* FREE POST.* ALLOC PRE.* ALLOC POST")
 
-add_tests_for_group(${GROUP_NAME} ${functions_to_test})
+add_tests_for_group(${PLUGIN_SHORT_NAME} ${GROUP_NAME} ${functions_to_test})
 
 # [NB] Even if there were no functions here that we knew how to test 
 # reliably, we should still call add_tests_for_group(). Something like

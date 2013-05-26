@@ -11,23 +11,22 @@
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
+#include <linux/timer.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/fh_drd/common.h>
 #include <kedr/object_types.h>
+
+#include <util/fh_plugin.h>
+
+#include "config.h"
 /* ====================================================================== */
 
 #define KEDR_MSG_PREFIX "[kedr_fh_drd_common] "
 /* ====================================================================== */
 
-<$if concat(header)$><$header: join(\n)$><$endif$>
-/* ====================================================================== */
-<$if concat(header_aux)$>
-<$header_aux : join(\n)$>
-/* ====================================================================== */
-<$endif$>
 /* The following happens-before relations are expressed here:
  * - timer function starts executing only after it has been (re)registered;
  * - timer function finished strictly before *del_timer_sync() functions
@@ -138,6 +137,26 @@ handle_del_timer_sync(struct kedr_local_storage *ls, const char *func)
 	kedr_happens_after(ls->tid, info->pc, (unsigned long)timer + 1);
 }
 /* ====================================================================== */
+<$if concat(function.name)$>
+<$block : join(\n\n)$>
+/* ====================================================================== */<$endif$>
 
-<$if concat(function.name)$><$block : join(\n\n)$>
-<$endif$>/* ====================================================================== */
+static struct kedr_fh_handlers *handlers[] = {
+	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
+	<$endif$>NULL
+};
+/* ====================================================================== */
+
+static struct kedr_fh_group fh_group = {
+	.handlers = NULL, /* Just to make sure all fields are zeroed. */
+};
+
+struct kedr_fh_group * __init
+kedr_fh_get_group_timer(void)
+{
+	fh_group.handlers = &handlers[0];
+	fh_group.num_handlers = (unsigned int)ARRAY_SIZE(handlers) - 1;
+	
+	return &fh_group;
+}
+/* ====================================================================== */

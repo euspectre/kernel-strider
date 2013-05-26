@@ -63,5 +63,5 @@ set(functions_to_test
 # for the test to pass.
 set(TEST_MATCH_EXPR " LOCK [A-Z0-9]+ PRE.* LOCK [A-Z0-9]+ POST")
 
-add_tests_for_group(${GROUP_NAME} ${functions_to_test})
+add_tests_for_group(${PLUGIN_SHORT_NAME} ${GROUP_NAME} ${functions_to_test})
 ########################################################################

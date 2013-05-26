@@ -1,18 +1,29 @@
 /* ========================================================================
+ * Copyright (C) 2013, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  * Authors: 
- *      Eugene A. Shatokhin <spectre@ispras.ru>
- *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
  * by the Free Software Foundation.
  ======================================================================== */
 
+#include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/kthread.h>
+#include <linux/freezer.h>
+
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
+
+#include <util/fh_plugin.h>
+
+#include "config.h"
+/* ====================================================================== */
 
 #ifndef KEDR_ARG_DEFINED
 static inline unsigned long kedr_arg(struct kedr_local_storage *ls, int n)
@@ -154,8 +165,28 @@ static inline void generate_tjoin_post(unsigned long tid, unsigned long pc,
 #define KEDR_ARG_DEFINED
 #endif /* KEDR_ARG_DEFINED*/
 
-<$if concat(header)$><$header: join(\n)$><$endif$>
+/* ====================================================================== */
+<$if concat(function.name)$>
+<$block : join(\n\n)$>
+/* ====================================================================== */<$endif$>
+
+static struct kedr_fh_handlers *handlers[] = {
+	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
+	<$endif$>NULL
+};
 /* ====================================================================== */
 
-<$if concat(function.name)$><$block : join(\n\n)$>
-<$endif$>/* ====================================================================== */
+static struct kedr_fh_group fh_group = {
+	.handlers = NULL, /* Just to make sure all fields are zeroed. */
+};
+
+struct kedr_fh_group * __init
+kedr_fh_get_group_thread(void)
+{
+	fh_group.handlers = &handlers[0];
+	fh_group.num_handlers = (unsigned int)ARRAY_SIZE(handlers) - 1;
+	
+	return &fh_group;
+}
+/* ====================================================================== */
+

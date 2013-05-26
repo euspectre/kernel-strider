@@ -1,4 +1,4 @@
-void 
+static void 
 func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
@@ -11,7 +11,7 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 		kedr_eh_on_alloc_pre(ls->tid, info->pc, size);
 }
 
-void 
+static void 
 func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 {
 	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
@@ -28,3 +28,5 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 <$aux_code.post$>
 	}
 }
+
+<$handlerStruct$>

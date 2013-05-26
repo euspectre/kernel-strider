@@ -1,5 +1,3 @@
-set(GROUP_NAME "irq")
-
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"request_threaded_irq"
 	"request_any_context_irq"
@@ -10,5 +8,8 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"devm_request_threaded_irq"
 	"devm_free_irq"
 )
-create_handlers_group(${GROUP_NAME} ${functions})
+group_create_handlers(${GROUP_NAME} ${functions})
+group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} 
+	"handlers_${GROUP_NAME}.c"
+)
 ########################################################################

@@ -1,5 +1,3 @@
-set(GROUP_NAME "workqueue")
-
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"queue_work_on"
 	"queue_work"
@@ -29,7 +27,7 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"__alloc_workqueue_key"
 	"__create_workqueue_key"
 )
-create_handlers_group(${GROUP_NAME} ${functions})
+group_create_handlers(${GROUP_NAME} ${functions})
 
 # Since kernel version 3.3, __alloc_workqueue_key() accepts a variable
 # argument list. Because of that, the function must be handled differently
@@ -40,6 +38,10 @@ list(FIND functions "__alloc_workqueue_key" func_index)
 if (NOT (func_index EQUAL -1))
 	check_alloc_wq_key()
 endif() 
+
+group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} 
+	"handlers_${GROUP_NAME}.c"
+)
 
 kedr_test_add_subdirectory(tests)
 ########################################################################

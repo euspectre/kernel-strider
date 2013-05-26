@@ -12,5 +12,5 @@ kedr_load_test_prefixes()
 # (10|8) in the match expression.
 set(TEST_MATCH_EXPR " (READ|WRITE|UPDATE).*addr=.*size=(10|8)")
 
-add_tests_for_group(${GROUP_NAME} ${functions})
+add_tests_for_group(${PLUGIN_SHORT_NAME} ${GROUP_NAME} ${functions})
 ########################################################################

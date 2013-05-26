@@ -12,10 +12,8 @@
 	
 /* ========================================================================
  * Copyright (C) 2013, ROSA Laboratory
- * Copyright (C) 2012, KEDR development team
- * Authors: 
+ * Author: 
  *      Eugene A. Shatokhin
- *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -27,8 +25,6 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/errno.h>
-#include <linux/sort.h>
-#include <linux/kallsyms.h>
 #include <linux/mutex.h>
 #include <linux/list.h>
 #include <linux/slab.h>
@@ -39,7 +35,16 @@
 #include <kedr/object_types.h>
 #include <kedr/fh_drd/common.h>
 
+#include <util/fh_plugin.h>
+
 #include "config.h"
+/* ====================================================================== */
+
+MODULE_AUTHOR("Eugene A. Shatokhin");
+MODULE_LICENSE("GPL");
+/* ====================================================================== */
+	
+#define KEDR_MSG_PREFIX "[kedr_fh_drd_common] "
 /* ====================================================================== */
 
 #ifndef __percpu
@@ -126,126 +131,31 @@
  */
 unsigned long __percpu *kedr_bh_irq_id;
 /* ====================================================================== */
-<$if concat(header)$>
-<$header: join(\n)$>
-/* ====================================================================== */<$endif$>
-
-#define KEDR_MSG_PREFIX "[kedr_fh_drd_common] "
-/* ====================================================================== */
 
 /* IDs of the particular happens-before arcs. */
 /* The arcs involving the system-wide workqueues. */
 unsigned long kedr_system_wq_id = 0;
 /* ====================================================================== */
 
-MODULE_AUTHOR("Eugene A. Shatokhin");
-MODULE_LICENSE("GPL");
-/* ====================================================================== */
-<$if concat(header.main)$>
-<$header.main: join(\n)$>
-/* ====================================================================== */
-<$endif$>
-<$handlerDecl: join(\n\n)$>
+/* The list of function groups. */
+static LIST_HEAD(groups);
 /* ====================================================================== */
 
-<$block: join(\n)$>
-/* ====================================================================== */
-
-static struct kedr_fh_handlers *handlers[] = {
-	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
-	<$endif$>NULL
-};
-/* ====================================================================== */
-
-/* For some of the functions we need to process, we cannot take the address
- * explicitly. For example, a compiler may not allow to use '&memset' if 
- * "memset" function, "memset" macro and/or "memset" builtin co-exist for
- * the sake of optimization, etc. However, to properly process the 
- * situations where the function is actually called, we need the address
- * of that function. This module will lookup the addresses of such 
- * functions via "kallsyms" during the initialization (see below). 
- * Note that the instances of "struct kedr_fh_drd_to_lookup" must not
- * be used after this module has completed its initialization. */
-struct kedr_fh_drd_to_lookup
-{
-	const char *name;
-	struct kedr_fh_handlers *h;
-};
-
-/* [NB] The last ("NULL") element is here for the array not to be empty */
-static struct kedr_fh_drd_to_lookup __initdata to_lookup[] = {
-<$lookupItem: join(\n)$>	{NULL, NULL} 
-};
-/* ====================================================================== */
-
-/* A comparator, a swap function and a search function for 'to_lookup[]' 
- * array. Needed only during module init. */
-static int __init
-to_lookup_compare(const void *lhs, const void *rhs)
-{
-	const struct kedr_fh_drd_to_lookup *left = 
-		(const struct kedr_fh_drd_to_lookup *)lhs;
-	const struct kedr_fh_drd_to_lookup *right = 
-		(const struct kedr_fh_drd_to_lookup *)rhs;
-	int result;
-	
-	BUILD_BUG_ON(ARRAY_SIZE(to_lookup) < 1);
-	
-	result = strcmp(left->name, right->name);
-	if (result > 0)
-		return 1;
-	else if (result < 0)
-		return -1;
-	return 0;
-}
-
-static void __init
-to_lookup_swap(void *lhs, void *rhs, int size)
-{
-	struct kedr_fh_drd_to_lookup *left = 
-		(struct kedr_fh_drd_to_lookup *)lhs;
-	struct kedr_fh_drd_to_lookup *right = 
-		(struct kedr_fh_drd_to_lookup *)rhs;
-	struct kedr_fh_drd_to_lookup t;
-	
-	BUG_ON(size != (int)sizeof(struct kedr_fh_drd_to_lookup));
-	
-	t.name = left->name;
-	t.h = left->h;
-	
-	left->name = right->name;
-	left->h = right->h;
-	
-	right->name = t.name;
-	right->h = t.h;
-}
-
-/* Checks if 'to_lookup[]' contains a record for a function with the given
- * name. Returns the pointer to the record if found, NULL otherwise. 
- * 'to_lookup[]' must be sorted by function name in ascending order by this
- *  time */
-static struct kedr_fh_drd_to_lookup * __init
-to_lookup_search(const char *name)
-{
-	size_t beg = 0;
-	size_t end = ARRAY_SIZE(to_lookup) - 1;
-		
-	BUILD_BUG_ON(ARRAY_SIZE(to_lookup) < 1);
-	
-	while (beg < end) {
-		int result;
-		size_t mid = beg + (end - beg) / 2;
-
-		result = strcmp(name, to_lookup[mid].name);
-		if (result < 0)
-			end = mid;
-		else if (result > 0)
-			beg = mid + 1;
-		else 
-			return &to_lookup[mid];
-	}
-	return NULL;
-}
+KEDR_FH_DECLARE_GROUP(alloc);
+KEDR_FH_DECLARE_GROUP(realloc);
+KEDR_FH_DECLARE_GROUP(free);
+KEDR_FH_DECLARE_GROUP(lock);
+KEDR_FH_DECLARE_GROUP(unlock);
+KEDR_FH_DECLARE_GROUP(uaccess);
+KEDR_FH_DECLARE_GROUP(dup);
+KEDR_FH_DECLARE_GROUP(strings);
+KEDR_FH_DECLARE_GROUP(thread);
+KEDR_FH_DECLARE_GROUP(timer);
+KEDR_FH_DECLARE_GROUP(workqueue);
+KEDR_FH_DECLARE_GROUP(irq);
+KEDR_FH_DECLARE_GROUP(bh);
+KEDR_FH_DECLARE_GROUP(tasklet);
+/* [NB] If other groups are added, add KEDR_FH_DECLARE_GROUP() here too. */	
 /* ====================================================================== */
 
 static void
@@ -302,35 +212,6 @@ static struct kedr_fh_plugin fh = {
 };
 /* ====================================================================== */
 
-/* This function will be called for each symbol known to the system to 
- * find the addresses of the functions listed in 'to_lookup[]'.
- *
- * If this function returns 0, kallsyms_on_each_symbol() will continue
- * walking the symbols. If non-zero - it will stop. */
-static int __init
-symbol_walk_callback(void *data, const char *name, struct module *mod, 
-	unsigned long addr)
-{
-	struct kedr_fh_drd_to_lookup *item;
-	
-	/* Skip the symbol if it belongs to a module rather than to 
-	 * the kernel proper. */
-	if (mod != NULL) 
-		return 0;
-	
-	item = to_lookup_search(name);
-	if (item == NULL)
-		return 0;
-	
-	item->h->orig = (void *)addr;
-	return 0;
-}
-/* ====================================================================== */
-<$if concat(cleanup_func)$>
-/* Group-specific cleanup functions. */
-<$cleanupDecl: join(\n)$>
-/* ====================================================================== */
-<$endif$>
 static int
 create_per_cpu_ids(void)
 {
@@ -466,44 +347,47 @@ EXPORT_SYMBOL(kedr_irq_disabled_end);
 static int __init
 func_drd_init_module(void)
 {
-	int ret = 0;
-	size_t size = ARRAY_SIZE(to_lookup) - 1;
-	size_t i;
-
+	int ret;
+	
 	kedr_system_wq_id = kedr_get_unique_id();
 	if (kedr_system_wq_id == 0) {
 		pr_warning(KEDR_MSG_PREFIX 
 "Failed to get a unique ID for HB arcs involving system-wide wqs.\n");
 		return -ENOMEM;
 	}
-
-	/* Sort 'to_lookup[]' array (except the "NULL" element) in 
-	 * ascending order by the function names. */
-	sort(&to_lookup[0], size, sizeof(struct kedr_fh_drd_to_lookup),
-		to_lookup_compare, to_lookup_swap);
 	
-	ret = kallsyms_on_each_symbol(symbol_walk_callback, NULL);
-	if (ret != 0)
-		return ret;
-	
-	/* Check that all the required addresses have been found. */
-	for (i = 0; i < size; ++i) {
-		if (to_lookup[i].h->orig == NULL) {
-			pr_warning(KEDR_MSG_PREFIX 
-			"Unable to find the address of %s function",
-				to_lookup[i].name);
-			return -EFAULT;
-		}
-	}
-
 	ret = create_per_cpu_ids();
 	if (ret != 0)
 		return ret;
+	
+	/* Add the groups of functions to be handled. */
+	KEDR_FH_ADD_GROUP(alloc, groups);
+	KEDR_FH_ADD_GROUP(realloc, groups);
+	KEDR_FH_ADD_GROUP(free, groups);
+	KEDR_FH_ADD_GROUP(lock, groups);
+	KEDR_FH_ADD_GROUP(unlock, groups);
+	KEDR_FH_ADD_GROUP(uaccess, groups);
+	KEDR_FH_ADD_GROUP(dup, groups);
+	KEDR_FH_ADD_GROUP(strings, groups);
+	KEDR_FH_ADD_GROUP(thread, groups);
+	KEDR_FH_ADD_GROUP(timer, groups);
+	KEDR_FH_ADD_GROUP(workqueue, groups);
+	KEDR_FH_ADD_GROUP(irq, groups);
+	KEDR_FH_ADD_GROUP(bh, groups);
+	KEDR_FH_ADD_GROUP(tasklet, groups);
+	/* [NB] If other groups are added, add KEDR_FH_ADD_GROUP() here 
+	 * too, otherwise the groups WILL NOT be handled. */
 		
-	fh.handlers = &handlers[0];
+	fh.handlers = kedr_fh_combine_handlers(&groups);
+	if (fh.handlers == NULL) {
+		free_per_cpu_ids();
+		return -ENOMEM;
+	}
+	
 	ret = kedr_fh_plugin_register(&fh);
 	if (ret != 0) {
 		free_per_cpu_ids();
+		kfree(fh.handlers);
 		return ret;
 	}
 	return 0;
@@ -513,10 +397,9 @@ static void __exit
 func_drd_exit_module(void)
 {
 	kedr_fh_plugin_unregister(&fh);
-	<$if concat(cleanup_func)$>
-	<$cleanupCall: join(\n\t)$>
-	<$endif$>
 	
+	kedr_fh_do_cleanup_calls(&groups);
+	kfree(fh.handlers);
 	free_per_cpu_ids();
 	
 	/* [NB] If additional cleanup is needed, do it here. */

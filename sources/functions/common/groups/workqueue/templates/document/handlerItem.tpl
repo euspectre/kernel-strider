@@ -1,0 +1,1 @@
+&handlers_<$function.name$>

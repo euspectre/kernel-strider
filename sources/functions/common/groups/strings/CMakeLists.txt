@@ -1,5 +1,3 @@
-set(GROUP_NAME "strings")
-
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"memset"
 	"memcpy"
@@ -78,7 +76,10 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"kvasprintf"
 	"kasprintf"
 )
-create_handlers_group(${GROUP_NAME} ${functions})
+group_create_handlers(${GROUP_NAME} ${functions})
+group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} 
+	"handlers_${GROUP_NAME}.c"
+)
 
 kedr_test_add_subdirectory(tests)
 ########################################################################

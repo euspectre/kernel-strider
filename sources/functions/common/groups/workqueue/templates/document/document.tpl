@@ -20,12 +20,11 @@
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
 
+#include <util/fh_plugin.h>
+
 #include "config.h"
 /* ====================================================================== */
-<$if concat(header)$>
-<$header: join(\n)$>
-/* ====================================================================== */
-<$endif$>
+
 #define KEDR_MSG_PREFIX "[kedr_fh_drd_common] "
 /* ====================================================================== */
 
@@ -97,7 +96,7 @@ static DEFINE_SPINLOCK(wq_info_lock);
 
 /* The cleanup function will be called from the exit function of
  * the FH plugin. */
-void
+static void
 kedr_fh_drd_workqueue_cleanup(void)
 {
 	struct kedr_fh_workqueue_info *info;
@@ -355,5 +354,25 @@ on_flush_or_cancel_work(struct kedr_local_storage *ls,
 /* ====================================================================== */
 <$if concat(function.name)$>
 <$block : join(\n\n)$>
+/* ====================================================================== */<$endif$>
+
+static struct kedr_fh_handlers *handlers[] = {
+	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
+	<$endif$>NULL
+};
 /* ====================================================================== */
-<$endif$>
+
+static struct kedr_fh_group fh_group = {
+	.handlers = NULL, /* Just to make sure all fields are zeroed. */
+};
+
+struct kedr_fh_group * __init
+kedr_fh_get_group_workqueue(void)
+{
+	fh_group.handlers = &handlers[0];
+	fh_group.num_handlers = (unsigned int)ARRAY_SIZE(handlers) - 1;
+	fh_group.cleanup = kedr_fh_drd_workqueue_cleanup;
+	
+	return &fh_group;
+}
+/* ====================================================================== */

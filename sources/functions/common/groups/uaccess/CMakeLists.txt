@@ -1,5 +1,3 @@
-set(GROUP_NAME "uaccess")
-
 kmodule_configure_kernel_functions(functions OPTIONAL
 	"copy_to_user"
 	"_copy_to_user"
@@ -8,7 +6,10 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"__strncpy_from_user"
 	"strncpy_from_user"
 )
-create_handlers_group(${GROUP_NAME} ${functions})
+group_create_handlers(${GROUP_NAME} ${functions})
+group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} 
+	"handlers_${GROUP_NAME}.c"
+)
 
 kedr_test_add_subdirectory(tests)
 ########################################################################

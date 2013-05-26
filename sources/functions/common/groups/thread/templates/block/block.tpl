@@ -3,7 +3,7 @@
     <$arg_enum: join(,\n\t)$>
 };
 
-<$endif$>void
+<$endif$>static void
 func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 {
 <$if concat(pre)$><$if concat(arg.name)$><$arg_def: join(\n)$>
@@ -15,7 +15,7 @@ func_drd_<$function.name$>_pre(struct kedr_local_storage *ls)
 <$if concat(arg.name)$><$arg_undef: join(\n)$>
 <$endif$><$endif$>}
 
-void
+static void
 func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 {
 <$if concat(post)$><$if concat(arg.name)$><$arg_def: join(\n)$>
@@ -28,3 +28,5 @@ func_drd_<$function.name$>_post(struct kedr_local_storage *ls)
 <$if concat(arg.name)$><$arg_undef: join(\n)$>
 <$endif$><$if returnType$>#undef returnValue
 <$endif$><$endif$>}
+
+<$handlerStruct$>
