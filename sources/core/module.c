@@ -1144,6 +1144,31 @@ kedr_find_func_info(unsigned long addr)
 	return kedr_i13n_func_info_for_addr(i13n, addr);
 }
 EXPORT_SYMBOL(kedr_find_func_info);
+
+void
+kedr_set_func_handlers(void *func, 
+	void (*pre)(struct kedr_local_storage *),
+	void (*post)(struct kedr_local_storage *),
+	void *data, int force)
+{
+	struct kedr_func_info *fi;
+	unsigned long flags;
+	
+	fi = kedr_find_func_info((unsigned long)func);
+	if (fi == NULL) /* A non-instrumentable or unknown function. */
+		return;
+
+	spin_lock_irqsave(&fi->handler_lock, flags);
+	if (force || fi->pre_handler == NULL)
+		rcu_assign_pointer(fi->pre_handler, pre);
+	if (force || fi->post_handler == NULL)
+		rcu_assign_pointer(fi->post_handler, post);
+
+	/* 'data' should be set not matter what is already there. */
+	fi->data = data;
+	spin_unlock_irqrestore(&fi->handler_lock, flags);
+}
+EXPORT_SYMBOL(kedr_set_func_handlers);
 /* ====================================================================== */
 
 static void __init

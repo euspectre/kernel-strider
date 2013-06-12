@@ -379,40 +379,27 @@ static void (*post_handler[])(struct kedr_local_storage *ls) = {
 static void
 set_callback_handlers(struct cdev *p)
 {
-	unsigned long cb_addr[KEDR_CB_CDEV_COUNT];
+	void *cb_addr[KEDR_CB_CDEV_COUNT];
 	const struct file_operations *fops;
 	unsigned int i;
-	unsigned long flags;
 	
 	if (p == NULL)
 		return;
 	fops = p->ops;
 	
 	memset(&cb_addr[0], 0, sizeof(cb_addr)); /* just in case */
-	cb_addr[KEDR_CB_CDEV_OPEN] = 	(unsigned long)fops->open;
-	cb_addr[KEDR_CB_CDEV_RELEASE] = (unsigned long)fops->release;
-	cb_addr[KEDR_CB_CDEV_READ] = 	(unsigned long)fops->read;
-	cb_addr[KEDR_CB_CDEV_WRITE] = 	(unsigned long)fops->write;
-	cb_addr[KEDR_CB_CDEV_LLSEEK] = 	(unsigned long)fops->llseek;
+	cb_addr[KEDR_CB_CDEV_OPEN] = 	fops->open;
+	cb_addr[KEDR_CB_CDEV_RELEASE] = fops->release;
+	cb_addr[KEDR_CB_CDEV_READ] = 	fops->read;
+	cb_addr[KEDR_CB_CDEV_WRITE] = 	fops->write;
+	cb_addr[KEDR_CB_CDEV_LLSEEK] = 	fops->llseek;
 	
 	for (i = 0; i < KEDR_CB_CDEV_COUNT; ++i) {
-		struct kedr_func_info *fi;
 		if (cb_addr[i] == 0)
 			continue;
 		
-		fi = kedr_find_func_info(cb_addr[i]);
-		if (fi == NULL)
-			continue;
-		
-		/* OK, found func_info for the callback. Check and set the
-		 * handlers. Note that we do not change the handlers that
-		 * are already set. */
-		spin_lock_irqsave(&fi->handler_lock, flags);
-		if (fi->pre_handler == NULL)
-			rcu_assign_pointer(fi->pre_handler, pre_handler[i]);
-		if (fi->post_handler == NULL)
-			rcu_assign_pointer(fi->post_handler, post_handler[i]);
-		spin_unlock_irqrestore(&fi->handler_lock, flags);
+		kedr_set_func_handlers(cb_addr[i], pre_handler[i], 
+			post_handler[i], NULL, 0);
 	}
 }
 /* ====================================================================== */

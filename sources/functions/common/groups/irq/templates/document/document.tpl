@@ -232,22 +232,9 @@ out:
 static void
 set_handlers(irq_handler_t handler, int is_thread_fn)
 {
-	struct kedr_func_info *fi;
-	unsigned long flags;
-
-	fi = kedr_find_func_info((unsigned long)handler);
-	if (fi == NULL) /* A non-instrumentable or unknown function. */
-		return;
-
-	/* If a handler is already set, it must remain unchanged. */
-	spin_lock_irqsave(&fi->handler_lock, flags);
-	if (fi->pre_handler == NULL)
-		rcu_assign_pointer(fi->pre_handler, irq_handler_pre);
-	if (fi->post_handler == NULL)
-		rcu_assign_pointer(fi->post_handler, irq_handler_post);
-
-	fi->data = (is_thread_fn ? NULL : (void *)handler);
-	spin_unlock_irqrestore(&fi->handler_lock, flags);
+	void *data = (is_thread_fn ? NULL : (void *)handler);
+	kedr_set_func_handlers(handler, irq_handler_pre, irq_handler_post, 
+		data, 0);
 }
 
 /* Call this in the pre- handlers of the functions that request the IRQ.

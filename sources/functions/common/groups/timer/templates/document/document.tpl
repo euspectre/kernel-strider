@@ -80,30 +80,14 @@ timer_function_post(struct kedr_local_storage *ls)
 static void
 set_timer_function_handlers(struct timer_list *t)
 {
-	struct kedr_func_info *fi;
-	unsigned long flags;
-	
 	if (t == NULL || t->function == NULL) {
 		pr_warning(KEDR_MSG_PREFIX
 			"set_timer_function_handlers(): invalid timer.\n");
 		return;
 	}
-
-	fi = kedr_find_func_info((unsigned long)t->function);
-	if (fi == NULL) /* A non-instrumentable or unknown function. */
-		return;
-
-	/* If a handler is already set, it must remain unchanged.
-	 * The pointer to the timer will be stored in 'data' not matter what
-	 * is there. */
-	spin_lock_irqsave(&fi->handler_lock, flags);
-	if (fi->pre_handler == NULL)
-		rcu_assign_pointer(fi->pre_handler, timer_function_pre);
-	if (fi->post_handler == NULL)
-		rcu_assign_pointer(fi->post_handler, timer_function_post);
-
-	fi->data = t;
-	spin_unlock_irqrestore(&fi->handler_lock, flags);
+	
+	kedr_set_func_handlers(t->function, timer_function_pre, 
+		timer_function_post, t, 0);
 }
 
 static void

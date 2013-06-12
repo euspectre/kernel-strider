@@ -231,47 +231,22 @@ test_second_post(struct kedr_local_storage *ls)
 /* ====================================================================== */
 
 static void 
-set_handlers_for_callback(struct kedr_func_info *fi, 
-	void (*pre_handler)(struct kedr_local_storage *),
-	void (*post_handler)(struct kedr_local_storage *),
-	void *data)
-{
-	unsigned long flags;
-	
-	spin_lock_irqsave(&fi->handler_lock, flags);
-	if (fi->pre_handler == NULL)
-		rcu_assign_pointer(fi->pre_handler, pre_handler);
-	if (fi->post_handler == NULL)
-		rcu_assign_pointer(fi->post_handler, post_handler);
-	
-	fi->data = data;
-	spin_unlock_irqrestore(&fi->handler_lock, flags);
-}
-
-static void 
 test_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_test_cbh_ops *cbh_ops;
-	struct kedr_func_info *fi;
 	
 	/* The structure containing the list of the callbacks is the first
 	 * and the only argument of kedr_test_cbh_register(). */
 	cbh_ops = (struct kedr_test_cbh_ops *)KEDR_LS_ARG1(ls);
 	
 	if (cbh_ops->first != NULL) {
-		fi = kedr_find_func_info((unsigned long)cbh_ops->first);
-		if (fi != NULL)
-			set_handlers_for_callback(fi, 
-				test_first_pre, test_first_post,
-				THIS_MODULE);
+		kedr_set_func_handlers(cbh_ops->first, test_first_pre, 
+			test_first_post, THIS_MODULE, 0);
 	}
 	
 	if (cbh_ops->second != NULL) {
-		fi = kedr_find_func_info((unsigned long)cbh_ops->second);
-		if (fi != NULL)
-			set_handlers_for_callback(fi, 
-				test_second_pre, test_second_post,
-				&first_post_ok);
+		kedr_set_func_handlers(cbh_ops->second, test_second_pre, 
+			test_second_post, &first_post_ok, 0);
 	}
 }
 

@@ -111,6 +111,32 @@ struct kedr_func_info
  * from function call handlers or function entry/exit handlers. */
 struct kedr_func_info *
 kedr_find_func_info(unsigned long addr);
+
+/* If the function 'func' is known and is instrumentable, sets the given 
+ * pre and post handlers for it. Nothing will be done for unknown or
+ * uninstrumentable functions.
+ *
+ * The data item for the handlers (see kedr_func_info::data) will also be
+ * set. 
+ * 
+ * If 'force' is zero and a handler has been set for 'func' before, 
+ * kedr_set_func_handlers() will leave it unchanged, otherwise it will 
+ * replace it with the given handler.
+ *
+ * 'force' does not affect 'data', the latter is replaced with the given
+ * value even if it has been set already.
+ * 
+ * You can set 'force' to a non-zero value and pass NULL as a handler
+ * address to remove the handler.
+ *
+ * It is allowed to call this function only if the target module has already
+ * been instrumented and is now in the memory. The handlers will be active 
+ * until the target module is unloaded. */
+void
+kedr_set_func_handlers(void *func, 
+	void (*pre)(struct kedr_local_storage *),
+	void (*post)(struct kedr_local_storage *),
+	void *data, int force);
 /* ====================================================================== */
 
 struct module;

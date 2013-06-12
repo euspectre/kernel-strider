@@ -289,30 +289,14 @@ work_func_post(struct kedr_local_storage *ls)
 static void
 set_work_func_handlers(struct work_struct *work, unsigned long wq_id)
 {
-	struct kedr_func_info *fi;
-	unsigned long flags;
-
 	if (work == NULL || work->func == NULL) {
 		pr_warning(KEDR_MSG_PREFIX
 		"set_work_func_handlers(): invalid work structure.\n");
 		return;
 	}
 
-	fi = kedr_find_func_info((unsigned long)work->func);
-	if (fi == NULL) /* A non-instrumentable or unknown function. */
-		return;
-
-	/* If a handler is already set, it must remain unchanged.
-	 * The wq info will be stored in 'data' not matter what is already
-	 * there. */
-	spin_lock_irqsave(&fi->handler_lock, flags);
-	if (fi->pre_handler == NULL)
-		rcu_assign_pointer(fi->pre_handler, work_func_pre);
-	if (fi->post_handler == NULL)
-		rcu_assign_pointer(fi->post_handler, work_func_post);
-
-	fi->data = (void *)wq_id;
-	spin_unlock_irqrestore(&fi->handler_lock, flags);
+	kedr_set_func_handlers(work->func, work_func_pre, work_func_post, 
+		(void *)wq_id, 0);
 }
 
 static void
