@@ -25,7 +25,6 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/errno.h>
-#include <linux/mutex.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/percpu.h>

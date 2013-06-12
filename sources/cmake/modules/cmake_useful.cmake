@@ -253,3 +253,17 @@ function (check_struct_has_member type member header result_var)
 	set ("${result_var}" "${${has_var}}" PARENT_SCOPE)
 endfunction ()
 
+# configure_struct_members(type header output_list <list of members>)
+# Checks which items from <list of members> are members of struct 'type'
+# defined in 'header' and copies them to 'output_list'.
+function (configure_struct_members type header output_list)
+	set(output_list_tmp)
+	foreach (arg ${ARGN})
+		set(found)
+		check_struct_has_member(${type} ${arg} ${header} found)
+		if (found)
+			list(APPEND output_list_tmp ${arg})
+		endif ()
+	endforeach ()
+	set(${output_list} ${output_list_tmp} PARENT_SCOPE)
+endfunction ()

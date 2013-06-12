@@ -35,10 +35,6 @@ function(group_create_handlers group_name functions)
 			${handlers_data_file} > ${source_file}
 		DEPENDS ${handlers_data_file}
 	)
-	
-#	add_custom_target(func_drd_${group_name} ALL
-#		DEPENDS ${handlers_data_file} ${source_file}
-#	)
 endfunction(group_create_handlers group_name functions)
 
 # Allows to specify the source files for the group, defines the 

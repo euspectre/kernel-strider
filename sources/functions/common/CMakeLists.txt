@@ -16,10 +16,12 @@ set(FUNCTION_GROUPS
 	"strings"
 	"thread"
 	"timer"
-	"workqueue"	#TODO
+	"workqueue"
 	"irq"
 	"bh"
 	"tasklet"
+	"device" # [NB] callbacks only
+#	"pci"
 )
 ########################################################################
 
