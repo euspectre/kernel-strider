@@ -37,28 +37,53 @@ function(group_create_handlers group_name functions)
 	)
 endfunction(group_create_handlers group_name functions)
 
-# Allows to specify the source files for the group, defines the 
-# appropriate make target.
+# Allows to specify the source files the current directory provides for the 
+# current FH group, defines the appropriate make target(s).
 #
-# 'sources' is a list of paths to the files, each path may be absolute
-#   or relative to the current source or binary directory (the source 
-#   directory is searched first).
-# 'plugin_name' - short name of the plugin (needed to make the targets
-#   unique).
+# 'sources' is a list of names of the files (note, names only, not paths) 
+# in the current source or binary directory to be added to the plugin from
+# the current group.
 # 
-# This function must be called once per group.
-function(group_set_sources plugin_name group_name sources)
-	to_abs_path(src_abs ${sources} ${ARGN})
-	
-	set (SOURCES_FH_DRD_${plugin_name}_${group_name} ${src_abs}
+# This is a macro because that allows to implicitly use the names of the 
+# plugin and the group rather then require them to be set explicitly each 
+# time.
+macro(group_add_sources sources)
+	set(gras_names ${sources} ${ARGN})
+	to_abs_path(gras_src_abs ${gras_names})
+
+	set(gras_src_val SOURCES_FH_DRD_${PLUGIN_SHORT_NAME}_${GROUP_NAME})
+	set(gras_target_val TARGETS_FH_DRD_${PLUGIN_SHORT_NAME}_${GROUP_NAME})
+
+	set(gras_sources ${${gras_src_val}})
+	foreach (gras_abs ${gras_src_abs})
+		list(APPEND gras_sources "${gras_abs}")
+	endforeach ()
+
+	set(${gras_src_val} ${gras_sources}
 		CACHE INTERNAL
-		"Sources for group '${group_name}' of plugin '${plugin_name}'")
-	
-	# Add a target that depends on these sources.
-	add_custom_target(func_drd_${plugin_name}_${group_name} ALL
-		DEPENDS ${src_abs}
+		"Sources for group '${GROUP_NAME}' of plugin '${PLUGIN_SHORT_NAME}'"
 	)
-endfunction(group_set_sources plugin_name group_name sources)
+
+	# Add a custom target for each of the files to be added. This is 
+	# needed because a target can see the added custom commands only in 
+	# the directory where it is defined. It can see other targets 
+	# defined in any directory, however.
+	set(gras_targets ${${gras_target_val}})
+	foreach (gras_name ${gras_names})
+		add_custom_target(
+			fh_drd_${PLUGIN_SHORT_NAME}_${GROUP_NAME}_${gras_name}
+			ALL
+			DEPENDS ${gras_name}
+		)
+		list(APPEND gras_targets 
+			fh_drd_${PLUGIN_SHORT_NAME}_${GROUP_NAME}_${gras_name})
+	endforeach ()
+
+	set(${gras_target_val} ${gras_targets}
+		CACHE INTERNAL
+		"Targets for group '${GROUP_NAME}' of plugin '${PLUGIN_SHORT_NAME}'"
+	)
+endmacro(group_add_sources sources)
 
 # Adds the rules to create the FH plugin handling the listed groups of
 # functions.
@@ -72,8 +97,10 @@ function(add_fh_drd_plugin plugin_name groups)
 	set(plugin_full_name "kedr_fh_drd_${plugin_name}")
 	set(group_targets)
 	set(group_sources)
-	foreach(group_name ${groups} ${ARGN})
-		list(APPEND group_targets "func_drd_${plugin_name}_${group_name}")
+	foreach (group_name ${groups} ${ARGN})
+		foreach (tgt ${TARGETS_FH_DRD_${plugin_name}_${group_name}})
+			list(APPEND group_targets ${tgt})
+		endforeach ()
 		
 		set(group_var SOURCES_FH_DRD_${plugin_name}_${group_name})
 		if (DEFINED ${group_var})

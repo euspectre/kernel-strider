@@ -61,4 +61,4 @@ add_custom_command(OUTPUT ${source_file}
 )
 
 # Add the source file to the list of sources of the plugin.
-group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} "${source_file}")	
+group_add_sources("${source_file}")	

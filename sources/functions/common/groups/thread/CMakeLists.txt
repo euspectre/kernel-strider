@@ -3,8 +3,5 @@ kmodule_configure_kernel_functions(functions REQUIRED
 	"kthread_stop"
 )
 group_create_handlers(${GROUP_NAME} ${functions})
-group_set_sources(${PLUGIN_SHORT_NAME} ${GROUP_NAME} 
-	"handlers_${GROUP_NAME}.c"
-)
-
+group_add_sources("handlers_${GROUP_NAME}.c")
 ########################################################################
