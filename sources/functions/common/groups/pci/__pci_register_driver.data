@@ -1,0 +1,10 @@
+[group]
+	function.name = __pci_register_driver
+
+	code.pre =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct pci_driver *drv = (struct pci_driver *)KEDR_LS_ARG1(ls);
+	
+	on_register(drv, ls->tid, info->pc);
+	<<
+#######################################################################

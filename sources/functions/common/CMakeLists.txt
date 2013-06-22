@@ -21,7 +21,7 @@ set(FUNCTION_GROUPS
 	"bh"
 	"tasklet"
 	"device" # [NB] callbacks only
-#	"pci"
+	"pci"
 )
 ########################################################################
 

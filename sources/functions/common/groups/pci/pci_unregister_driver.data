@@ -1,0 +1,10 @@
+[group]
+	function.name = pci_unregister_driver
+
+	code.post =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct pci_driver *drv = (struct pci_driver *)KEDR_LS_ARG1(ls);
+	
+	on_unregister(drv, ls->tid, info->pc);
+	<<
+#######################################################################

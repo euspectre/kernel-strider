@@ -1,0 +1,7 @@
+[group]
+    function.name = remove
+
+    # Define it for remove() only. The actual value does not matter as
+    # long as it is not empty.
+    is_remove = yes
+#######################################################################

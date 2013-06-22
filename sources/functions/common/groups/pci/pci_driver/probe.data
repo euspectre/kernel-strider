@@ -1,0 +1,7 @@
+[group]
+    function.name = probe
+    
+    # Define it for probe() only. The actual value does not matter as
+    # long as it is not empty.
+    is_probe = yes
+#######################################################################

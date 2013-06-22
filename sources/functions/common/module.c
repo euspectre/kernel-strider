@@ -154,6 +154,7 @@ KEDR_FH_DECLARE_GROUP(workqueue);
 KEDR_FH_DECLARE_GROUP(irq);
 KEDR_FH_DECLARE_GROUP(bh);
 KEDR_FH_DECLARE_GROUP(tasklet);
+KEDR_FH_DECLARE_GROUP(pci);
 /* [NB] If other groups are added, add KEDR_FH_DECLARE_GROUP() here too. */	
 /* ====================================================================== */
 
@@ -374,6 +375,7 @@ func_drd_init_module(void)
 	KEDR_FH_ADD_GROUP(irq, groups);
 	KEDR_FH_ADD_GROUP(bh, groups);
 	KEDR_FH_ADD_GROUP(tasklet, groups);
+	KEDR_FH_ADD_GROUP(pci, groups);
 	/* [NB] If other groups are added, add KEDR_FH_ADD_GROUP() here 
 	 * too, otherwise the groups WILL NOT be handled. */
 		
