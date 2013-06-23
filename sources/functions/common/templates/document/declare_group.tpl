@@ -1,0 +1,1 @@
+KEDR_FH_DECLARE_GROUP(<$group$>);

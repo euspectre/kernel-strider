@@ -128,7 +128,6 @@ function(add_fh_drd_plugin plugin_name groups)
 	
 	kbuild_add_module(${plugin_full_name}
 	# sources
-		module.c
 		${group_sources}
 	
 	# common sources

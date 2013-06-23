@@ -24,6 +24,8 @@
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/fh_drd/common.h>
 
+#include <util/fh_plugin.h>
+
 #include "config.h"
 /* ====================================================================== */
 
@@ -94,4 +96,17 @@ kedr_set_pm_ops_handlers(struct dev_pm_ops *pm,
 		return;
 
 <$set_handlers : join(\n)$>}
+/* ====================================================================== */
+
+static struct kedr_fh_group fh_group = {
+	.handlers = NULL, /* Just to make sure all fields are zeroed. */
+};
+
+struct kedr_fh_group * __init
+kedr_fh_get_group_device(void)
+{
+	/* This group provides no handlers for exported functions. */
+	fh_group.num_handlers = 0;
+	return &fh_group;
+}
 /* ====================================================================== */

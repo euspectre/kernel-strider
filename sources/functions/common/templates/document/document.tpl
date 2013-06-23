@@ -140,22 +140,7 @@ unsigned long kedr_system_wq_id = 0;
 static LIST_HEAD(groups);
 /* ====================================================================== */
 
-KEDR_FH_DECLARE_GROUP(alloc);
-KEDR_FH_DECLARE_GROUP(realloc);
-KEDR_FH_DECLARE_GROUP(free);
-KEDR_FH_DECLARE_GROUP(lock);
-KEDR_FH_DECLARE_GROUP(unlock);
-KEDR_FH_DECLARE_GROUP(uaccess);
-KEDR_FH_DECLARE_GROUP(dup);
-KEDR_FH_DECLARE_GROUP(strings);
-KEDR_FH_DECLARE_GROUP(thread);
-KEDR_FH_DECLARE_GROUP(timer);
-KEDR_FH_DECLARE_GROUP(workqueue);
-KEDR_FH_DECLARE_GROUP(irq);
-KEDR_FH_DECLARE_GROUP(bh);
-KEDR_FH_DECLARE_GROUP(tasklet);
-KEDR_FH_DECLARE_GROUP(pci);
-/* [NB] If other groups are added, add KEDR_FH_DECLARE_GROUP() here too. */	
+<$declare_group : join(\n)$>
 /* ====================================================================== */
 
 static void
@@ -361,24 +346,8 @@ func_drd_init_module(void)
 		return ret;
 	
 	/* Add the groups of functions to be handled. */
-	KEDR_FH_ADD_GROUP(alloc, groups);
-	KEDR_FH_ADD_GROUP(realloc, groups);
-	KEDR_FH_ADD_GROUP(free, groups);
-	KEDR_FH_ADD_GROUP(lock, groups);
-	KEDR_FH_ADD_GROUP(unlock, groups);
-	KEDR_FH_ADD_GROUP(uaccess, groups);
-	KEDR_FH_ADD_GROUP(dup, groups);
-	KEDR_FH_ADD_GROUP(strings, groups);
-	KEDR_FH_ADD_GROUP(thread, groups);
-	KEDR_FH_ADD_GROUP(timer, groups);
-	KEDR_FH_ADD_GROUP(workqueue, groups);
-	KEDR_FH_ADD_GROUP(irq, groups);
-	KEDR_FH_ADD_GROUP(bh, groups);
-	KEDR_FH_ADD_GROUP(tasklet, groups);
-	KEDR_FH_ADD_GROUP(pci, groups);
-	/* [NB] If other groups are added, add KEDR_FH_ADD_GROUP() here 
-	 * too, otherwise the groups WILL NOT be handled. */
-		
+<$add_group : join(\n)$>
+	
 	fh.handlers = kedr_fh_combine_handlers(&groups);
 	if (fh.handlers == NULL) {
 		free_per_cpu_ids();
