@@ -219,6 +219,9 @@ check_libdw_devel()
 # in the kernel 3.9.
 check_hlist_for_each_entry()
 
+# Check if random32() is available.
+check_random32()
+
 # Find ThreadSanitizer offline if the user did not specify the path to it.
 # ${TSAN_APP} is the path to the application if found, a false value
 # otherwise.

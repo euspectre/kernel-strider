@@ -5,8 +5,10 @@
  * 
  * Taken from "/lib/uuid.c" (big-endian version)
  */
-#include <linux/random.h> /* random32 */
+#include <linux/random.h> /* random32, prandom_u32 */
 #include <linux/string.h> /* memcpy */
+
+#include "config.h"
 
 void generate_uuid(unsigned char uuid[16])
 {
@@ -15,7 +17,7 @@ void generate_uuid(unsigned char uuid[16])
 
     for (i = 0; i < 4; i++)
     {
-        r = random32();
+        r = kedr_random32();
         memcpy(uuid + i * 4, &r, 4);
     }
     /* reversion 0b10 */
