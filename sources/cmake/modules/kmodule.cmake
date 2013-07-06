@@ -666,3 +666,42 @@ macro(check_random32)
 	message(STATUS "${check_random32_message}")
 endmacro(check_random32)
 ############################################################################
+
+# Check if 'request_firmware_nowait' accepts 7 arguments.
+# In 2.6.32, accepts 6 arguments, in 2.6.33 and newer kernels - 7 arguments.
+# The last argument is the callback function in each case.
+# 
+# The macro sets variable 'REQUEST_FW_HAS_7_ARGS'.
+macro(check_request_fw)
+	set(check_request_fw_message
+		"Checking the signature of request_firmware_nowait()"
+	)
+	message(STATUS "${check_request_fw_message}")
+	if (DEFINED REQUEST_FW_HAS_7_ARGS) 
+		set(check_request_fw_message
+"${check_request_fw_message} [cached] - done"
+		)
+	else (DEFINED REQUEST_FW_HAS_7_ARGS)
+		kmodule_try_compile(request_fw_has_7_args_impl
+			"${CMAKE_BINARY_DIR}/check_request_fw"
+			"${kmodule_test_sources_dir}/check_request_fw/module.c"
+		)
+
+		if (request_fw_has_7_args_impl)
+			set(REQUEST_FW_HAS_7_ARGS "yes" CACHE INTERNAL
+				"Does request_firmware_nowait() have 7 arguments?"
+			)
+		else (request_fw_has_7_args_impl)
+			set(REQUEST_FW_HAS_7_ARGS "no" CACHE INTERNAL
+				"Does request_firmware_nowait() have 7 arguments?"
+			)
+		endif (request_fw_has_7_args_impl)
+
+		set(check_request_fw_message
+"${check_request_fw_message} - done"
+		)
+	endif (DEFINED REQUEST_FW_HAS_7_ARGS)
+	message(STATUS "${check_request_fw_message}")
+endmacro(check_request_fw)
+############################################################################
+

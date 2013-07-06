@@ -1,0 +1,16 @@
+[group]
+	# Name of the target function
+	function.name = request_firmware_nowait
+	
+	code.pre =>>
+	/* request_firmware_nowait() has the callback as its last argument.
+	 * In 2.6.32, it is argument #6, in 2.6.33 and newer - #7. */
+#ifdef REQUEST_FW_HAS_7_ARGS
+	void *cont = (void *)KEDR_LS_ARG7(ls);
+#else
+	/* 6 arguments assumed */
+	void *cont = (void *)KEDR_LS_ARG6(ls);
+#endif
+	handle_function(ls, cont);
+	<<
+#######################################################################

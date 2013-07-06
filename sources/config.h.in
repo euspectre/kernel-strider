@@ -78,4 +78,8 @@
 #endif
 /* ====================================================================== */
 
+/* Specifies whether request_firmware_nowait() has 7 arguments.*/
+#cmakedefine REQUEST_FW_HAS_7_ARGS
+/* ====================================================================== */
+
 #endif /* CONFIG_H_1734_INCLUDED */

@@ -22,6 +22,7 @@ set(FUNCTION_GROUPS
 	"tasklet"
 	"device" # [NB] callbacks only
 	"pci"
+	"firmware"
 )
 ########################################################################
 
