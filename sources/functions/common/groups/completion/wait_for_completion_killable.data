@@ -1,0 +1,13 @@
+[group]
+	# Name of the target function
+	function.name = wait_for_completion_killable
+	
+	code.post =>>
+	void *compl = (void *)KEDR_LS_ARG1(ls);
+	int ret = (int)KEDR_LS_RET_VAL(ls);
+
+	if (ret == 0)
+		on_wait(ls, compl);
+
+	<<
+#######################################################################

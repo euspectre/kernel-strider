@@ -1,0 +1,24 @@
+# add_timer(&timer);
+SIGNAL t1
+
+# [timer_func]
+WAIT t1
+
+# <BH start>
+WAIT func
+WAIT bh
+
+# complete() / complete_all()
+SIGNAL compl
+
+# <BH end>
+SIGNAL bh
+SIGNAL func
+
+SIGNAL t1_1
+
+# *wait_for_completion*()
+WAIT compl
+
+# del_timer_sync(&timer);
+WAIT t1_1

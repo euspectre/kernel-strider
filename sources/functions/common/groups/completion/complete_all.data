@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = complete_all
+	
+	code.pre =>>
+	void *compl = (void *)KEDR_LS_ARG1(ls);
+	on_complete(ls, compl);
+	<<
+#######################################################################

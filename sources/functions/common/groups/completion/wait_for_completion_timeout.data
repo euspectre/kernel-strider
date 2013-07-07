@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = wait_for_completion_timeout
+	
+	code.post =>>
+	void *compl = (void *)KEDR_LS_ARG1(ls);
+	unsigned long ret = KEDR_LS_RET_VAL(ls);
+
+	if (ret > 0)
+		on_wait(ls, compl);
+	<<
+#######################################################################

@@ -1,0 +1,29 @@
+header =>>
+#include <linux/timer.h>
+#include <linux/delay.h>
+#include <linux/completion.h>
+
+/* Timer interval, in milliseconds. */
+static unsigned long
+test_timeout_msec = 50;
+
+/* How long the tests using *_timeout* functions must wait, in milliseconds. 
+ */
+static unsigned long
+wait_timeout_msec = 1000;
+
+/* The common timer functions */
+static void
+timer_fn_complete(unsigned long arg)
+{
+	struct completion *x = (struct completion *)arg;
+	complete(x);
+}
+
+static void
+timer_fn_complete_all(unsigned long arg)
+{
+	struct completion *x = (struct completion *)arg;
+	complete_all(x);
+}
+<<

@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = wait_for_completion_io
+	
+	code.post =>>
+	void *compl = (void *)KEDR_LS_ARG1(ls);
+	on_wait(ls, compl);
+	<<
+#######################################################################

@@ -23,6 +23,7 @@ set(FUNCTION_GROUPS
 	"device" # [NB] callbacks only
 	"pci"
 	"firmware"
+	"completion"
 )
 ########################################################################
 
