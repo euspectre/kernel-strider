@@ -13,6 +13,7 @@ trigger.code =>>
 	timer.expires = jiffies + msecs_to_jiffies(test_timeout_msec);
 	
 	add_timer(&timer);
+	msleep(wait_timeout_msec);
 	
 	wait_for_completion(&compl);
 	del_timer_sync(&timer); /* just in case */
