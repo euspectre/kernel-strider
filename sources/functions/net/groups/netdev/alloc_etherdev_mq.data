@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = alloc_etherdev_mq
+	
+	code.pre =>>
+	// TODO
+	<<
+
+	code.post =>>
+	// TODO
+	<<
+#######################################################################

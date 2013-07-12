@@ -1,0 +1,1 @@
+	KEDR_FH_ADD_GROUP(<$group$>, groups);

@@ -215,6 +215,9 @@ set(CORE_MODULE_DIR "${CMAKE_BINARY_DIR}/core")
 # there.
 add_subdirectory(common)
 
+# The operations specific to network drivers are handled there.
+add_subdirectory(net)
+
 if (KEDR_COI_INSTALL_DIR)
     # This plugin handles ordering relationships in various file- and 
 	# filesystem-related operations. Needs KEDR COI system.

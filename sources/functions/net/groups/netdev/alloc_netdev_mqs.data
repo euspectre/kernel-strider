@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = alloc_netdev_mqs
+	
+	code.pre =>>
+	// TODO
+	<<
+
+	code.post =>>
+	// TODO
+	<<
+#######################################################################

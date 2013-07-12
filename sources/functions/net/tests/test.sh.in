@@ -1,0 +1,160 @@
+#!/bin/sh
+
+########################################################################
+# This test checks only that the FH plugin can be loaded and does not make
+# a mess when a target (which is not a network driver) is working.
+# 
+# Usage: 
+#   sh test.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${FH_MODULE}"; then
+		printf "The module implementing function handlers is missing: ${FH_MODULE}\n"
+		exit 1
+	fi
+	
+	if test ! -f "${FH_COMMON_MODULE}"; then
+		printf "The module implementing function handlers is missing: ${FH_COMMON_MODULE}\n"
+		exit 1
+	fi
+		
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+	
+	lsmod | grep "${TARGET_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${FH_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_MODULE_NAME}"
+	fi
+	
+	lsmod | grep "${FH_COMMON_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_COMMON_NAME}"
+	fi
+	
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+# doTest() - perform the actual testing
+########################################################################
+doTest()
+{
+	insmod "${CORE_MODULE}" \
+		targets="${TARGET_MODULE_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@" || exit 1
+	
+	insmod "${FH_COMMON_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${FH_COMMON_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${FH_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the module: ${FH_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	echo "Abracadabra" > /dev/cfake0
+	if test $? -ne 0; then
+		printf "Failed to use the target module.\n"
+		cleanupAll
+		exit 1
+	fi
+
+	# Unload the target.
+	rmmod "${TARGET_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the target module: ${TARGET_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod "${FH_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${FH_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod "${FH_COMMON_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${FH_COMMON_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	rmmod "${CORE_MODULE_NAME}" || exit 1
+}
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -gt 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+FH_MODULE_NAME="kedr_fh_drd_net"
+FH_MODULE="@CMAKE_BINARY_DIR@/functions/net/${FH_MODULE_NAME}.ko"
+
+FH_COMMON_NAME="kedr_fh_drd_common"
+FH_COMMON_MODULE="@CMAKE_BINARY_DIR@/functions/common/${FH_COMMON_NAME}.ko"
+
+TARGET_MODULE_NAME="kedr_sample_target"
+TARGET_MODULE="@CMAKE_BINARY_DIR@/tests/sample_target/${TARGET_MODULE_NAME}.ko"
+
+checkPrereqs
+
+doTest
+
+# just in case
+cleanupAll
+
+# test passed
+exit 0

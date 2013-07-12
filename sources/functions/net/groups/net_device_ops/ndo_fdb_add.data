@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = ndo_fdb_add
+	
+	code.pre =>>
+	// TODO
+	<<
+
+	code.post =>>
+	// TODO
+	<<
+#######################################################################

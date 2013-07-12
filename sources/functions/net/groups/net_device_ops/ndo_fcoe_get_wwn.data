@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = ndo_fcoe_get_wwn
+	
+	code.pre =>>
+	// TODO
+	<<
+
+	code.post =>>
+	// TODO
+	<<
+#######################################################################
