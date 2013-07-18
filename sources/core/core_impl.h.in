@@ -122,24 +122,6 @@ kedr_eh_on_call_post(unsigned long tid, unsigned long pc,
 }
 
 static inline void
-kedr_eh_on_locked_op_pre(unsigned long tid, unsigned long pc, 
-	void **pdata)
-{
-	if (eh_current->on_locked_op_pre != NULL)
-		eh_current->on_locked_op_pre(eh_current, tid, pc, pdata);
-}
-
-static inline void
-kedr_eh_on_locked_op_post(unsigned long tid, unsigned long pc, 
-	unsigned long addr, unsigned long size, 
-	enum kedr_memory_event_type type, void *data)
-{
-	if (eh_current->on_locked_op_post != NULL)
-		eh_current->on_locked_op_post(eh_current, tid, pc, addr, 
-			size, type, data);
-}
-
-static inline void
 kedr_eh_on_io_mem_op_pre(unsigned long tid, unsigned long pc, 
 	void **pdata)
 {

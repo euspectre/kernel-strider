@@ -363,6 +363,24 @@ kedr_eh_on_free(unsigned long tid, unsigned long pc, unsigned long addr)
 }
 
 static inline void
+kedr_eh_on_locked_op_pre(unsigned long tid, unsigned long pc, void **pdata)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_locked_op_pre != NULL)
+		eh->on_locked_op_pre(eh, tid, pc, pdata);
+}
+
+static inline void
+kedr_eh_on_locked_op_post(unsigned long tid, unsigned long pc,
+	unsigned long addr, unsigned long size,
+	enum kedr_memory_event_type type, void *data)
+{
+	struct kedr_event_handlers *eh = kedr_get_event_handlers();
+	if (eh->on_locked_op_post != NULL)
+		eh->on_locked_op_post(eh, tid, pc, addr, size, type, data);
+}
+
+static inline void
 kedr_eh_on_lock_pre(unsigned long tid, unsigned long pc, 
 	unsigned long lock_id, enum kedr_lock_type type)
 {
