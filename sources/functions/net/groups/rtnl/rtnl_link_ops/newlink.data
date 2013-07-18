@@ -1,0 +1,7 @@
+[group]
+	function.name = newlink
+
+	# Define is_locked only for the callbacks known to execute under
+	# rtnl_lock. The actual value does not matter.
+	is_locked = yes
+#######################################################################
