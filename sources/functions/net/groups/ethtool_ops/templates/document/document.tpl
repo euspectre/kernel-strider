@@ -18,6 +18,7 @@
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
+#include <kedr/fh_drd/common.h>
 
 #include <util/fh_plugin.h>
 #include <net/drd_net_common.h>

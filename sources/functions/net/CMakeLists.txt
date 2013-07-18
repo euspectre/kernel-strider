@@ -40,6 +40,9 @@ add_custom_command(OUTPUT ${source_file}
 group_add_sources("${source_file}")
 ########################################################################
 
+kbuild_use_symbols("${CMAKE_BINARY_DIR}/functions/common/Module.symvers")
+kbuild_add_dependencies("kedr_fh_drd_common")
+
 add_fh_drd_plugin(${PLUGIN_SHORT_NAME} ${FUNCTION_GROUPS})
 ########################################################################
 
