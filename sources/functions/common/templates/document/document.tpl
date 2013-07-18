@@ -28,6 +28,9 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/percpu.h>
+#include <linux/hash.h>
+#include <linux/vmalloc.h>
+#include <linux/spinlock.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/functions.h>
@@ -329,6 +332,180 @@ kedr_irq_disabled_end(unsigned long tid, unsigned long pc)
 EXPORT_SYMBOL(kedr_irq_disabled_end);
 /* ====================================================================== */
 
+/* Parameters of the hash table containing the information about the 
+ * currently taken locks. */
+#define KEDR_FH_LOCK_TABLE_BITS 8
+#define KEDR_FH_LOCK_TABLE_SIZE (1 << KEDR_FH_LOCK_TABLE_BITS)
+
+/* Maximum length of the bucket allowed. If an element should be added to a
+ * bucket which is already full, the oldest element of the bucket will be 
+ * evicted, a warning will be issued and the new element will be added. 
+ * This is needed to avoid hogging memory on the systems where we cannot 
+ * track some of the unlock operations (for example, if spin_unlock() is an
+ * inline). The results reported by KernelStrider will be unreliable in this 
+ * case but at least it must not cause problems to the OS. */
+#define KEDR_FH_LOCK_TABLE_MAX_BUCKET 128
+
+struct kedr_lock_item
+{
+	struct kedr_lock_item *next;
+	unsigned long lock_id;
+};
+
+/* The table and the spinlock to protect it. */
+static struct kedr_lock_item **lock_table;
+static DEFINE_SPINLOCK(table_lock);
+
+static void
+warn_once_bucket_full(unsigned long pc)
+{
+	static int warned = 0;
+	if (warned)
+		return;
+	
+	warned = 1;
+	pr_warning(KEDR_MSG_PREFIX 
+		"A bucket in the lock table was already full (%u items) "
+		"before the lock taken at %p was added - "
+		"some unlock operations were not detected?\n",
+		(unsigned int)KEDR_FH_LOCK_TABLE_MAX_BUCKET,
+		(void *)pc);
+}
+
+static void
+evict_oldest(struct kedr_lock_item **bucket)
+{
+	struct kedr_lock_item *it;
+	struct kedr_lock_item **pnext = bucket;
+	
+	if (*bucket == NULL)
+		return;
+	
+	for (it = *bucket; it->next != NULL; it = it->next) {
+		pnext = &it->next;
+	}
+	*pnext = NULL;
+	kfree(it);
+}
+
+int
+kedr_fh_mark_locked(unsigned long pc, unsigned long lock_id)
+{
+	unsigned long flags;
+	unsigned int length = 0;
+	unsigned long bucket;
+	struct kedr_lock_item *it;
+	int new_lock = 1;
+	
+	bucket = hash_ptr((void *)lock_id, KEDR_FH_LOCK_TABLE_BITS);
+	
+	spin_lock_irqsave(&table_lock, flags);
+	it = lock_table[bucket];
+	while (it != NULL) {
+		++length;
+		if (it->lock_id == lock_id) {
+			new_lock = 0;
+			break;
+		}
+		it = it->next;
+	}
+	
+	if (new_lock) {
+		struct kedr_lock_item *new_item;
+		if (length >= KEDR_FH_LOCK_TABLE_MAX_BUCKET) {
+			warn_once_bucket_full(pc);
+			evict_oldest(&lock_table[bucket]);
+		}
+		
+		new_item = kzalloc(sizeof(*new_item), GFP_ATOMIC);
+		if (new_item == NULL) {
+			pr_warning(KEDR_MSG_PREFIX 
+			"kedr_fh_mark_locked(): not enough memory.\n");
+			spin_unlock_irqrestore(&table_lock, flags);
+			return -ENOMEM;
+		}
+		
+		/* Add the new item at the start of the bucket to make the
+		 * search faster (LIFO scenario should be common for locks).
+		 */
+		it = lock_table[bucket];
+		new_item->next = it;
+		new_item->lock_id = lock_id;
+		lock_table[bucket] = new_item;
+	}
+	
+	spin_unlock_irqrestore(&table_lock, flags);
+	return new_lock;
+}
+EXPORT_SYMBOL(kedr_fh_mark_locked);
+
+void
+kedr_fh_mark_unlocked(unsigned long pc, unsigned long lock_id)
+{
+	unsigned long flags;
+	unsigned long bucket;
+	struct kedr_lock_item *it;
+	struct kedr_lock_item **pnext;
+	
+	bucket = hash_ptr((void *)lock_id, KEDR_FH_LOCK_TABLE_BITS);
+	
+	spin_lock_irqsave(&table_lock, flags);
+	it = lock_table[bucket];
+	pnext = &lock_table[bucket];
+	while (it != NULL) {
+		if (it->lock_id == lock_id)
+			break;
+		pnext = &it->next;
+		it = it->next;
+	}
+	if (it != NULL) {
+		/* Found the matching lock operation, OK, remove it. */
+		*pnext = it->next;
+		kfree(it);
+	}
+	/* There may be unlock operations we haven't track lock operations
+	 * for. It is possible in case of read locks. Just ignore them. */
+	
+	spin_unlock_irqrestore(&table_lock, flags);
+	return;
+}
+EXPORT_SYMBOL(kedr_fh_mark_unlocked);
+
+static int
+lock_table_create(void)
+{
+	lock_table = vmalloc(
+		sizeof(lock_table[0]) * KEDR_FH_LOCK_TABLE_SIZE);
+	if (lock_table == NULL) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"Failed to create the lock table.\n");
+		return -ENOMEM;
+	}
+	
+	memset(lock_table, 0, 
+	       sizeof(lock_table[0]) * KEDR_FH_LOCK_TABLE_SIZE);
+	return 0;
+}
+
+/* [NB] No need to protect the table here: this function should be called
+ * when the plugin is being unloaded and no event in the target modules can 
+ * interfere. */
+static void
+lock_table_destroy(void)
+{
+	unsigned int i;
+	for (i = 0; i < KEDR_FH_LOCK_TABLE_SIZE; ++i) {
+		struct kedr_lock_item *it = lock_table[i];
+		while (it != NULL) {
+			struct kedr_lock_item *next = it->next;
+			kfree(it);
+			it = next;
+		}
+	}
+	vfree(lock_table);
+}
+/* ====================================================================== */
+
 static int __init
 func_drd_init_module(void)
 {
@@ -341,26 +518,36 @@ func_drd_init_module(void)
 		return -ENOMEM;
 	}
 	
+	ret = lock_table_create();
+	if (ret != 0)
+		goto err;
+	
 	ret = create_per_cpu_ids();
 	if (ret != 0)
-		return ret;
+		goto err_per_cpu;
 	
 	/* Add the groups of functions to be handled. */
 <$add_group : join(\n)$>
 	
 	fh.handlers = kedr_fh_combine_handlers(&groups);
 	if (fh.handlers == NULL) {
-		free_per_cpu_ids();
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_handlers;
 	}
 	
 	ret = kedr_fh_plugin_register(&fh);
-	if (ret != 0) {
-		free_per_cpu_ids();
-		kfree(fh.handlers);
-		return ret;
-	}
+	if (ret != 0)
+		goto err_reg;
 	return 0;
+
+err_reg:
+	kfree(fh.handlers);
+err_handlers:
+	free_per_cpu_ids();	
+err_per_cpu:
+	lock_table_destroy();
+err:
+	return ret;
 }
 
 static void __exit
@@ -371,6 +558,7 @@ func_drd_exit_module(void)
 	kedr_fh_do_cleanup_calls(&groups);
 	kfree(fh.handlers);
 	free_per_cpu_ids();
+	lock_table_destroy();
 	
 	/* [NB] If additional cleanup is needed, do it here. */
 	return;

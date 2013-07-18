@@ -62,6 +62,45 @@ struct kedr_fh_drd_handlers
 	void (*post)(struct kedr_local_storage *, void *);
 	void *data;
 };
+/* ====================================================================== */
 
+/* kedr_fh_drd_common keeps track of the ordinary locks and write locks
+ * taken by the target modules.
+ * It is needed to properly handle the callbacks that are known to be 
+ * executed under a particular lock (e.g. rtnl_lock()) but the lock could be
+ * taken by the target driver or by the kernel proper.
+ * 
+ * Such callbacks may also execute other callbacks that have the same 
+ * locking rules. It may not happen often but it is possible.
+ * 
+ * To avoid generating nested lock/unlock events for the same lock, the 
+ * functions below can be used.
+ *
+ * Both functions take the PC of the lock or unlock operation, respectively,
+ * and the corresponding lock ID. Note that the functions DO NOT generate
+ * "lock"/"unlock" events themselves, it is the responsibility of the 
+ * caller.
+ * 
+ * Both functions operate atomically and can therefore be called 
+ * concurrently.
+ * 
+ * Can be called from any context.
+ * 
+ * kedr_fh_mark_locked() notifies kedr_fh_drd_common plugin that the lock 
+ * has been locked or a function has started that is known to execute under
+ * this lock. If the lock is already marked as locked, the function does
+ * not change it and returns 0. Otherwise, it marks it as locked and 
+ * returns 1. A negative value is returned in case of an error.
+ * 
+ * kedr_fh_mark_unlocked() marks the lock as unlocked.
+ *
+ * [NB] Do not use these functions for read locks because it is OK for
+ * several threads in the driver to keep the same read lock locked at the
+ * same time. */
+int
+kedr_fh_mark_locked(unsigned long pc, unsigned long lock_id);
+
+void
+kedr_fh_mark_unlocked(unsigned long pc, unsigned long lock_id);
 /* ====================================================================== */
 #endif /* FH_DRD_COMMON_H_1226_INCLUDED */
