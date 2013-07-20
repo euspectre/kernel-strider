@@ -178,8 +178,22 @@ struct kedr_local_storage
 	 * areas at a whim. So if a post handler for that function needs
 	 * some of these stack parameters, the pre handler could save 
 	 * these in 'data' (or allocate a structure and save its address
-	 * in data). */
+	 * in data). 
+	 *
+	 * [NB] Do not use this field to pass data from the pre to the post
+	 * handler of a callback function (see kedr_func_info::*_handler).
+	 * The callback may call a function the handling of which involves 
+	 * 'ls->data' and that would make a mess. 
+	 *
+	 * 'ls->data' is intended to be used in the handlers for the 
+	 * exported functions. 
+	 * Use 'ls->cbdata' in the handlers for callbacks to avoid 
+	 * collisions. */
 	unsigned long data;
+	
+	/* Similar to 'data' but for use in pre and post handlers of the 
+	 * callbacks, see kedr_func_info::*_handler. */
+	unsigned long cbdata;
 
 	/* Index of the thread, an integer number assigned to each thread in
 	 * the order the thread enters the target module.
@@ -187,6 +201,16 @@ struct kedr_local_storage
 	 * (see the description of 'sampling_rate' parameter of the core),
 	 * this field will be 0. */
 	unsigned long tindex;
+
+	/* This field can be used by the function handling plugins to track
+	 * the status of the locks without using 'data' field which may be
+	 * needed for some other purpose.
+	 * A plugin may, for example, use 'lock_status' as follows. For each
+	 * callback in the target module known to execute under a particular
+	 * lock, the pre handler might set a corresponding bit in
+	 * 'lock_status' if it has emitted "lock" event and the post handler
+	 * needs to emit "unlock" event. */
+	unsigned long lock_status;
 };
 
 /* The allocator of kedr_local_storage instances. 

@@ -178,7 +178,7 @@ test_second_pre(struct kedr_local_storage *ls)
 	/* Save the argument #8 in the local storage for later use in the
 	 * post-handler. This argument is passed on stack both on x86-32
 	 * and on x86-64. */
-	ls->data = KEDR_LS_ARG8(ls);
+	ls->cbdata = KEDR_LS_ARG8(ls);
 	
 	data = rcu_dereference(ls->fi->data);
 	if (data != (void *)&first_post_ok) {
@@ -201,11 +201,11 @@ test_second_post(struct kedr_local_storage *ls)
 	if (check_args_post(ls) != 0)
 		return;
 	
-	if (ls->data != KEDR_TEST_ARG8) {
+	if (ls->cbdata != KEDR_TEST_ARG8) {
 		pr_warning(KEDR_MSG_PREFIX 
 		"test_second_post(): the saved value of the argument #8 "
 		"(0x%lx) differs from the expected one (0x%lx).\n",
-			ls->data, (unsigned long)KEDR_TEST_ARG8);
+			ls->cbdata, (unsigned long)KEDR_TEST_ARG8);
 		return;
 	}
 	

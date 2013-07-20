@@ -296,8 +296,8 @@ kedr_fh_plugin_unregister(struct kedr_fh_plugin *fh);
  * careful when using the corresponding KEDR_LS_ARG*() in the post
  * handlers. If it is necessary to access the initial value of such
  * argument in a post handler, it can be useful to save the value of that
- * argument to 'ls->data' in a pre handler and use that saved value in the
- * post handler.
+ * argument to 'ls->data' or 'ls->cbdata', whichever is appropriate, in a 
+ * pre handler and use that saved value in the post handler.
  *
  * Neither KEDR_LS_ARGn() nor KEDR_LS_ARGn_VA() can be used in the handlers
  * for the functions with 'fastcall' attribute on x86-32. Same for the
