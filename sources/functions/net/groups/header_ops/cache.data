@@ -1,0 +1,14 @@
+[group]
+	# Name of the target function
+	function.name = cache
+	
+	code.pre =>>
+	struct neighbour *neigh = (struct neighbour *)KEDR_LS_ARG1(ls);
+	handle_pre_common(ls, neigh->dev);
+	<<
+
+	code.post =>>
+	struct neighbour *neigh = (struct neighbour *)KEDR_LS_ARG1(ls);
+	handle_post_common(ls, neigh->dev);
+	<<
+#######################################################################

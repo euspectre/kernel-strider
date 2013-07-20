@@ -1,0 +1,14 @@
+[group]
+	# Name of the target function
+	function.name = create
+	
+	code.pre =>>
+	struct net_device *dev = (struct net_device *)KEDR_LS_ARG2(ls);
+	handle_pre_common(ls, dev);
+	<<
+
+	code.post =>>
+	struct net_device *dev = (struct net_device *)KEDR_LS_ARG2(ls);
+	handle_post_common(ls, dev);
+	<<
+#######################################################################

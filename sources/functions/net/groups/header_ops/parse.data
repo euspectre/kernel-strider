@@ -1,0 +1,14 @@
+[group]
+	# Name of the target function
+	function.name = parse
+	
+	code.pre =>>
+	struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG1(ls);
+	handle_pre_common(ls, skb->dev);
+	<<
+
+	code.post =>>
+	struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG1(ls);
+	handle_post_common(ls, skb->dev);
+	<<
+#######################################################################
