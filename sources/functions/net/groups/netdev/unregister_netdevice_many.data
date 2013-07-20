@@ -3,10 +3,53 @@
 	function.name = unregister_netdevice_many
 	
 	code.pre =>>
-	// TODO
-	<<
+	/* We need to save the addresses of struct net_device instances
+	 * here so that they can be used in the post handler. This is
+	 * because the list we have here is likely to be emptied by 
+	 * then.
+	 *
+	 * We take into account that the list cannot change while we are
+	 * here in the pre handler: the target function is executed 
+	 * under rtnl_lock() and so is unregister_netdevice_queue() 
+	 * which alone may add elements to the list. */
+	struct list_head *head = (struct list_head *)KEDR_LS_ARG1(ls);
+	struct net_device *dev;
+	unsigned int n = 0;
 
+	list_for_each_entry(dev, head, unreg_list)
+		++n;
+	
+	if (n > 0) {
+		struct net_device **devs;
+		
+		/* Allocate a NULL-terminated array, hence (+ 1). */
+		devs = kzalloc((n + 1) * sizeof(devs[0]), GFP_KERNEL);
+		if (devs != NULL) {
+			n = 0;
+			list_for_each_entry(dev, head, unreg_list) {
+				devs[n] = dev;
+				++n;
+			}
+			ls->data = (unsigned long)devs;
+		}
+		else {
+			pr_warning(KEDR_MSG_PREFIX 
+			"unregister_netdevice_many: pre: out of memory.\n");
+			/* [NB] ls->data remains 0. */
+		}
+	}
+	<<
+		
 	code.post =>>
-	// TODO
+	if (ls->data) {
+		struct net_device **devs = (struct net_device **)ls->data;
+		unsigned int n = 0;
+		
+		while (devs[n] != NULL) {
+			handle_unregister_post(ls, devs[n]);
+			++n;
+		}
+		kfree(devs);
+	}
 	<<
 #######################################################################

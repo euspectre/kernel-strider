@@ -3,10 +3,18 @@
 	function.name = free_netdev
 	
 	code.pre =>>
-	// TODO
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long addr = KEDR_LS_ARG1(ls);
+
+	if (addr != 0)
+		kedr_eh_on_free_pre(ls->tid, info->pc, addr);
 	<<
 
 	code.post =>>
-	// TODO
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long addr = KEDR_LS_ARG1(ls);
+
+	if (addr != 0)
+		kedr_eh_on_free_pre(ls->tid, info->pc, addr);
 	<<
 #######################################################################

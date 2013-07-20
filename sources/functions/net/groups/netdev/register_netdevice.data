@@ -3,10 +3,7 @@
 	function.name = register_netdevice
 	
 	code.pre =>>
-	// TODO
-	<<
-
-	code.post =>>
-	// TODO
+	struct net_device *dev = (struct net_device *)KEDR_LS_ARG1(ls);
+	handle_register_pre(ls, dev);
 	<<
 #######################################################################

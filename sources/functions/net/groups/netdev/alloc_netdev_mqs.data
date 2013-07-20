@@ -3,10 +3,10 @@
 	function.name = alloc_netdev_mqs
 	
 	code.pre =>>
-	// TODO
+	handle_alloc_pre(ls);
 	<<
 
 	code.post =>>
-	// TODO
+	handle_alloc_post(ls);
 	<<
 #######################################################################

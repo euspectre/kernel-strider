@@ -2,11 +2,15 @@
 	# Name of the target function
 	function.name = unregister_netdevice_queue
 	
-	code.pre =>>
-	// TODO
-	<<
-
 	code.post =>>
-	// TODO
+	struct net_device *dev = (struct net_device *)KEDR_LS_ARG1(ls);
+	struct list_head *head = (struct list_head *)KEDR_LS_ARG2(ls);
+
+	if (head == NULL)
+		handle_unregister_post(ls, dev);
+
+	/* If 'head' is NULL, unregister_netdevice_queue() unregisters the
+	 * device at once. Otherwise, unregister_netdevice_many() should
+	 * actually do the job. */
 	<<
 #######################################################################

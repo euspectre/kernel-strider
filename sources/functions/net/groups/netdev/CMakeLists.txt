@@ -6,7 +6,9 @@ kmodule_configure_kernel_functions(functions OPTIONAL
 	"alloc_etherdev_mqs"
 	"alloc_netdev_mq"
 	"alloc_netdev_mqs"
+
 	"free_netdev"
+
 	"register_netdev"
 	"register_netdevice"
 	"unregister_netdev"
