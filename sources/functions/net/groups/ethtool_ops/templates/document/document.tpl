@@ -26,11 +26,10 @@
 #include "config.h"
 /* ====================================================================== */
 
-/* The following happens-before relations are expressed here.
+/* The standard happens-before relations w.r.t. register/unregister_netdev*
+ * are expressed here. 
  *
- * TODO
- */
-
+ * Besides that, all ethtool_ops callbacks execute under rtnl_lock. */
 /* ====================================================================== */
 <$if concat(function.name)$>
 <$block : join(\n\n)$>
@@ -40,13 +39,28 @@
 static void
 common_pre(struct kedr_local_storage *ls)
 {
-	// TODO
+	/* Each callback has struct net_device *dev as the first arg. */
+	unsigned long dev = KEDR_LS_ARG1(ls);
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+
+	kedr_rtnl_locked_start(ls, ls->fi->addr);
+
+	/* Relation #1 */
+	kedr_happens_after(tid, pc, dev);	
 }
 
 static void
 common_post(struct kedr_local_storage *ls)
 {
-	// TODO
+	/* Each callback has struct net_device *dev as the first arg. */
+	unsigned long dev = KEDR_LS_ARG1(ls);
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+	
+	/* Relation #2 */
+	kedr_happens_before(tid, pc, dev + 1);
+	kedr_rtnl_locked_end(ls, ls->fi->addr);
 }
 
 /* Set the handlers for the ethtool operations. */
