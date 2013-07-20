@@ -3,10 +3,10 @@
 	function.name = rtnl_lock
 	
 	code.pre =>>
-	// TODO
+	on_rtnl_lock_pre(ls);
 	<<
 
 	code.post =>>
-	// TODO
+	on_rtnl_lock_post(ls);
 	<<
 #######################################################################

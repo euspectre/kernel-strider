@@ -3,10 +3,10 @@
 	function.name = rtnl_unlock
 	
 	code.pre =>>
-	// TODO
+	on_rtnl_unlock_pre(ls);
 	<<
 
 	code.post =>>
-	// TODO
+	on_rtnl_unlock_post(ls);
 	<<
 #######################################################################

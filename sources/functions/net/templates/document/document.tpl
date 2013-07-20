@@ -34,16 +34,6 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
-/* As the mutex used in rntl_lock() is not available for the drivers
- * directly, we provide our own ID for it (to be used in kedr_eh_on_lock(),
- * etc.).
- * We use an address of a variable for this purpose to make sure the ID
- * never conflicts with other IDs, which are addresses of some objects too.
- */
-static unsigned long rtnl_lock_stub;
-static unsigned long rtnl_lock_id = (unsigned long)&rtnl_lock_stub;
-/* ====================================================================== */
-
 /* The list of function groups. */
 static LIST_HEAD(groups);
 /* ====================================================================== */

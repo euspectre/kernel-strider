@@ -27,30 +27,52 @@
 static void
 handle_pre_common(struct kedr_local_storage *ls)
 {
-	// TODO
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+	void *data;
+
+	data = rcu_dereference(ls->fi->data);
+	if (data == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+		"rtnl_link_ops: handle_pre_common(): data is NULL.\n");
+		return;
+	}
+
+	/* Relation #1 */
+	kedr_happens_after(tid, pc, (unsigned long)data);
 }
 
 static void
 handle_post_common(struct kedr_local_storage *ls)
 {
-	// TODO
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+	void *data;
+
+	data = rcu_dereference(ls->fi->data);
+	if (data == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+		"rtnl_link_ops: handle_post_common(): data is NULL.\n");
+		return;
+	}
+
+	/* Relation #2 */
+	kedr_happens_before(tid, pc, (unsigned long)data + 1);
 }
 
 /* Pre and post handlers for the callbacks that execute under rtnl_lock. */
 static void
 handle_pre_locked(struct kedr_local_storage *ls)
 {
-	// TODO
+	kedr_rtnl_locked_start(ls, ls->fi->addr);
 	handle_pre_common(ls);
-	// TODO
 }
 
 static void
 handle_post_locked(struct kedr_local_storage *ls)
 {
-	// TODO
 	handle_post_common(ls);
-	// TODO
+	kedr_rtnl_locked_end(ls, ls->fi->addr);
 }
 /* ====================================================================== */
 <$if concat(function.name)$>

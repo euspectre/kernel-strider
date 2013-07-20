@@ -3,10 +3,12 @@
 	function.name = rtnl_trylock
 	
 	code.pre =>>
-	// TODO
+	on_rtnl_lock_pre(ls);
 	<<
 
 	code.post =>>
-	// TODO
+	int ret = (int)KEDR_LS_RET_VAL(ls);
+	if (ret == 1)
+		on_rtnl_lock_post(ls);
 	<<
 #######################################################################

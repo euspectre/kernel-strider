@@ -24,14 +24,129 @@
 #include "config.h"
 /* ====================================================================== */
 
-/* TODO: describe HB relations
+/* This group provides the API to handle rtnl-locked callbacks and processes
+ * rtnl_lock/unlock/trylock functions. 
+ *
+ * Besides that, the following happens-before relations and locking events
+ * for rtnl_link_ops are expressed here:
+ *
+ * 1. Start of *rtnl_link_register() HB start of each callback.
+ *    ID: (ulong)ops.
+ *
+ * 2. End of each callback HB *rtnl_link_unregister().
+ *    ID: (ulong)ops + 1.
+ *
+ * 3. Some of the callbacks execute under rtnl_lock. */
+/* ====================================================================== */
+
+/* As the mutex used in rntl_lock() is not available for the drivers
+ * directly, we provide our own ID for it (to be used in kedr_eh_on_lock(),
+ * etc.).
+ * We use an address of a variable for this purpose to make sure the ID
+ * never conflicts with other IDs, which are addresses of some objects too.
  */
+static unsigned long rtnl_lock_stub;
+static unsigned long rtnl_lock_id = (unsigned long)&rtnl_lock_stub;
+
+static void
+on_rtnl_lock_pre(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	kedr_eh_on_lock_pre(ls->tid, info->pc, rtnl_lock_id, KEDR_LT_MUTEX);
+}
+
+static void
+on_rtnl_lock_post(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	if (kedr_fh_mark_locked(info->pc, rtnl_lock_id) == 1)
+		kedr_eh_on_lock_post(ls->tid, info->pc, rtnl_lock_id,
+				     KEDR_LT_MUTEX);
+}
+
+static void
+on_rtnl_unlock_pre(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	kedr_fh_mark_unlocked(info->pc, rtnl_lock_id);
+	kedr_eh_on_unlock_pre(ls->tid, info->pc, rtnl_lock_id,
+			      KEDR_LT_MUTEX);
+}
+
+static void
+on_rtnl_unlock_post(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	kedr_eh_on_unlock_post(ls->tid, info->pc, rtnl_lock_id,
+			       KEDR_LT_MUTEX);
+}
+
+void
+kedr_rtnl_locked_start(struct kedr_local_storage *ls, unsigned long pc)
+{
+	/* Clear the bit for rtnl_lock in the status mask, just in case. */
+	ls->lock_status &= ~KEDR_LOCK_MASK_RTNL;
+
+	/* Emit "lock" event only if it has not been emitted higher in the
+	 * call chain. */
+	if (kedr_fh_mark_locked(pc, rtnl_lock_id) == 1) {
+		kedr_eh_on_lock(ls->tid, pc, rtnl_lock_id, KEDR_LT_MUTEX);
+		ls->lock_status |= KEDR_LOCK_MASK_RTNL;
+	}
+}
+
+void
+kedr_rtnl_locked_end(struct kedr_local_storage *ls, unsigned long pc)
+{
+	/* Emit "unlock" event only if "lock" event has been emitted on
+	 * entry to the function. */
+	if (ls->lock_status & KEDR_LOCK_MASK_RTNL) {
+		kedr_fh_mark_unlocked(pc, rtnl_lock_id);
+		kedr_eh_on_unlock(ls->tid, pc, rtnl_lock_id, KEDR_LT_MUTEX);
+		ls->lock_status &= ~KEDR_LOCK_MASK_RTNL; /* just in case */
+	}
+}
 /* ====================================================================== */
 
 /* [NB] Provided by rtnl_link_ops subgroup. */
 void
 kedr_set_rtnl_link_ops_handlers(const struct rtnl_link_ops *ops);
+/* ====================================================================== */
 
+static void
+handle_register_pre(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct rtnl_link_ops *ops =
+		(struct rtnl_link_ops *)KEDR_LS_ARG1(ls);
+
+	if (ops == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"rtnl: handle_register_pre(): ops is NULL.\n");
+		return;
+	}
+		
+	/* Relation #1 */
+	kedr_happens_before(ls->tid, info->pc, (unsigned long)ops);
+	kedr_set_rtnl_link_ops_handlers(ops);
+}
+
+static void
+handle_unregister_post(struct kedr_local_storage *ls)
+{
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct rtnl_link_ops *ops =
+		(struct rtnl_link_ops *)KEDR_LS_ARG1(ls);
+
+	if (ops == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"rtnl: handle_unregister_post(): ops is NULL.\n");
+		return;
+	}
+
+	/* Relation #2 */
+	kedr_happens_after(ls->tid, info->pc, (unsigned long)ops + 1);
+}
 /* ====================================================================== */
 <$if concat(function.name)$>
 <$block : join(\n\n)$>

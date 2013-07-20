@@ -4,11 +4,12 @@ set(PLUGIN_SHORT_NAME "net")
 
 # The groups of functions to be handled.
 set(FUNCTION_GROUPS
-	"rtnl"           # TODO rtnl_lock(), ...
-	"netdev"         # TODO alloc/free netdev, register/unregister
-	"net_device_ops" # TODO callbacks from struct net_device_ops
-	"ethtool_ops"    # TODO callbacks from struct ethtool_ops
-	"napi"           # TODO NAPI-related functions
+	"rtnl"           # rtnl_lock(), ...
+	"netdev"         # alloc/free netdev, register/unregister
+	"net_device_ops" # callbacks from struct net_device_ops
+	"ethtool_ops"    # callbacks from struct ethtool_ops
+	"header_ops"     # callbacks from struct header_ops
+	"napi"           # NAPI-related functions
 )
 ########################################################################
 

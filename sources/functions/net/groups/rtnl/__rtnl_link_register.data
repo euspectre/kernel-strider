@@ -3,10 +3,6 @@
 	function.name = __rtnl_link_register
 	
 	code.pre =>>
-	// TODO
-	<<
-
-	code.post =>>
-	// TODO
+	handle_register_pre(ls);
 	<<
 #######################################################################
