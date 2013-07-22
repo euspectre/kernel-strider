@@ -1,12 +1,10 @@
 [group]
 	# Name of the target function
 	function.name = ndo_fdb_dump
-	
-	code.pre =>>
-	// TODO
+
+	get_netdev =>>
+	dev = (struct net_device *)KEDR_LS_ARG3(ls);
 	<<
 
-	code.post =>>
-	// TODO
-	<<
+	is_rtnl_locked = yes
 #######################################################################

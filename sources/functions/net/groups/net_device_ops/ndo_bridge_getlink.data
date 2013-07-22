@@ -1,12 +1,10 @@
 [group]
 	# Name of the target function
 	function.name = ndo_bridge_getlink
-	
-	code.pre =>>
-	// TODO
-	<<
 
-	code.post =>>
-	// TODO
+	is_rtnl_locked = yes
+
+	get_netdev =>>
+	dev = (struct net_device *)KEDR_LS_ARG4(ls);
 	<<
 #######################################################################

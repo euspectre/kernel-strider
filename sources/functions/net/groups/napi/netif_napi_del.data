@@ -2,11 +2,11 @@
 	# Name of the target function
 	function.name = netif_napi_del
 	
-	code.pre =>>
-	// TODO
-	<<
-
 	code.post =>>
-	// TODO
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long napi = KEDR_LS_ARG1(ls);
+	
+	/* Relation #4 */
+	kedr_happens_after(ls->tid, info->pc, napi + 1);
 	<<
 #######################################################################

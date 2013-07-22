@@ -62,6 +62,18 @@ if (NOT callbacks)
 		"No known callbacks found in struct net_device_ops.")
 endif ()
 
+# ndo_fdb_add and ndo_fdb_del have different signatures in different 
+# kernels. Find the correct signatures here.
+list(FIND callbacks "ndo_fdb_add" func_index)
+if (NOT (func_index EQUAL -1))
+	check_ndo_fdb_add()
+endif()
+
+list(FIND callbacks "ndo_fdb_del" func_index)
+if (NOT (func_index EQUAL -1))
+	check_ndo_fdb_del()
+endif()
+
 # We can use the standard API to generate the source file for a group of
 # functions here despite that callbacks rather than exported functions are
 # to be handled.

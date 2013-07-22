@@ -82,4 +82,15 @@
 #cmakedefine REQUEST_FW_HAS_7_ARGS
 /* ====================================================================== */
 
+/* The following 2 defines specify whether net_device_ops::ndo_fdb_add() 
+ * has struct net_device pointer as its 2nd or 3rd argument. */
+#cmakedefine KEDR_NDO_FDB_ADD_DEV2
+#cmakedefine KEDR_NDO_FDB_ADD_DEV3
+
+/* The following 2 defines specify whether net_device_ops::ndo_fdb_del() 
+ * has struct net_device pointer as its 2nd or 3rd argument. */
+#cmakedefine KEDR_NDO_FDB_DEL_DEV2
+#cmakedefine KEDR_NDO_FDB_DEL_DEV3
+/* ====================================================================== */
+
 #endif /* CONFIG_H_1734_INCLUDED */

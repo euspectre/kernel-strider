@@ -1,12 +1,6 @@
 [group]
 	# Name of the target function
 	function.name = ndo_vlan_rx_kill_vid
-	
-	code.pre =>>
-	// TODO
-	<<
 
-	code.post =>>
-	// TODO
-	<<
+	is_rtnl_locked = yes
 #######################################################################

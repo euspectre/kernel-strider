@@ -1,12 +1,8 @@
 [group]
 	# Name of the target function
 	function.name = ndo_neigh_construct
-	
-	code.pre =>>
-	// TODO
-	<<
 
-	code.post =>>
-	// TODO
+	get_netdev =>>
+	dev = ((struct neighbour *)KEDR_LS_ARG1(ls))->dev;
 	<<
 #######################################################################

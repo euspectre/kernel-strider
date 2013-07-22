@@ -1,12 +1,6 @@
 [group]
 	# Name of the target function
 	function.name = ndo_select_queue
-	
-	code.pre =>>
-	// TODO
-	<<
 
-	code.post =>>
-	// TODO
-	<<
+	is_bh_disabled = yes
 #######################################################################

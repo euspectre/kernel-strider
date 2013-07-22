@@ -1,12 +1,18 @@
 [group]
 	# Name of the target function
 	function.name = ndo_set_multicast_list
+
+	is_bh_disabled = yes
 	
 	code.pre =>>
-	// TODO
+		unsigned long lock_id = (unsigned long)&dev->addr_list_lock;
+		kedr_locked_start(ls, pc, KEDR_LOCK_MASK_ADDR, lock_id,
+				  KEDR_LT_SPINLOCK);
 	<<
 
 	code.post =>>
-	// TODO
+		unsigned long lock_id = (unsigned long)&dev->addr_list_lock;
+		kedr_locked_end(ls, pc, KEDR_LOCK_MASK_ADDR, lock_id,
+				KEDR_LT_SPINLOCK);
 	<<
 #######################################################################

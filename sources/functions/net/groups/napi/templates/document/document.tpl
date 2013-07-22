@@ -23,11 +23,69 @@
 #include "config.h"
 /* ====================================================================== */
 
-/* The following happens-before relations are expressed here.
+/* The following happens-before and other sync relations are expressed here.
+ * 
+ * 1, 2 - The standard relations for a 'poll' callback w.r.t registering and
+ * unregistering of the net device. Needed because not all drivers call 
+ * netif_napi_del() and besides that, we currently cannot track 
+ * netif_napi_enable/disable without using annotations. Taking HB relations 
+ * with register/unregister_netdev* into account allows to get rid of at 
+ * least part of false positives.
  *
- * TODO
- */
+ * 3. Start of netif_napi_add() HB start of the callback (poll()).
+ *    ID: (ulong)napi.
+ *
+ * 4. End of the callback HB end of netif_napi_del().
+ *    ID: (ulong)napi + 1.
+ *
+ * 5. For a given napi_struct instance, the callback is executed under
+ * napi->poll_lock spinlock if CONFIG_NETPOLL is set in the kernel config. 
+ * For simplicity, we assume this lock is always taken when the callback
+ * executes, no matter if CONFIG_NETPOLL is set.
+ *    Lock ID: (ulong)napi + 2.
+ *
+ * 6. The callback executes in BH context. */
+/* ====================================================================== */
 
+static void
+poll_pre(struct kedr_local_storage *ls)
+{
+	struct napi_struct *napi = (struct napi_struct *)KEDR_LS_ARG1(ls);
+	unsigned long func = ls->fi->addr;
+	unsigned long tid = ls->tid;
+	
+	/* Relation #6 */
+	kedr_bh_start(tid, func);
+	
+	/* Relation #5 */
+	kedr_locked_start(ls, func, KEDR_LOCK_MASK_POLL, 
+			  (unsigned long)napi + 2, KEDR_LT_SPINLOCK);
+	/* Relation #1 */
+	kedr_happens_after(tid, func, (unsigned long)napi->dev);
+	
+	/* Relation #3 */
+	kedr_happens_after(tid, func, (unsigned long)napi);
+}
+
+static void
+poll_post(struct kedr_local_storage *ls)
+{
+	struct napi_struct *napi = (struct napi_struct *)KEDR_LS_ARG1(ls);
+	unsigned long func = ls->fi->addr;
+	unsigned long tid = ls->tid;
+	
+	/* Relation #2 */
+	kedr_happens_before(tid, func, (unsigned long)napi->dev + 1);
+	
+	/* Relation #4 */
+	kedr_happens_before(tid, func, (unsigned long)napi + 1);
+	
+	/* Relation #5 */
+	kedr_locked_end(ls, func, KEDR_LOCK_MASK_POLL, 
+			  (unsigned long)napi + 2, KEDR_LT_SPINLOCK);
+	/* Relation #6 */
+	kedr_bh_end(tid, func);
+}
 /* ====================================================================== */
 <$if concat(function.name)$>
 <$block : join(\n\n)$>

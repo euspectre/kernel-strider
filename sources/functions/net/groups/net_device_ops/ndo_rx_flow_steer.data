@@ -1,12 +1,4 @@
 [group]
 	# Name of the target function
 	function.name = ndo_rx_flow_steer
-	
-	code.pre =>>
-	// TODO
-	<<
-
-	code.post =>>
-	// TODO
-	<<
 #######################################################################

@@ -3,10 +3,15 @@
 	function.name = netif_napi_add
 	
 	code.pre =>>
-	// TODO
-	<<
-
-	code.post =>>
-	// TODO
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long napi = KEDR_LS_ARG2(ls);
+	void *poll = (void *)KEDR_LS_ARG3(ls);
+	
+	if (poll != NULL) {
+		kedr_set_func_handlers(poll, poll_pre, poll_post, 
+				       NULL, 0); 
+		/* Relation #3 */
+		kedr_happens_before(ls->tid, info->pc, napi);
+	}
 	<<
 #######################################################################

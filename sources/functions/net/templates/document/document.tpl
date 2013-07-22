@@ -20,6 +20,7 @@
 #include <linux/list.h>
 
 #include <kedr/kedr_mem/core_api.h>
+#include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/object_types.h>
 #include <kedr/fh_drd/common.h>
@@ -46,6 +47,37 @@ static struct kedr_fh_plugin fh = {
 };
 /* ====================================================================== */
 
+void
+kedr_locked_start(struct kedr_local_storage *ls, unsigned long pc, 
+		  unsigned long lock_mask, unsigned long lock_id,
+		  enum kedr_lock_type lock_type)
+{
+	/* Clear the bit for the lock in the status mask, just in case. */
+	ls->lock_status &= ~lock_mask;
+
+	/* Emit "lock" event only if it has not been emitted higher in the
+	 * call chain. */
+	if (kedr_fh_mark_locked(pc, lock_id) == 1) {
+		kedr_eh_on_lock(ls->tid, pc, lock_id, lock_type);
+		ls->lock_status |= lock_mask;
+	}
+}
+
+void
+kedr_locked_end(struct kedr_local_storage *ls, unsigned long pc, 
+		unsigned long lock_mask, unsigned long lock_id,
+		enum kedr_lock_type lock_type)
+{
+	/* Emit "unlock" event only if "lock" event has been emitted on
+	 * entry to the function. */
+	if (ls->lock_status & lock_mask) {
+		kedr_fh_mark_unlocked(pc, lock_id);
+		kedr_eh_on_unlock(ls->tid, pc, lock_id, lock_type);
+		ls->lock_status &= ~lock_mask; /* just in case */
+	}
+}
+/* ====================================================================== */
+
 static int __init
 func_drd_init_module(void)
 {
@@ -64,7 +96,7 @@ func_drd_init_module(void)
 		return ret;
 	}
 
-	pr_info(KEDR_MSG_PREFIX "Plugin loaded.");
+	pr_info(KEDR_MSG_PREFIX "Plugin loaded.\n");
 	return 0;
 }
 
@@ -77,7 +109,7 @@ func_drd_exit_module(void)
 	
 	/* [NB] If additional cleanup is needed, do it here. */
 
-	pr_info(KEDR_MSG_PREFIX "Plugin unloaded.");
+	pr_info(KEDR_MSG_PREFIX "Plugin unloaded.\n");
 	return;
 }
 

@@ -84,27 +84,15 @@ on_rtnl_unlock_post(struct kedr_local_storage *ls)
 void
 kedr_rtnl_locked_start(struct kedr_local_storage *ls, unsigned long pc)
 {
-	/* Clear the bit for rtnl_lock in the status mask, just in case. */
-	ls->lock_status &= ~KEDR_LOCK_MASK_RTNL;
-
-	/* Emit "lock" event only if it has not been emitted higher in the
-	 * call chain. */
-	if (kedr_fh_mark_locked(pc, rtnl_lock_id) == 1) {
-		kedr_eh_on_lock(ls->tid, pc, rtnl_lock_id, KEDR_LT_MUTEX);
-		ls->lock_status |= KEDR_LOCK_MASK_RTNL;
-	}
+	kedr_locked_start(ls, pc, KEDR_LOCK_MASK_RTNL, rtnl_lock_id, 
+			  KEDR_LT_MUTEX);
 }
 
 void
 kedr_rtnl_locked_end(struct kedr_local_storage *ls, unsigned long pc)
 {
-	/* Emit "unlock" event only if "lock" event has been emitted on
-	 * entry to the function. */
-	if (ls->lock_status & KEDR_LOCK_MASK_RTNL) {
-		kedr_fh_mark_unlocked(pc, rtnl_lock_id);
-		kedr_eh_on_unlock(ls->tid, pc, rtnl_lock_id, KEDR_LT_MUTEX);
-		ls->lock_status &= ~KEDR_LOCK_MASK_RTNL; /* just in case */
-	}
+	kedr_locked_end(ls, pc, KEDR_LOCK_MASK_RTNL, rtnl_lock_id, 
+			  KEDR_LT_MUTEX);
 }
 /* ====================================================================== */
 

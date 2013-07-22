@@ -1,12 +1,16 @@
 [group]
 	# Name of the target function
 	function.name = ndo_fdb_del
-	
-	code.pre =>>
-	// TODO
+
+	get_netdev =>>
+#if defined(KEDR_NDO_FDB_DEL_DEV2)
+	dev = (struct net_device *)KEDR_LS_ARG2(ls);
+#elif defined(KEDR_NDO_FDB_DEL_DEV3)
+	dev = (struct net_device *)KEDR_LS_ARG3(ls);
+#else
+# error "Unknown signature of ndo_fdb_del()."
+#endif
 	<<
 
-	code.post =>>
-	// TODO
-	<<
+	is_rtnl_locked = yes
 #######################################################################

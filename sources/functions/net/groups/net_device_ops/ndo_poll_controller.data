@@ -1,12 +1,22 @@
 [group]
 	# Name of the target function
 	function.name = ndo_poll_controller
-	
+
+	is_bh_disabled = yes
+
 	code.pre =>>
-	// TODO
+		/* Relation w.r.t. ndo_open, ndo_stop, ndo_validate_addr */
+		kedr_happens_after(ls->tid, pc, (unsigned long)dev + 3);
+
+		/* Relation w.r.t. itself */
+		kedr_happens_after(ls->tid, pc, (unsigned long)dev + 4);
 	<<
 
 	code.post =>>
-	// TODO
+		/* Relation w.r.t. itself */
+		kedr_happens_before(ls->tid, pc, (unsigned long)dev + 4);
+
+		/* Relation w.r.t. ndo_open, ndo_stop, ndo_validate_addr */
+		kedr_happens_before(ls->tid, pc, (unsigned long)dev + 2);
 	<<
 #######################################################################

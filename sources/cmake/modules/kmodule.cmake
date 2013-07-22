@@ -705,3 +705,116 @@ macro(check_request_fw)
 endmacro(check_request_fw)
 ############################################################################
 
+# Check if net_device_ops::ndo_fdb_add has 'struct net_device *' as its 
+# 2nd or 3rd argument. Sets KEDR_NDO_FDB_ADD_DEV2 or KEDR_NDO_FDB_ADD_DEV3
+# (or none) accordingly.
+#
+# Note that we add '-Werror' to the compile definitions because GCC only
+# warns about incompatible pointer types if the type of the callback does 
+# not match but does not issue an error by default.
+function(check_ndo_fdb_add)
+	set(check_ndo_fdb_add_message 
+		"Checking the signature of net_device_ops::ndo_fdb_add()"
+	)
+	message(STATUS "${check_ndo_fdb_add_message}")
+	if (DEFINED NDO_FDB_ADD_SIG)
+		set(check_ndo_fdb_add_message 
+"${check_ndo_fdb_add_message} [cached] - done"
+		)
+	else ()
+		kmodule_try_compile(ndo_fdb_add_impl 
+			"${CMAKE_BINARY_DIR}/check_ndo_fdb_add"
+			"${kmodule_test_sources_dir}/check_ndo_fdb_add/module.c"
+			COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_ADD_DEV2"
+		)
+		if (ndo_fdb_add_impl)
+			set(NDO_FDB_ADD_SIG "yes" CACHE INTERNAL
+				"Is the signature of net_device_ops::ndo_fdb_add() known?"
+			)
+			set(KEDR_NDO_FDB_ADD_DEV2 1 CACHE INTERNAL 
+				"net_device_ops::ndo_fdb_add(): dev is the 2nd arg.")
+		else ()
+			kmodule_try_compile(ndo_fdb_add_impl3 
+				"${CMAKE_BINARY_DIR}/check_ndo_fdb_add"
+				"${kmodule_test_sources_dir}/check_ndo_fdb_add/module.c"
+				COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_ADD_DEV3"
+			)
+			if (ndo_fdb_add_impl3)
+				set(NDO_FDB_ADD_SIG "yes" CACHE INTERNAL
+					"Is the signature of net_device_ops::ndo_fdb_add() known?"
+				)
+				set(KEDR_NDO_FDB_ADD_DEV3 1 CACHE INTERNAL 
+					"net_device_ops::ndo_fdb_add(): dev is the 3rd arg.")
+			else ()
+				message(FATAL_ERROR 
+					"Unknown signature of net_device_ops::ndo_fdb_add()")
+			endif (ndo_fdb_add_impl3)
+		endif (ndo_fdb_add_impl)
+				
+		set(check_ndo_fdb_add_message 
+"${check_ndo_fdb_add_message} - done"
+		)
+	endif (DEFINED NDO_FDB_ADD_SIG)
+	message(STATUS "${check_ndo_fdb_add_message}")
+endfunction(check_ndo_fdb_add)
+
+# A similar checker but for ndo_fdb_del.
+function(check_ndo_fdb_del)
+	set(check_ndo_fdb_del_message 
+		"Checking the signature of net_device_ops::ndo_fdb_del()"
+	)
+	message(STATUS "${check_ndo_fdb_del_message}")
+	if (DEFINED NDO_FDB_DEL_SIG)
+		set(check_ndo_fdb_del_message 
+"${check_ndo_fdb_del_message} [cached] - done"
+		)
+	else ()
+		kmodule_try_compile(ndo_fdb_del_impl 
+			"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
+			"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
+			COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV2"
+		)
+		if (ndo_fdb_del_impl)
+			set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
+				"Is the signature of net_device_ops::ndo_fdb_del() known?"
+			)
+			set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL 
+				"net_device_ops::ndo_fdb_del(): dev is the 2nd arg.")
+		else ()
+			kmodule_try_compile(ndo_fdb_del_impl3 
+				"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
+				"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
+				COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV3"
+			)
+			if (ndo_fdb_del_impl3)
+				set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
+					"Is the signature of net_device_ops::ndo_fdb_del() known?"
+				)
+				set(KEDR_NDO_FDB_DEL_DEV3 1 CACHE INTERNAL 
+					"net_device_ops::ndo_fdb_del(): dev is the 3rd arg.")
+			else ()
+				kmodule_try_compile(ndo_fdb_del_impl 
+					"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
+					"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
+					COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV2_NOCONST"
+				)
+				if (ndo_fdb_del_impl)
+					set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
+						"Is the signature of net_device_ops::ndo_fdb_del() known?"
+					)
+					set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL 
+						"net_device_ops::ndo_fdb_del(): dev is the 2nd arg.")
+				else()
+					message(FATAL_ERROR 
+						"Unknown signature of net_device_ops::ndo_fdb_del()")
+				endif (ndo_fdb_del_impl)
+			endif (ndo_fdb_del_impl3)
+		endif (ndo_fdb_del_impl)
+				
+		set(check_ndo_fdb_del_message 
+"${check_ndo_fdb_del_message} - done"
+		)
+	endif (DEFINED NDO_FDB_DEL_SIG)
+	message(STATUS "${check_ndo_fdb_del_message}")
+endfunction(check_ndo_fdb_del)
+############################################################################

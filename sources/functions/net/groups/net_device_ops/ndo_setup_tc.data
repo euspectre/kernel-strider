@@ -1,12 +1,6 @@
 [group]
 	# Name of the target function
 	function.name = ndo_setup_tc
-	
-	code.pre =>>
-	// TODO
-	<<
 
-	code.post =>>
-	// TODO
-	<<
+	is_rtnl_locked = yes
 #######################################################################
