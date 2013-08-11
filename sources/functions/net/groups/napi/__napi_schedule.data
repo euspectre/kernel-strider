@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = __napi_schedule
+	
+	code.pre =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	unsigned long napi = KEDR_LS_ARG1(ls);
+
+	/* Relation #3 */
+	kedr_happens_before(ls->tid, info->pc, napi);
+	<<
+#######################################################################

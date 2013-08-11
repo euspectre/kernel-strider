@@ -32,7 +32,8 @@
  * with register/unregister_netdev* into account allows to get rid of at 
  * least part of false positives.
  *
- * 3. Start of netif_napi_add() HB start of the callback (poll()).
+ * 3. Start of netif_napi_add() and start of __napi_schedule() HB start of 
+ * the callback (poll()).
  *    ID: (ulong)napi.
  *
  * 4. End of the callback HB end of netif_napi_del().
