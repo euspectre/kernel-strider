@@ -1,0 +1,305 @@
+#! /usr/bin/env python
+
+""" A helper script that starts and stops necessary components of KEDR
+framework.
+Currently, KernelStrider is supported, support for other tools will be added
+in the future.
+"""
+
+import os.path
+import os
+import argparse
+import sys
+import subprocess
+
+
+INSTALL_PREFIX = '@CMAKE_INSTALL_PREFIX@'
+MODULES_SUBDIR = 'lib/modules'
+
+# The file to contain the list of started components.
+running_file = '/run/kedr-running'
+
+
+class KModComponent(object):
+    """A component that is a kernel module with parameters.
+
+    'name' - name of the module.
+    'params' - list of names of the parameters, the parameters will be
+        passed to the kernel module when it is loaded into the kernel (if
+        set).
+    """
+
+    def __init__(self, name, params=None):
+        self.name = name        
+
+        if params:
+            self.params = dict([(par, None) for par in params])
+        else:
+            self.params = {}
+
+    def start(self, module_path, verbose=False):
+        """Start the component, i.e. load the module.
+
+        'module_path' - Path to the directory containing the module.
+        Returns False on failure, True if successful.
+        """
+        path = os.path.join(module_path, self.name + ".ko")
+        
+        param_spec = []
+        for par in self.params:
+            if self.params[par]:
+                param_spec.append(par + '=' + params[par])
+        
+        cmd = ['insmod', path]
+        cmd.extend(param_spec)
+
+        if verbose:
+            print 'Starting', self.name
+            print 'Command:', ' '.join(cmd)
+
+        try:
+            ret = subprocess.call(cmd)
+            if ret != 0:
+                print >> sys.stderr, ' '.join([
+                    'Failed to start the component:',
+                    'the command returned %d.' % ret])
+                return False
+            
+        except OSError as e:
+            print >> sys.stderr, '\n'.join([
+                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+            return False
+
+        return True
+
+    def stop(self, verbose=False):
+        """Stop the component, i.e. unload the module.
+
+        Returns False on failure, True if successful.
+        """
+        cmd = ['rmmod', self.name]
+        
+        if verbose:
+            print 'Stopping', self.name
+            print 'Command:', ' '.join(cmd)
+
+        try:
+            ret = subprocess.call(cmd)
+            if ret != 0:
+                print >> sys.stderr, ' '.join([
+                    'Failed to stop the component:',
+                    'the command returned %d.' % ret])
+                return False
+
+        except OSError as e:
+            print >> sys.stderr, '\n'.join([
+                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+            return False
+
+        return True
+
+
+def create_supported():
+    """Create the dictionary of the supported components.
+
+    Returns the dict {name: KModComponent} for the supported components.
+    """
+    comps = [
+        KModComponent('kedr_mem_core', ['targets']),
+        KModComponent('kedr_fh_drd_common'),
+        KModComponent('kedr_fh_drd_cdev'),
+        KModComponent('kedr_fh_drd_net'),
+        KModComponent('kedr_simple_trace_recorder', ['nr_data_pages'])]
+    return dict([(c.name, c) for c in comps])
+    
+
+def _process_kernel_strider(supported):
+    return [supported['kedr_mem_core'],
+            supported['kedr_fh_drd_common'],
+            supported['kedr_fh_drd_cdev'],
+            supported['kedr_fh_drd_net'],
+            supported['kedr_simple_trace_recorder']]
+
+
+def choose_components(tools, params):
+    """Create the components needed by the listed tools.
+
+    Returns the list of the components in the order they should be started.
+    """
+    known_tools = {'KernelStrider': _process_kernel_strider}
+    supported = create_supported()
+    components = []
+    
+    for tool in tools:
+        if tool in known_tools:
+            components.extend(known_tools[tool](supported))
+        else:
+            print >> sys.stderr, 'Unknown tool:', tool
+            return None
+
+    for par in params:
+        for comp in components:
+            if par in comp.params:
+                comp.params[par] = params[par]
+    
+    return components
+
+
+def start(components, module_path, verbose=False):
+    """Start all components, in order."""
+
+    if os.path.exists(running_file):
+        print >> sys.stderr, ' '.join([
+            'KEDR tools are already running or were not stopped properly.'])
+        if verbose:
+            print 'The special file', running_file, 'exists.',
+            print 'If KEDR tools are not running but just were not stopped',
+            print 'properly before reboot, etc., you can remove',
+            print running_file, 'and try again.'
+            print '\'lsmod | grep kedr\' will show if the main components',
+            print 'are loaded.'
+        return False
+
+    failed = False
+
+    rollback = []
+    for comp in components:
+        if comp.start(module_path, verbose=verbose):
+            rollback.insert(0, comp)
+        else:
+            failed = True
+            break
+
+    if failed:
+        if verbose:
+            print ' '.join(['Failed to start some components,',
+                            'performing rollback.'])
+        for comp in rollback:
+            comp.stop(verbose=verbose)
+    else:
+        try:
+            with open(running_file, "w") as rf:
+                for comp in rollback:
+                    rf.write(comp.name + '\n')
+                    
+        except IOError as e:
+            print >> sys.stderr, '\n'.join([
+                'Failed to write data to %s:' % running_file, str(e)])
+            for comp in rollback:
+                comp.stop(verbose=verbose)
+            failed = True
+
+    return not failed
+
+
+def stop(verbose=False):
+    """Stop all components listed in 'running_file', in order.
+
+    'supported' - the list of supported components.
+    """
+    is_ok = True
+    supported = create_supported()
+    
+    try:
+        with open(running_file, 'r') as rf:
+            for comp in rf:
+                comp = comp.strip()
+                if comp in supported:
+                    if not supported[comp].stop(verbose=verbose):
+                        is_ok = False
+                else:
+                    print >> sys.stderr, 'Unknown component:', comp
+                    is_ok = False
+
+    except IOError as e:
+        print >> sys.stderr, 'KEDR tools are not running.'
+        if verbose:
+            print 'Failed to open %s:\n%s' % (running_file, str(e))
+        is_ok = False
+
+    if is_ok:
+        if os.path.exists(running_file):
+            os.remove(running_file)
+        
+    return is_ok
+    
+        
+if __name__ == '__main__':
+    desc = 'This script starts and stops KEDR tools.'
+    usage = '\n'.join([
+        '',
+        '\t%(prog)s start [--tools=...] [--targets=...] [other options]',
+        '\t%(prog)s stop'])
+    
+    parser = argparse.ArgumentParser(description=desc, usage=usage)
+
+    grp_action = parser.add_argument_group('actions')
+    grp_action.add_argument('action', metavar='start|stop',
+                            choices=['start', 'stop'])
+
+    parser.add_argument(
+        '--tools', help='comma-separated list of KEDR tools to start')
+
+    parser.add_argument(
+        '--targets', help=' '.join([
+            'comma-separated list of target kernel modules;',
+            'if not specified, all modules loaded after KEDR tools',
+            'will be considered targets']),
+        default='*')
+
+    parser.add_argument(
+        '--prefix', help=' '.join([
+            'install prefix, if different from the default one',
+            '(%s)' % INSTALL_PREFIX]),
+        default=INSTALL_PREFIX)
+
+    parser.add_argument(
+        '--nr_data_pages', metavar='NUM',
+        help=''.join(['number of pages for the output buffer,',
+                      '2 - 65536, must be a power of 2']))
+
+    parser.add_argument(
+        '--verbose', help='if specified, more messages will be output',
+        action='store_true', default=False)
+
+    args = parser.parse_args()
+
+    # On some older systems, /run/ may be unavailable, /var/tmp/ will be
+    # used instead.
+    if not os.path.exists('/run/'):
+        running_file = '/var/tmp/kedr-running'
+
+    if args.action == 'start':
+        if not args.tools:
+            args.tools = 'KernelStrider'
+
+        tools = set(args.tools.split(','))
+
+        # [NB] If new parameters are added, do not forget to list them here.
+        params = {'targets': args.targets,
+                  'nr_data_pages': args.nr_data_pages}
+
+        _, _, release, _, _ = os.uname()
+        module_path = os.path.join(args.prefix, MODULES_SUBDIR, release,
+                                    'misc')
+
+        if args.verbose:
+            print 'Module path:', module_path
+
+        components = choose_components(tools, params)
+        if not components:
+            print >> sys.stderr, 'Found no components to be started.'
+            sys.exit(1)
+        
+        if not start(components, module_path, verbose=args.verbose):
+            sys.exit(1)
+
+    elif args.action == 'stop':
+        if not stop(verbose=args.verbose):
+            #print >> sys.stderr, 'Failed to stop one or more components.'
+            sys.exit(1)
+
+    else:
+        print >> sys.stderr, 'Unknown action:', args.action
+        sys.exit(1)
+

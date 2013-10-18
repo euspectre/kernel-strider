@@ -62,6 +62,9 @@ instruction addresses). Usually, they are installed automatically because
 libdw depends on them but if this is not the case, they should be installed
 separately.
 
+10. If you would like to use the helper script (kedr.py) to load the kernel-
+mode components of KernelStrider, Python 2.7 is needed.
+
 Notes.
 
 If you would like to resolve the addresses in the report on the detected
@@ -216,6 +219,13 @@ module and for collecting the data about it in the kernel space.
 
 The name of the target module is specified via parameter "targets" of 
 "kedr_mem_core" module.
+
+Note that you can also use a helper script, /usr/local/bin/kedr.py, to load
+and unload all kernel-mode components of KernelStrider in one step.
+    # /usr/local/bin/kedr.py start --tools=KernelStrider --targets=buggy01
+    # /usr/local/bin/kedr.py stop
+
+See '/usr/local/bin/kedr.py --help' for details.
 
 2. 
 In this tutorial, we assume that debugfs is mounted to /sys/kernel/debug. 
