@@ -20,6 +20,7 @@
 #include <linux/device.h>
 #include <linux/pm.h>
 
+#include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 #include <kedr/fh_drd/common.h>
@@ -61,11 +62,21 @@ out:
 /* ====================================================================== */
 
 /* The "base" handlers. Their job is to call all other handlers for 
- * dev_pm_ops members. */
+ * dev_pm_ops members.
+ *
+ * Besides that, the "base" handlers generate events to express that PM
+ * operations are always executed in order and never concurrently (for a
+ * given device, at least). ID: (ulong)device. */
 static void
 base_pre(struct kedr_local_storage *ls)
 {
 	struct kedr_fh_drd_handlers *pos;
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+	struct device *dev = (struct device *)KEDR_LS_ARG1(ls);
+
+	kedr_happens_after(tid, pc, (unsigned long)dev);
+	
 	list_for_each_entry(pos, &handlers, list) {
 		if (pos->pre != NULL)
 			pos->pre(ls, pos->data);
@@ -76,10 +87,16 @@ static void
 base_post(struct kedr_local_storage *ls)
 {
 	struct kedr_fh_drd_handlers *pos;
+	unsigned long tid = ls->tid;
+	unsigned long pc = ls->fi->addr;
+	struct device *dev = (struct device *)KEDR_LS_ARG1(ls);
+	
 	list_for_each_entry(pos, &handlers, list) {
 		if (pos->post != NULL)
 			pos->post(ls, pos->data);
 	}
+
+	kedr_happens_before(tid, pc, (unsigned long)dev);
 }
 
 /* Adds the handlers to be called for dev_pm_ops callbacks.
