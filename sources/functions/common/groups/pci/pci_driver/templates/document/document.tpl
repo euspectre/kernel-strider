@@ -34,6 +34,9 @@ handle_pre_common(struct kedr_local_storage *ls)
 	
 	/* Relation #3 */
 	kedr_happens_after(tid, pc, (unsigned long)dev);
+
+	/* Relation #5 */
+	kedr_happens_after(tid, pc, (unsigned long)(&dev->dev));
 }
 
 /* Pre handler for probe() */
@@ -49,6 +52,9 @@ handle_pre_probe(struct kedr_local_storage *ls)
 	
 	/* Relation #3 */
 	kedr_happens_before(tid, pc, (unsigned long)dev);
+
+	/* Relation #5 */
+	kedr_happens_after(tid, pc, (unsigned long)(&dev->dev));
 }
 
 /* A common post handler. */
@@ -64,6 +70,9 @@ handle_post_common(struct kedr_local_storage *ls)
 	
 	/* Relation #4 */
 	kedr_happens_before(tid, pc, (unsigned long)dev + 1);
+
+	/* Relation #5 */
+	kedr_happens_before(tid, pc, (unsigned long)(&dev->dev));
 }
 
 /* Post handler for remove(). */
@@ -79,6 +88,9 @@ handle_post_remove(struct kedr_local_storage *ls)
 	
 	/* Relation #4 */
 	kedr_happens_after(tid, pc, (unsigned long)dev + 1);
+
+	/* Relation #5 */
+	kedr_happens_before(tid, pc, (unsigned long)(&dev->dev));
 }
 /* ====================================================================== */
 <$if concat(function.name)$>

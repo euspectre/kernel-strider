@@ -40,9 +40,15 @@
  *    ID: &pci_dev.
  * 
  * 4. End of each callback except remove() HB end of remove().
- *    ID: &pci_dev + 1. 
+ *    ID: &pci_dev + 1.
  *
- * "Each callback" means each callback from both struct pci_driver, struct
+ * 5. The callbacks from struct pci_driver are synchronized with dev_pm_ops
+ *    callbacks, they cannot execute concurrently for a given device.
+ *    They are actually executed under device_lock() mutex. Not sure about
+ *    sriov_configure though.
+ *    ID: &pci_dev.dev
+ *
+ * "Each callback" means each callback from struct pci_driver, struct
  * pci_error_handlers and struct dev_pm_ops. */
 /* ====================================================================== */
 
