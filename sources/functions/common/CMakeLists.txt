@@ -24,6 +24,7 @@ set(FUNCTION_GROUPS
 	"pci"
 	"firmware"
 	"completion"
+	"semaphore"
 )
 ########################################################################
 

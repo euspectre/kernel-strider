@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = up
+	
+	code.pre =>>
+	handle_up(ls);
+	<<
+#######################################################################

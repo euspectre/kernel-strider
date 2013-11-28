@@ -1,0 +1,11 @@
+[group]
+	# Name of the target function
+	function.name = down_killable
+	
+	code.post =>>
+	int ret = (int)KEDR_LS_RET_VAL(ls);
+
+	if (ret == 0)
+		handle_down(ls);
+	<<
+#######################################################################
