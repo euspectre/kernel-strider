@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = dev_alloc_skb
+	
+	code.post =>>
+	handle_alloc(ls);
+	<<
+#######################################################################

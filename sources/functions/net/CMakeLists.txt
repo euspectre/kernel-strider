@@ -10,6 +10,7 @@ set(FUNCTION_GROUPS
 	"ethtool_ops"    # callbacks from struct ethtool_ops
 	"header_ops"     # callbacks from struct header_ops
 	"napi"           # NAPI-related functions
+	"skb"            # alloc/free operations for SKBs
 )
 ########################################################################
 

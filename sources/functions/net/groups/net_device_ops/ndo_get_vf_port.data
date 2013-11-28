@@ -3,4 +3,13 @@
 	function.name = ndo_get_vf_port
 
 	is_rtnl_locked = yes
+
+	code.pre =>>
+		struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG3(ls);
+
+		/* We assume a new skb is passed here. This is not always
+		 * the case but should be enough for now. */
+		kedr_eh_on_alloc(ls->tid, pc, sizeof(struct sk_buff),
+				 (unsigned long)skb);
+	<<
 #######################################################################

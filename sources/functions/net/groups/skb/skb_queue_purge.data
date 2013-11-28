@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = skb_queue_purge
+	
+	code.pre =>>
+	handle_skb_queue_purge(ls);
+	<<
+#######################################################################

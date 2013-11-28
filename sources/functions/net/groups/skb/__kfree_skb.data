@@ -1,0 +1,11 @@
+[group]
+	# Name of the target function
+	function.name = __kfree_skb
+	
+	code.pre =>>
+	struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG1(ls);
+
+	/* __kfree_skb() always frees the SKB */
+	handle_kfree_plain(ls, skb);
+	<<
+#######################################################################

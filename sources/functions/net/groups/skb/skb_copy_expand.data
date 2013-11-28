@@ -1,0 +1,8 @@
+[group]
+	# Name of the target function
+	function.name = skb_copy_expand
+	
+	code.post =>>
+	handle_alloc(ls);
+	<<
+#######################################################################

@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = dev_kfree_skb_irq
+	
+	code.pre =>>
+	struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG1(ls);
+	handle_kfree_skb(ls, skb);
+	<<
+#######################################################################
