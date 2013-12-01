@@ -144,9 +144,18 @@ struct kedr_local_storage
 	unsigned long dest_addr;
 	
 	/* Two more slots for temporary data. It can be handy if using 
-	 * a register to store these data is not desirable. */
+	 * a register to store these data is not desirable. 
+	 * For internal use in kedr_mem_core only. Use ls->data or 
+	 * ls->cbdata (see below) in function handlers rather than these
+	 * fields. */
 	unsigned long temp;
 	unsigned long temp1;
+	
+	/* Another two slots for temporary data. To be used by 
+	 * kedr_thunk_call() only.
+	 * DO NOT USE these in other places. */
+	unsigned long temp_bx;
+	unsigned long temp_bp;
 	
 	/* The following two values are needed when processing the function
 	 * calls to hold the return value of the called function. The 

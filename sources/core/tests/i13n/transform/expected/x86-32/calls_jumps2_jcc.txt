@@ -73,9 +73,9 @@ Ref. to call_info for the node at 0xf
 0xf: 0f 84 00 00 00 00
 
 Block (type: 12)
-0xadded: 89 83 bc 00 00 00
+0xadded: 89 83 c4 00 00 00
 
-0xadded: 89 93 c0 00 00 00
+0xadded: 89 93 c8 00 00 00
 
 0xadded: 50
 

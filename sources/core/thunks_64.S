@@ -54,10 +54,10 @@ kedr_thunk_call:
 	 * values of these registers there. This is because if one of
 	 * these is %base in the caller function, we would corrupt the
 	 * original value of %base this way. So, use 'temp' and 'temp1'. */
-	mov %rbx, KEDR_LSTORAGE_temp(%rax);
+	mov %rbx, KEDR_LSTORAGE_temp_bx(%rax);
 	mov %rax, %rbx;
 	
-	mov %rbp, KEDR_LSTORAGE_temp1(%rbx);
+	mov %rbp, KEDR_LSTORAGE_temp_bp(%rbx);
 	mov KEDR_LSTORAGE_info(%rbx), %rbp;
 	
 	/* The thunk has been called with CALL instruction, so the return
@@ -134,8 +134,8 @@ kedr_thunk_call:
 	 * As for the remaining scratch registers, the target itself 
 	 * does not guarantee they will not change except if it is
 	 * mcount() or something similar from Ftrace. */
-	mov KEDR_LSTORAGE_temp1(%rbx), %rbp
-	mov KEDR_LSTORAGE_temp(%rbx), %rbx
+	mov KEDR_LSTORAGE_temp_bp(%rbx), %rbp
+	mov KEDR_LSTORAGE_temp_bx(%rbx), %rbx
 
 	ret;
 .size kedr_thunk_call, .-kedr_thunk_call

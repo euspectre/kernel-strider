@@ -168,9 +168,9 @@ Jump to 0xadded
 0x1a: 5b
 
 Block (type: 12)
-0xadded: 89 86 bc 00 00 00
+0xadded: 89 86 c4 00 00 00
 
-0xadded: 89 96 c0 00 00 00
+0xadded: 89 96 c8 00 00 00
 
 0xadded: 50
 
