@@ -1,0 +1,118 @@
+diff -Naur sources/core/handlers.c sources.new/core/handlers.c
+--- sources/core/handlers.c	2013-02-24 15:37:49.000000000 +0400
++++ sources.new/core/handlers.c	2013-12-03 00:40:59.000000000 +0400
+@@ -211,6 +211,8 @@
+ }
+ #endif
+ 
++static int is_stack_address(unsigned long addr);
++
+ /* The operations that can be used in the instrumented code.
+  * These functions are static because they should only be called only via 
+  * the wrappers. The description of these functions is given in
+@@ -243,6 +245,24 @@
+ 	 * handlers for callbacks, etc. */
+ 	load_arg_regs(ls, pd);
+ 	
++	//<>
++	/* %rsp after entry to the function. */
++	ls->sp_dbg = ls->arg_regs.rsp - sizeof(unsigned long);
++	if (is_stack_address(ls->sp_dbg)) {
++		ls->ret_dbg = *(unsigned long *)ls->sp_dbg;
++	}
++	else {
++		static int warned = 0;
++		if (!warned) {
++			warned = 1;
++			pr_err(
++	"[DBG] Invalid stack pointer on entry to the function at %lx: %lx\n",
++				ls->fi->addr, ls->sp_dbg);
++		}
++		ls->ret_dbg = 0;
++	}
++	//<>
++	
+ 	if (sampling_rate != 0)
+ 		ls->tindex = kedr_get_tindex();
+ 	
+@@ -268,6 +288,35 @@
+ 	struct kedr_local_storage *ls = 
+ 		(struct kedr_local_storage *)storage;
+ 	void (*post_handler)(struct kedr_local_storage *);
++
++	//<>
++	{
++		static int warned = 0;
++		if (!warned) {
++			if (ls->sp_dbg != ls->r.sp) {
++				warned = 1;
++				pr_info(
++"[DBG] Function %lx: sp at exit (%lx) differs from sp after entry (%lx).\n",
++					ls->fi->addr, ls->r.sp, ls->sp_dbg);
++			}
++			else if (!is_stack_address(ls->r.sp)) {
++				warned = 1;
++				pr_info(
++			"[DBG] Function %lx: bad sp at exit (%lx).\n",
++					ls->fi->addr, ls->r.sp);
++			}
++			else {
++				unsigned long ret = *(unsigned long *)ls->r.sp;
++				if (ret != ls->ret_dbg) {
++					warned = 1;
++					pr_info(
++"[DBG] Function %lx: return address at exit (%lx) differs from that after entry (%lx).\n",
++					ls->fi->addr, ret, ls->ret_dbg);
++				}
++			}
++		}
++	}
++	//<>
+ 	
+ 	/* Call the post handler if it is set. */
+ 	rcu_read_lock();
+diff -Naur sources/core/transform.c sources.new/core/transform.c
+--- sources/core/transform.c	2013-02-09 23:32:34.000000000 +0400
++++ sources.new/core/transform.c	2013-12-03 00:33:33.000000000 +0400
+@@ -288,6 +288,10 @@
+  *	mov %rdx, <offset_ret_val_high>(%base) # value, the post handlers
+  *	                                       # for the callbacks might 
+  *	                                       # need it.
++ * #<>
++ * 	mov %rsp, <offset_sp>(%base)
++ * #<>
++ *
+  * 	push  %rax
+  * 	mov   %base, %rax
+  * 	mov   <offset_base>(%rax), %base
+@@ -307,6 +311,11 @@
+ 	item = kedr_mk_store_reg_to_mem(INAT_REG_CODE_DX, base, 
+ 		offsetof(struct kedr_local_storage, ret_val_high), item, 0, 
+ 		&err);
++    
++	//<>
++	item = kedr_mk_store_reg_to_spill_slot(INAT_REG_CODE_SP, base, item,
++					       0, &err);
++	//<>
+ 	
+ 	item = kedr_mk_push_reg(INAT_REG_CODE_AX, item, 0, &err);
+ 	item = kedr_mk_mov_reg_to_reg(base, INAT_REG_CODE_AX, item, 0, &err);
+diff -Naur sources/include/kedr/kedr_mem/local_storage.h sources.new/include/kedr/kedr_mem/local_storage.h
+--- sources/include/kedr/kedr_mem/local_storage.h	2013-12-03 14:07:56.000000000 +0400
++++ sources.new/include/kedr/kedr_mem/local_storage.h	2013-12-02 23:28:13.000000000 +0400
+@@ -220,6 +220,15 @@
+ 	 * 'lock_status' if it has emitted "lock" event and the post handler
+ 	 * needs to emit "unlock" event. */
+ 	unsigned long lock_status;
++	
++	//<>
++	/* The return address of the function as stored on the stack - 
++	 * for debugging possible stack corruptions. */
++	unsigned long ret_dbg;
++	
++	/* The stack pointer - for debugging possible stack corruptions. */
++	unsigned long sp_dbg;
++	//<>
+ };
+ 
+ /* The allocator of kedr_local_storage instances. 
