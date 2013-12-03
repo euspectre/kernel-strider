@@ -1,0 +1,133 @@
+#!/bin/sh
+
+########################################################################
+# This test checks if a kernel module that uses recursive calls is
+# transformed correctly. KernelStrider had trouble handling such things in
+# the past (vboxdrv crashed then as a result, for example).
+#
+# Usage:
+#   sh test.sh
+########################################################################
+
+# Just in case the tools like lsmod are not in their usual location.
+export PATH=$PATH:/sbin:/bin:/usr/bin
+
+########################################################################
+# A function to check prerequisites: whether the necessary files exist,
+# etc.
+########################################################################
+checkPrereqs()
+{
+	if test ! -f "${CORE_MODULE}"; then
+		printf "The core module is missing: ${CORE_MODULE}\n"
+		exit 1
+	fi
+
+	if test ! -f "${TARGET_MODULE}"; then
+		printf "The target module is missing: ${TARGET_MODULE}\n"
+		exit 1
+	fi
+}
+
+########################################################################
+cleanupTargets()
+{
+	printf "Cleaning up the target...\n"
+
+	lsmod | grep "${TARGET_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME}"
+	fi
+}
+
+########################################################################
+# Cleanup function
+########################################################################
+cleanupAll()
+{
+	cd "${WORK_DIR}"
+
+	cleanupTargets
+
+	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${CORE_MODULE_NAME}"
+	fi
+}
+
+########################################################################
+loadTarget()
+{
+	# If the code is transformed incorrectly, loading of the target is
+	# likely to crash the kernel.
+	insmod "${TARGET_MODULE}"
+	if test $? -ne 0; then
+		printf "Failed to load the target module: ${TARGET_MODULE}\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+unloadTarget()
+{
+	lsmod | grep "${TARGET_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${TARGET_NAME}"
+		if test $? -ne 0; then
+			printf "Failed to unload the module: ${TARGET_NAME}\n"
+			cleanupAll
+			exit 1
+		fi
+	fi
+}
+
+########################################################################
+# doTest() - perform the test
+########################################################################
+doTest()
+{
+	insmod "${CORE_MODULE}" \
+		targets="${TARGET_NAME}" \
+		umh_dir="@KEDR_UMH_DIR@"
+	if test $? -ne 0; then
+		printf "Failed to load the core module: ${CORE_MODULE}\n"
+		cleanupAll
+		exit 1
+	fi
+
+	printf "Checkpoint 01\n"
+	loadTarget
+	printf "Checkpoint 02\n"
+	unloadTarget
+
+	# Unload the remaining modules, they are no longer needed
+	rmmod "${CORE_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the core module.\n"
+		cleanupAll
+		exit 1
+	fi
+}
+
+########################################################################
+# main
+########################################################################
+WORK_DIR=${PWD}
+
+if test $# -ne 0; then
+	printf "Usage: sh $0\n"
+	exit 1
+fi
+
+CORE_MODULE_NAME="@CORE_MODULE_NAME@"
+CORE_MODULE="@CORE_MODULE_DIR@/${CORE_MODULE_NAME}.ko"
+
+TARGET_NAME="test_recursion"
+TARGET_MODULE="@CMAKE_CURRENT_BINARY_DIR@/test_recursion/${TARGET_NAME}.ko"
+
+checkPrereqs
+doTest
+cleanupAll
+
+# test passed
+exit 0

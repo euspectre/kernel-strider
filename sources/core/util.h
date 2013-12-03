@@ -75,11 +75,22 @@ kedr_for_each_insn_in_function(struct kedr_ifunc *func,
 	void *data);
 
 /* Nonzero if 'addr' is an address of some location within the given 
- * function, 0 otherwise. */
+ * function, 0 otherwise.
+ *
+ * As an exception, the function returns 0 if 'addr' is the start address of
+ * 'func'. This is to treat the recursive calls of a function from itself as
+ * the calls to an external function rather than the control transfers
+ * within the function.
+ * 
+ * Legitimate control transfers to the start of the function from itself
+ * that are not the recursive calls should be rare (or even impossible if
+ * 'call mcount' is inserted at the start of each function for Ftrace to
+ * use). As long as there are no problems with that, we can ignore these
+ * rare cases. */
 static inline int
 kedr_is_address_in_function(unsigned long addr, struct kedr_ifunc *func)
 {
-	return (addr >= func->info.addr && 
+	return (addr > func->info.addr &&
 		addr < func->info.addr + func->size);
 }
 

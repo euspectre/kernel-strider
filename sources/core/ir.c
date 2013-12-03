@@ -776,7 +776,8 @@ ir_node_set_iprel_addr(struct kedr_ir_node *node, struct kedr_ifunc *func)
 			node->insn.length, 
 			node->insn.displacement.value);
 
-		if (kedr_is_address_in_function(node->iprel_addr, func)) {
+		if (kedr_is_address_in_function(node->iprel_addr, func) ||
+		    node->iprel_addr == func->info.addr) {
 			pr_warning(KEDR_MSG_PREFIX 
 	"Warning: the instruction at %pS uses IP-relative addressing "
 	"to access the code of the original function. "
