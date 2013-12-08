@@ -155,15 +155,14 @@ on_init_post(struct kedr_fh_plugin *fh, struct module *mod,
 	unsigned long *id_ptr = (unsigned long *)per_target;
 
 	/* ID of a happens-before arc from the end of the init function to
-	 * the beginning of the exit function for a given target). */
-	*id_ptr = kedr_get_unique_id();
-	if (*id_ptr == 0) {
-		pr_warning(KEDR_MSG_PREFIX "on_init_post(): "
-	"failed to obtain ID of init-exit happens-before arc for %s.",
-			module_name(mod));
-		return;
-	}
-
+	 * the beginning of the exit function for a given target). 
+	 * The function is executed in an atomic context, namely, under RCU
+	 * read-side lock, so we cannot use kedr_get_unique_id(). We use
+	 * the address of the struct module instead. 
+	 * TODO: take this into account when revisiting other components 
+	 * that track module get/put, etc., to avoid ID collisions. */
+	*id_ptr = (unsigned long)mod;
+	
 	/* Specify the relation "init happens-before cleanup" */
 	tid = kedr_get_thread_id();
 	pc = (unsigned long)mod->init;

@@ -17,7 +17,7 @@
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
-#include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/list.h>
 
 #include <kedr/kedr_mem/functions.h>
@@ -305,14 +305,17 @@ struct kedr_per_target
 
 static LIST_HEAD(per_target_items);
 
-/* A mutex to serialize accesses to 'per_target_items'. */
-static DEFINE_MUTEX(per_target_mutex);
+/* A spinlock to serialize accesses to 'per_target_items'. We cannot use a
+ * mutex here because 'per_target_items' will be accessed from the handers
+ * of init and exit functions and pre/post handlers execute under RCU 
+ * read-side lock. The functions that may sleep cannot be used here. */
+static DEFINE_SPINLOCK(per_target_lock);
 /* ====================================================================== */
 
 /* 'per_target_*()' functions may be called from on_init / on_exit handlers
  * only. */
 
-/* Must be used with 'per_target_mutex' locked.
+/* Must be used with 'per_target_lock' locked.
  * It seems enough to use a plain linear search here when looking for an ID
  * for the module as on_init and on_exit callbacks should not be called very
  * often. */
@@ -334,16 +337,11 @@ static struct kedr_per_target *
 per_target_find(struct module *mod)
 {
 	struct kedr_per_target *pt;
+	unsigned long flags;
 	
-	if (mutex_lock_killable(&per_target_mutex) != 0) {
-		pr_warning(KEDR_MSG_PREFIX
-			"per_target_create(): failed to lock mutex.\n");
-		return NULL;
-	}
-
+	spin_lock_irqsave(&per_target_lock, flags);
 	pt = per_target_find_impl(mod);
-	
-	mutex_unlock(&per_target_mutex);
+	spin_unlock_irqrestore(&per_target_lock, flags);
 	return pt;
 }
 
@@ -357,12 +355,9 @@ per_target_create(struct module *mod)
 	struct kedr_per_target *pt = NULL;
 	size_t s = 0;
 	size_t plugin_count;
+	unsigned long flags;
 
-	if (mutex_lock_killable(&per_target_mutex) != 0) {
-		pr_warning(KEDR_MSG_PREFIX
-			"per_target_create(): failed to lock mutex.\n");
-		return NULL;
-	}
+	spin_lock_irqsave(&per_target_lock, flags);
 
 	plugin_count = fh_plugins_count();
 	if (plugin_count == 0)
@@ -376,7 +371,7 @@ per_target_create(struct module *mod)
 	}
 	
 	s = sizeof(*pt) + (plugin_count - 1) * sizeof(pt->data[0]);
-	pt = kzalloc(s, GFP_KERNEL);
+	pt = kzalloc(s, GFP_ATOMIC);
 	if (pt == NULL) {
 		pr_warning(KEDR_MSG_PREFIX
 			"per_target_create(): out of memory.\n");
@@ -387,7 +382,7 @@ per_target_create(struct module *mod)
 	list_add(&pt->list, &per_target_items);
 
 out:
-	mutex_unlock(&per_target_mutex);
+	spin_unlock_irqrestore(&per_target_lock, flags);
 	return pt;
 }
 
@@ -395,16 +390,12 @@ out:
 static void
 per_target_destroy(struct kedr_per_target *pt)
 {
-	if (mutex_lock_killable(&per_target_mutex) != 0) {
-		pr_warning(KEDR_MSG_PREFIX
-			"per_target_destroy(): failed to lock mutex\n");
-		return;
-	}
+	unsigned long flags;
 
+	spin_lock_irqsave(&per_target_lock, flags);
 	list_del(&pt->list);
 	kfree(pt);
-
-	mutex_unlock(&per_target_mutex);
+	spin_unlock_irqrestore(&per_target_lock, flags);
 }
 /* ====================================================================== */
 
