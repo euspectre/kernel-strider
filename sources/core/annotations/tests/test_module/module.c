@@ -15,8 +15,6 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 
-#define KEDR_ANNOTATIONS_ENABLED 1
-
 #include "kedr_annotations.h"
 /* ====================================================================== */
 

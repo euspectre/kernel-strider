@@ -8,22 +8,31 @@
  * events.
  *
  * To use these annotations, one needs to #include this header in the code 
- * of the target module and #define KEDR_ANNOTATIONS_ENABLED to a non-zero 
- * value before that #include directive. It is also needed to instruct the
+ * of the target module and #define CONFIG_KEDR_ANNOTATIONS to a non-zero
+ * value in the compiler options. It is also needed to instruct the
  * build system of the target module to compile kedr_annotations.c and link
- * the resuling object file into the target when the target is being built. 
+ * the resuling object file into the target when the target is being built.
  *
- * [NB] A target module containing such annotations can be used normally 
+ * [NB] Enabling annotations for a given part of a kernel module but
+ * disabling them for others is not supported. Either all or none.
+ *
+ * A target module containing such annotations can be used normally
  * even if KernelStrider is not loaded. */
 
 #ifndef KEDR_ANNOTATIONS_H_1536_INCLUDED
 #define KEDR_ANNOTATIONS_H_1536_INCLUDED
 
-#ifndef KEDR_ANNOTATIONS_ENABLED
-#define KEDR_ANNOTATIONS_ENABLED 0
-#endif
+#ifdef CONFIG_KEDR_ANNOTATIONS
 
-#if KEDR_ANNOTATIONS_ENABLED != 0
+#include <linux/compiler.h>
+
+/* Do not use kedr_annotate_*() functions directly to annotate the code,
+ * use KEDR_ANNOTATE_*() instead. */
+extern void kedr_annotate_happens_before(unsigned long id);
+extern void kedr_annotate_happens_after(unsigned long id);
+extern void kedr_annotate_memory_acquired(const void *addr,
+	unsigned long size);
+extern void kedr_annotate_memory_released(const void *addr);
 
 /* These annotations are similar to ANNOTATE_HAPPENS_BEFORE() and 
  * ANNOTATE_HAPPENS_AFTER() provided by ThreadSanitizer (see 
@@ -116,7 +125,7 @@
 		barrier();					\
 	} while (0)
 
-#else /* KEDR_ANNOTATIONS_ENABLED == 0 */
+#else /* CONFIG_KEDR_ANNOTATIONS is not defined */
 
 /* Define the annotations as no-ops. */
 #define KEDR_ANNOTATE_HAPPENS_BEFORE(obj) do { } while (0)
@@ -124,14 +133,6 @@
 #define KEDR_ANNOTATE_MEMORY_ACQUIRED(addr, size) do { } while (0)
 #define KEDR_ANNOTATE_MEMORY_RELEASED(addr) do { } while (0)
 
-#endif /* KEDR_ANNOTATIONS_ENABLED != 0 */
-
-/* Do not use kedr_annotate_*() functions directly, use KEDR_ANNOTATE_*
- * instead. */
-void kedr_annotate_happens_before(unsigned long id);
-void kedr_annotate_happens_after(unsigned long id);
-void kedr_annotate_memory_acquired(const void *addr, 
-	unsigned long size);
-void kedr_annotate_memory_released(const void *addr);
+#endif /* CONFIG_KEDR_ANNOTATIONS != 0 */
 
 #endif /* KEDR_ANNOTATIONS_H_1536_INCLUDED */

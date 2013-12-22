@@ -749,19 +749,18 @@ To use these annotations, you need "kedr_annotations.c" and
 where the source code of the target module is. Add
     #include "kedr_annotations.h"
 to the source files of the target module where you would like to use the 
-annotations. #define KEDR_ANNOTATIONS_ENABLED to a non-zero value before
-these #include directives. Usually it is convenient to define it in
-"ccflags-y" in "Kbuild" file of the target module. You also need to
-instruct the build system of the target module to compile
-"kedr_annotations.c" and link the resulting object file into the target
-module.
+annotations. #define CONFIG_KEDR_ANNOTATIONS to a non-zero value in the
+compiler options, usually - in "ccflags-y" in "Kbuild" file of the target
+module. You also need to instruct the build system of the target module to
+compile "kedr_annotations.c" and link the resulting object file into the
+target module.
 
 Here is "Kbuild" file for "buggy01_annotated":
 
 ------------------------------------
 MODULE_NAME := buggy01
 
-ccflags-y := -DKEDR_ANNOTATIONS_ENABLED=1 -I$(src)
+ccflags-y := -DCONFIG_KEDR_ANNOTATIONS=1 -I$(src)
 obj-m := $(MODULE_NAME).o
 $(MODULE_NAME)-y := module.o kedr_annotations.o
 ------------------------------------

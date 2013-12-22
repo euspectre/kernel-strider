@@ -1,10 +1,12 @@
-/* kedr_annotations.c - definition of the annotation functions. */
+/* kedr_annotations.c - definition of the annotation functions used by
+ * KEDR tools. */
 
 /* ========================================================================
+ * Copyright (C) 2013, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  * Authors: 
- *      Eugene A. Shatokhin <spectre@ispras.ru>
- *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -12,7 +14,6 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
-#include "kedr_annotations.h"
 /* ====================================================================== */
 
 /* Notes
@@ -34,6 +35,7 @@ kedr_annotate_happens_before(unsigned long id)
 	(void)id;
 	asm volatile ("");
 }
+EXPORT_SYMBOL(kedr_annotate_happens_before);
 
 void noinline
 kedr_annotate_happens_after(unsigned long id)
@@ -43,6 +45,7 @@ kedr_annotate_happens_after(unsigned long id)
 	(void)id;
 	asm volatile ("");
 }
+EXPORT_SYMBOL(kedr_annotate_happens_after);
 
 void noinline
 kedr_annotate_memory_acquired(const void *addr, unsigned long size)
@@ -53,6 +56,7 @@ kedr_annotate_memory_acquired(const void *addr, unsigned long size)
 	(void)size;
 	asm volatile ("");
 }
+EXPORT_SYMBOL(kedr_annotate_memory_acquired);
 
 void noinline
 kedr_annotate_memory_released(const void *addr)
@@ -62,4 +66,5 @@ kedr_annotate_memory_released(const void *addr)
 	(void)addr;
 	asm volatile ("");
 }
+EXPORT_SYMBOL(kedr_annotate_memory_released);
 /* ================================================================ */

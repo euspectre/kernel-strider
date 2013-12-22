@@ -175,6 +175,9 @@ check_ring_buffer()
 # Check if the VM split configuration is acceptable.
 check_vm_split()
 
+# Check if the kernel is built with KEDR annotations enabled.
+check_kedr_annotations()
+
 # Find out which memory allocator is used by the kernel. It is needed
 # because, for example, the order of arguments to kmem_cache_alloc*_trace()
 # may be different depending on the allocator.

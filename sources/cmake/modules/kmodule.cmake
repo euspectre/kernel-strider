@@ -818,3 +818,36 @@ function(check_ndo_fdb_del)
 	message(STATUS "${check_ndo_fdb_del_message}")
 endfunction(check_ndo_fdb_del)
 ############################################################################
+
+# Check if the kernel is built with KEDR annotations enabled.
+function(check_kedr_annotations)
+	set(check_kedr_annotations_message
+		"Checking if the kernel is built with KEDR annotations enabled"
+	)
+	message(STATUS "${check_kedr_annotations_message}")
+	if (DEFINED KEDR_ANNOTATIONS_ENABLED)
+		set(check_kedr_annotations_message
+"${check_kedr_annotations_message} [cached] - ${KEDR_ANNOTATIONS_ENABLED}"
+		)
+	else (DEFINED KEDR_ANNOTATIONS_ENABLED)
+		kmodule_try_compile(kedr_annotations_ok_impl
+			"${CMAKE_BINARY_DIR}/check_kedr_annotations"
+			"${kmodule_test_sources_dir}/check_kedr_annotations/module.c"
+		)
+		if (kedr_annotations_ok_impl)
+			set(KEDR_ANNOTATIONS_ENABLED "yes" CACHE INTERNAL
+				"Is the kernel built with KEDR annotations enabled?"
+			)
+		else (kedr_annotations_ok_impl)
+			set(KEDR_ANNOTATIONS_ENABLED "no" CACHE INTERNAL
+				"Is the kernel built with KEDR annotations enabled?"
+			)
+		endif (kedr_annotations_ok_impl)
+
+		set(check_kedr_annotations_message
+"${check_kedr_annotations_message} - ${KEDR_ANNOTATIONS_ENABLED}"
+		)
+	endif (DEFINED KEDR_ANNOTATIONS_ENABLED)
+	message(STATUS "${check_kedr_annotations_message}")
+endfunction(check_kedr_annotations)
+############################################################################
