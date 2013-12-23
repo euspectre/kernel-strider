@@ -73,6 +73,11 @@
  *    Context: BH disabled (IRQ may be disabled as well but not in each case).
  *    Locking: __netif_tx_lock() spinlock for the queue skb has been put to.
  *
+ *    ndo_start_xmit also participates in HB-relations with the code that
+ *    enables and disables Tx - see ndo_start_xmit.data for more info. Some
+ *    of such functions can be inline and the relevant HB events can then be
+ *    provided by annotations.
+ *
  * 3. ndo_select_queue:
  *    Context: BH disabled
  *    Locking: probably none
