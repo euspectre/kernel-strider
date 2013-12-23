@@ -28,11 +28,11 @@
 
 /* Do not use kedr_annotate_*() functions directly to annotate the code,
  * use KEDR_ANNOTATE_*() instead. */
-extern void kedr_annotate_happens_before(unsigned long id);
-extern void kedr_annotate_happens_after(unsigned long id);
-extern void kedr_annotate_memory_acquired(const void *addr,
+void kedr_annotate_happens_before(unsigned long id);
+void kedr_annotate_happens_after(unsigned long id);
+void kedr_annotate_memory_acquired(const void *addr,
 	unsigned long size);
-extern void kedr_annotate_memory_released(const void *addr);
+void kedr_annotate_memory_released(const void *addr);
 
 /* These annotations are similar to ANNOTATE_HAPPENS_BEFORE() and 
  * ANNOTATE_HAPPENS_AFTER() provided by ThreadSanitizer (see 

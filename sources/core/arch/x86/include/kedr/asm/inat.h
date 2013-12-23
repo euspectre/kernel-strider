@@ -237,27 +237,27 @@
 /* Attribute search APIs.
  * The functions will store the attributes in '*attr'. The caller must 
  * ensure 'attr' points to a insn_attr_t instance. */
-extern void
+void
 inat_get_opcode_attribute(insn_attr_t *attr, insn_byte_t opcode);
 
-extern void
+void
 inat_get_escape_attribute(insn_attr_t *attr, insn_byte_t opcode, 
 	insn_byte_t last_pfx, const insn_attr_t *esc_attr);
 		          
-extern void
+void
 inat_get_group_attribute(insn_attr_t *attr, insn_byte_t modrm, 
 	insn_byte_t last_pfx, const insn_attr_t *esc_attr);
 	
-extern void
+void
 inat_get_avx_attribute(insn_attr_t *attr, insn_byte_t opcode, 
 	insn_byte_t vex_m, insn_byte_t vex_pp);
 
 /* Copy one insn_attr_t struct ('src') to another ('dest'). */
-extern void 
+void
 inat_copy_insn_attr(insn_attr_t *dest, const insn_attr_t *src);
 
 /* Zero out the insn_attr_t instance */
-extern void
+void
 inat_zero_insn_attr(insn_attr_t *attr);
 
 /* Attribute checking functions */

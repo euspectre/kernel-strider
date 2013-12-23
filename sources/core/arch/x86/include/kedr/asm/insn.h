@@ -113,14 +113,14 @@ static inline insn_byte_t insn_last_prefix(struct insn *insn)
 	return insn->prefixes.bytes[X86_NUM_LEGACY_PREFIXES - 1];
 }
 
-extern void insn_init(struct insn *insn, const void *kaddr, int x86_64);
-extern void insn_get_prefixes(struct insn *insn);
-extern void insn_get_opcode(struct insn *insn);
-extern void insn_get_modrm(struct insn *insn);
-extern void insn_get_sib(struct insn *insn);
-extern void insn_get_displacement(struct insn *insn);
-extern void insn_get_immediate(struct insn *insn);
-extern void insn_get_length(struct insn *insn);
+void insn_init(struct insn *insn, const void *kaddr, int x86_64);
+void insn_get_prefixes(struct insn *insn);
+void insn_get_opcode(struct insn *insn);
+void insn_get_modrm(struct insn *insn);
+void insn_get_sib(struct insn *insn);
+void insn_get_displacement(struct insn *insn);
+void insn_get_immediate(struct insn *insn);
+void insn_get_length(struct insn *insn);
 
 /* Attribute will be determined after getting ModRM (for opcode groups) */
 static inline void insn_get_attribute(struct insn *insn)
@@ -129,7 +129,7 @@ static inline void insn_get_attribute(struct insn *insn)
 }
 
 /* Instruction uses RIP-relative addressing */
-extern int insn_rip_relative(struct insn *insn);
+int insn_rip_relative(struct insn *insn);
 
 /* Init insn for kernel text */
 static inline void kernel_insn_init(struct insn *insn, const void *kaddr)
@@ -291,7 +291,7 @@ static inline unsigned int insn_offset_immediate(struct insn *insn)
 /* Returns nonzero if 'insn' is a no-op instruction of one of the commonly 
  * used kinds. If the function returns nonzero, 'insn' is a no-op. If it 
  * returns 0, 'insn' may or may not be a no-op. */ 
-extern int insn_is_noop(struct insn *insn);
+int insn_is_noop(struct insn *insn);
 
 /* Returns register usage mask for a given instruction. For each register
  * used by the instruction the corresponding bit (mask & insn_uses_reg(reg))
@@ -300,33 +300,33 @@ extern int insn_is_noop(struct insn *insn);
  * instructions and the corresponding function calls use, except SP. This 
  * depends on whether an instruction actually leads outside of the caller 
  * function or it is a trick like 'call 0x05, pop %reg' or the like. */
-extern unsigned int insn_reg_mask(struct insn *insn);
+unsigned int insn_reg_mask(struct insn *insn);
 
 /* Similar to the above but only the registers used in memory addressing
  * expression (ModRM.RM, SIB) are considered. */
-extern unsigned int insn_reg_mask_for_expr(struct insn *insn);
+unsigned int insn_reg_mask_for_expr(struct insn *insn);
 
 /* Query memory access type */
 /* Nonzero if the instruction reads data from memory, 0 otherwise. 
  * The function decodes the relevant parts of the instruction if needed. */
-extern int insn_is_mem_read(struct insn *insn);
+int insn_is_mem_read(struct insn *insn);
 
 /* Nonzero if the instruction writes data to memory, 0 otherwise. 
  * The function decodes the relevant parts of the instruction if needed. */
-extern int insn_is_mem_write(struct insn *insn);
+int insn_is_mem_write(struct insn *insn);
 
 /* Returns the destination of control transfer. */
-extern unsigned long insn_jumps_to(struct insn *insn);
+unsigned long insn_jumps_to(struct insn *insn);
 
 /* Nonzero if the instruction is a string operation. */
-extern int insn_is_string_op(struct insn *insn);
+int insn_is_string_op(struct insn *insn);
 
 /* Nonzero if the instruction has the given legacy or mandatory prefix. */
-extern int insn_has_prefix(struct insn *insn, insn_byte_t prefix);
+int insn_has_prefix(struct insn *insn, insn_byte_t prefix);
 
 /* Nonzero if the instruction is a locked operation, 0 otherwise. 
  * XCHG reg, mem and the instructions with LOCK prefix are considered 
  * locked operations */
-extern int insn_is_locked_op(struct insn *insn);
+int insn_is_locked_op(struct insn *insn);
 
 #endif /* _ASM_X86_INSN_H */
