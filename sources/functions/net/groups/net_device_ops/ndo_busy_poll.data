@@ -1,0 +1,10 @@
+[group]
+	# Name of the target function
+	function.name = ndo_busy_poll
+
+	get_netdev =>>
+	dev = ((struct napi_struct *)KEDR_LS_ARG1(ls))->dev;
+	<<
+
+	is_bh_disabled = yes
+#######################################################################

@@ -51,6 +51,7 @@
  * - ndo_set_vf_tx_rate
  * - ndo_set_vf_spoofchk
  * - ndo_get_vf_config
+ * - ndo_set_vf_link_state
  * - ndo_set_vf_port
  * - ndo_get_vf_port
  * - ndo_setup_tc
@@ -69,7 +70,9 @@
  * - ndo_change_carrier
  * - ndo_vlan_rx_register
  *
- * 2. ndo_start_xmit:
+ * 2. ndo_start_xmit,
+ *    ndo_dfwd_start_xmit:
+ * 
  *    Context: BH disabled (IRQ may be disabled as well but not in each case).
  *    Locking: __netif_tx_lock() spinlock for the queue skb has been put to.
  *
@@ -122,13 +125,20 @@
  * 8. ndo_neigh_construct, ndo_neigh_destroy:
  *    It seems, no additional rules here.
  * 
- * 9. Locking is currently not clear for the following callbacks:
+ * 9. Locking is currently not clear or seems not to be reasonable to handle
+ * for the following callbacks:
  * - ndo_fcoe_ddp_setup
  * - ndo_fcoe_ddp_done
  * - ndo_fcoe_ddp_target
  * - ndo_fcoe_get_hbainfo
  * - ndo_fcoe_get_wwn
  * - ndo_rx_flow_steer
+ * - ndo_busy_poll
+ * - ndo_get_phys_port_id
+ * - ndo_add_vxlan_port
+ * - ndo_del_vxlan_port
+ * - ndo_dfwd_add_station
+ * - ndo_dfwd_del_station
  *
  * [NB] 'struct net_device *' is the first argument of the most callbacks,
  * except:
@@ -137,7 +147,8 @@
  *    which is passed as the first argument;
  * - ndo_fdb_add, ndo_fdb_del, ndo_fdb_dump - it is the 2nd or the 3rd 
  *    argument depending on the kernel version;
- * - ndo_bridge_getlink - it is the 4th argument. */
+ * - ndo_bridge_getlink - it is the 4th argument.
+ * - some other callbacks. */
 /* ====================================================================== */
 <$if concat(function.name)$>
 <$block : join(\n\n)$>

@@ -1,0 +1,6 @@
+[group]
+	# Name of the target function
+	function.name = ndo_set_vf_link_state
+
+	is_rtnl_locked = yes
+#######################################################################

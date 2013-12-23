@@ -31,6 +31,7 @@ configure_struct_members(
 	"ndo_set_vf_tx_rate"
 	"ndo_set_vf_spoofchk"
 	"ndo_get_vf_config"
+	"ndo_set_vf_link_state"
 	"ndo_set_vf_port"
 	"ndo_get_vf_port"
 	"ndo_setup_tc"
@@ -55,6 +56,15 @@ configure_struct_members(
 	"ndo_bridge_getlink"
 	"ndo_bridge_dellink"
 	"ndo_change_carrier"
+	# Adding initial support for several more callbacks now, to be
+	# refined later as they are adopted wider.
+	"ndo_busy_poll"
+	"ndo_get_phys_port_id"
+	"ndo_add_vxlan_port"
+	"ndo_del_vxlan_port"
+	"ndo_dfwd_add_station"
+	"ndo_dfwd_del_station"
+	"ndo_dfwd_start_xmit"
 )
 
 if (NOT callbacks)

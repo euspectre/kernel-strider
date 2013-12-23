@@ -1,0 +1,46 @@
+[group]
+	# Name of the target function
+	function.name = ndo_dfwd_start_xmit
+
+	get_netdev =>>
+	dev = (struct net_device *)KEDR_LS_ARG2(ls);
+	<<
+
+	is_bh_disabled = yes
+
+	code.pre =>>
+		struct netdev_queue *txq;
+		struct sk_buff *skb = (struct sk_buff *)KEDR_LS_ARG1(ls);
+		unsigned long lock_id;
+
+		/* We assume a new skb is passed here. This is not always
+		 * the case but should be enough for now. */
+		kedr_eh_on_alloc(ls->tid, pc, sizeof(struct sk_buff),
+				 (unsigned long)skb);
+
+		txq = netdev_get_tx_queue(dev, skb_get_queue_mapping(skb));
+		lock_id = (unsigned long)&txq->_xmit_lock;
+		ls->cbdata = (unsigned long)txq;
+
+		/* Start of .ndo_start_xmit happens-after the start of a
+		 * function that enables xmit for the relevant queue.
+		 * ID: (ulong)txq. */
+		kedr_happens_after(ls->tid, pc, (unsigned long)txq);
+
+		kedr_locked_start(ls, pc, KEDR_LOCK_MASK_TX, lock_id,
+				  KEDR_LT_SPINLOCK);
+	<<
+
+	code.post =>>
+		struct netdev_queue *txq = (struct netdev_queue *)ls->cbdata;
+		unsigned long lock_id = (unsigned long)&txq->_xmit_lock;
+
+		kedr_locked_end(ls, pc, KEDR_LOCK_MASK_TX, lock_id,
+				KEDR_LT_SPINLOCK);
+
+		/* End of .ndo_start_xmit happens-before the end of a
+		 * function that disables xmit for the relevant queue.
+		 * ID: (ulong)txq + 1. */
+		kedr_happens_before(ls->tid, pc, (unsigned long)txq + 1);
+	<<
+#######################################################################
