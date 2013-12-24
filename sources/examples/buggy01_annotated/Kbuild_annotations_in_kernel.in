@@ -1,0 +1,6 @@
+MODULE_NAME := @KMODULE_NAME@
+
+ccflags-y := -g -I$(src)
+obj-m := $(MODULE_NAME).o
+$(MODULE_NAME)-y := module.o
+

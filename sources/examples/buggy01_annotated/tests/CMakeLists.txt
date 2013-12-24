@@ -11,7 +11,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../makefile_installed.in"
 	"${CMAKE_CURRENT_BINARY_DIR}/test_build.mk"
 	@ONLY
 )
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../Kbuild.in"
+configure_file("${KBUILD_IN_FILE}"
 	"${CMAKE_CURRENT_BINARY_DIR}/Kbuild"
 	@ONLY
 )

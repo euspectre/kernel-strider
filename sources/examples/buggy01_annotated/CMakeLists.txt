@@ -5,8 +5,15 @@ configure_file(
 	"${CMAKE_CURRENT_SOURCE_DIR}/makefile_installed.in"
 	"${CMAKE_CURRENT_BINARY_DIR}/makefile_installed"
 	@ONLY)
+
+if (KEDR_ANNOTATIONS_ENABLED)
+	set(KBUILD_IN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Kbuild_annotations_in_kernel.in")
+else (KEDR_ANNOTATIONS_ENABLED)
+	set(KBUILD_IN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Kbuild.in")
+endif (KEDR_ANNOTATIONS_ENABLED)
+
 configure_file(
-	"${CMAKE_CURRENT_SOURCE_DIR}/Kbuild.in"
+	"${KBUILD_IN_FILE}"
 	"${CMAKE_CURRENT_BINARY_DIR}/Kbuild"
 	@ONLY)
 
