@@ -1,0 +1,4 @@
+[group]
+	function.name = kedr_annotate_memory_acquired
+	function.index = KEDR_ANN_TYPE_MEMORY_ACQUIRED
+#######################################################################

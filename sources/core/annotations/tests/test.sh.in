@@ -21,6 +21,11 @@ checkPrereqs()
 		printf "The core module is missing: ${CORE_MODULE}\n"
 		exit 1
 	fi
+
+	if test ! -f "${MODULE_FH_COMMON}"; then
+		printf "The FH module is missing: ${MODULE_FH_COMMON}\n"
+		exit 1
+	fi
 	
 	if test ! -f "${REPORTER_MODULE}"; then
 		printf "The \"trace reporter\" module is missing: ${REPORTER_MODULE}\n"
@@ -48,6 +53,11 @@ cleanupAll()
 	lsmod | grep "${REPORTER_MODULE_NAME}" > /dev/null 2>&1
 	if test $? -eq 0; then
 		rmmod "${REPORTER_MODULE_NAME}"
+	fi
+
+	lsmod | grep "${FH_COMMON_MODULE_NAME}" > /dev/null 2>&1
+	if test $? -eq 0; then
+		rmmod "${FH_COMMON_MODULE_NAME}"
 	fi
 
 	lsmod | grep "${CORE_MODULE_NAME}" > /dev/null 2>&1
@@ -82,6 +92,13 @@ doTest()
 	insmod "${CORE_MODULE}" \
 		targets="${TARGET_MODULE_NAME}" \
 		umh_dir="@KEDR_UMH_DIR@" || exit 1
+
+	insmod "${MODULE_FH_COMMON}"
+	if test $? -ne 0; then
+		printf "Failed to load the FH plugin for common operations: ${MODULE_FH_COMMON}\n"
+		cleanupAll
+		exit 1
+	fi
 
 	insmod "${REPORTER_MODULE}"
 	if test $? -ne 0; then
@@ -131,6 +148,13 @@ doTest()
 		exit 1
 	fi
 
+	rmmod "${FH_COMMON_MODULE_NAME}"
+	if test $? -ne 0; then
+		printf "Failed to unload the module: ${FH_COMMON_MODULE_NAME}\n"
+		cleanupAll
+		exit 1
+	fi
+	
 	rmmod "${CORE_MODULE_NAME}" || exit 1
 	
 	cat "${TEST_TRACE_FILE}" | \
@@ -155,6 +179,9 @@ fi
 
 CORE_MODULE_NAME="kedr_mem_core"
 CORE_MODULE="@CMAKE_BINARY_DIR@/core/${CORE_MODULE_NAME}.ko"
+
+FH_COMMON_MODULE_NAME="kedr_fh_drd_common"
+MODULE_FH_COMMON="@CMAKE_BINARY_DIR@/functions/common/${FH_COMMON_MODULE_NAME}.ko"
 
 REPORTER_MODULE_NAME="kedr_test_reporter"
 REPORTER_MODULE="@CMAKE_BINARY_DIR@/core/tests/reporter/${REPORTER_MODULE_NAME}.ko"

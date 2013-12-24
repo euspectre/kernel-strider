@@ -387,4 +387,28 @@ kedr_fh_plugin_unregister(struct kedr_fh_plugin *fh);
 #endif /* ifdef CONFIG_X86_64 */
 /* ====================================================================== */
 
+/* Types of the annotations our system currently supports */
+enum kedr_annotation_type
+{
+	KEDR_ANN_TYPE_HAPPENS_BEFORE = 0,
+	KEDR_ANN_TYPE_HAPPENS_AFTER = 1,
+	KEDR_ANN_TYPE_MEMORY_ACQUIRED = 2,
+	KEDR_ANN_TYPE_MEMORY_RELEASED = 3,
+	KEDR_ANN_NUM_TYPES /* total number of types */
+};
+
+struct kedr_local_storage;
+struct kedr_annotation
+{
+	const char *name; /* name of the annotation function */
+	void (*pre)(struct kedr_local_storage *);
+	void (*post)(struct kedr_local_storage *);
+};
+
+/* Returns the pointer to the annotation structure for a given type of
+ * annotations. */
+struct kedr_annotation *
+kedr_get_annotation(enum kedr_annotation_type t);
+/* ====================================================================== */
+
 #endif /* FUNCTIONS_H_1133_INCLUDED */

@@ -20,8 +20,6 @@
 #include <linux/hash.h>
 #include <linux/spinlock.h>
 
-#include <kedr/kedr_mem/functions.h>
-
 #include "config.h"
 #include "core_impl.h"
 

@@ -1,0 +1,4 @@
+[group]
+	function.name = kedr_annotate_happens_after
+	function.index = KEDR_ANN_TYPE_HAPPENS_AFTER
+#######################################################################

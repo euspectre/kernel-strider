@@ -560,7 +560,6 @@ kedr_happens_after(unsigned long tid, unsigned long pc, unsigned long id)
 {
 	kedr_eh_on_wait(tid, pc, id, KEDR_SWT_COMMON);
 }
-
 /* ====================================================================== */
 
 /* It is recommended to use addresses of the objects as the IDs of 

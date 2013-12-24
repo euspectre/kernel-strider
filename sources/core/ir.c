@@ -33,6 +33,9 @@
 #include "transform.h"
 /* ====================================================================== */
 
+extern struct kedr_annotation kedr_annotation[KEDR_ANN_NUM_TYPES];
+/* ====================================================================== */
+
 /* Parameters of a hash map to be used to lookup IR nodes by the addresses 
  * of the corresponding machine instructions in the original code (see 
  * kedr_ir::node_map).
@@ -1146,9 +1149,11 @@ is_jump_backwards(struct kedr_ir_node *node)
 	 * kernel modules, some special kind of padding, may be. */
 }
 
-/* The handlers of the calls to the annotation functions are set here. 
- * For other functions, the conventional lookup from the "Function Handling"
- * subsystem is performed. */
+/* The handlers of the calls to the annotation functions are set here if
+ * the annotations are built into the target module itself. 
+ * For other functions as well as the annotations provided by the kernel,
+ * the conventional lookup from the "Function Handling" subsystem is
+ * performed. */
 static void
 fill_call_info_i13n(struct kedr_call_info *info, struct kedr_i13n *i13n)
 {
@@ -1159,11 +1164,11 @@ fill_call_info_i13n(struct kedr_call_info *info, struct kedr_i13n *i13n)
 		if (info->target != i13n->ann_addr[i])
 			continue;
 		
-		BUG_ON(kedr_annotation_handlers[i].pre == 0);
-		BUG_ON(kedr_annotation_handlers[i].post == 0);
+		BUG_ON(kedr_annotation[i].pre == 0);
+		BUG_ON(kedr_annotation[i].post == 0);
 		
-		info->pre_handler = kedr_annotation_handlers[i].pre;
-		info->post_handler = kedr_annotation_handlers[i].post;
+		info->pre_handler = kedr_annotation[i].pre;
+		info->post_handler = kedr_annotation[i].post;
 		info->repl = info->target;
 		return;
 	}

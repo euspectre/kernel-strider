@@ -4,7 +4,7 @@
 
 #include <linux/list.h>
 
-#include "annot_impl.h"
+#include <kedr/kedr_mem/functions.h>
 /* ====================================================================== */
 
 struct module;

@@ -5,7 +5,8 @@
 set(PLUGIN_SHORT_NAME "common")
 
 # The following function groups must always be processed.
-set(FUNCTION_GROUPS 
+set(FUNCTION_GROUPS
+	"annotations"
 	"alloc" 
 	"realloc"
 	"free"

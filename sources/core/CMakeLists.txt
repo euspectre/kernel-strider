@@ -70,7 +70,6 @@ kbuild_add_module(${KMODULE_NAME}
 	"handlers.h"
 	"thunks.h"
 	"resolve_ip.h"
-	"annot_impl.h"
 	"fh_impl.h"
 	"target.h"
 

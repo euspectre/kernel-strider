@@ -17,7 +17,6 @@
 #include <kedr/kedr_mem/local_storage.h>
 #include <kedr/kedr_mem/functions.h>
 
-#include "annot_impl.h"
 #include "core_impl.h"
 #include "config.h"
 /* ====================================================================== */
@@ -110,8 +109,8 @@ memory_released_post(struct kedr_local_storage *ls)
 		kedr_eh_on_free_post(ls->tid, info->pc, addr);
 }
 
-struct kedr_annotation_handlers 
-kedr_annotation_handlers[KEDR_ANN_NUM_TYPES] = {
+struct kedr_annotation 
+kedr_annotation[KEDR_ANN_NUM_TYPES] = {
 	[KEDR_ANN_TYPE_HAPPENS_BEFORE]	= {
 		.name = "kedr_annotate_happens_before",
 		.pre  = &happens_before_pre,
@@ -133,4 +132,12 @@ kedr_annotation_handlers[KEDR_ANN_NUM_TYPES] = {
 		.post = &memory_released_post
 	}
 };
+
+struct kedr_annotation *
+kedr_get_annotation(enum kedr_annotation_type t)
+{
+	BUG_ON(t >= KEDR_ANN_NUM_TYPES);
+	return &kedr_annotation[t];
+}
+EXPORT_SYMBOL(kedr_get_annotation);
 /* ====================================================================== */

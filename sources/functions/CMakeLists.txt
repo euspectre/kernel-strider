@@ -5,7 +5,7 @@ set(TOP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include/kedr")
 # exported kernel functions for a given group.
 # For each function in ${functions} list, ${function}.data file 
 # should contain information about the handlers of that function.
-function(group_create_handlers group_name functions)
+function(group_create_handlers group_name)
 	set(source_file "${CMAKE_CURRENT_BINARY_DIR}/handlers_${group_name}.c")
 	
 	# Common name of header part of the data file
@@ -13,9 +13,9 @@ function(group_create_handlers group_name functions)
 	set(handlers_data_file "${CMAKE_CURRENT_BINARY_DIR}/handlers.data")
 	
 	set(functions_data)
-	foreach(func ${functions} ${ARGN})
+	foreach(func ${ARGN})
 		list(APPEND functions_data "${func}.data")
-	endforeach(func ${functions} ${ARGN})
+	endforeach(func ${ARGN})
 	
 	set(data_files_abs)
 	if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${header_data_file}")
@@ -24,10 +24,17 @@ function(group_create_handlers group_name functions)
 		to_abs_path(data_files_abs ${functions_data})
 	endif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${header_data_file}")
 
-	add_custom_command(OUTPUT ${handlers_data_file}
-		COMMAND cat ${data_files_abs} > ${handlers_data_file}
-		DEPENDS ${data_files_abs}
-	)
+	if (data_files_abs)
+		add_custom_command(OUTPUT ${handlers_data_file}
+			COMMAND cat ${data_files_abs} > ${handlers_data_file}
+			DEPENDS ${data_files_abs}
+		)
+	else (data_files_abs)
+		add_custom_command(OUTPUT ${handlers_data_file}
+			COMMAND touch ${handlers_data_file}
+			DEPENDS ${data_files_abs}
+		)
+	endif (data_files_abs)
 	
 	add_custom_command(OUTPUT ${source_file}
 		COMMAND ${KEDR_GEN_TOOL} 
@@ -35,7 +42,7 @@ function(group_create_handlers group_name functions)
 			${handlers_data_file} > ${source_file}
 		DEPENDS ${handlers_data_file}
 	)
-endfunction(group_create_handlers group_name functions)
+endfunction(group_create_handlers group_name)
 
 # Allows to specify the source files the current directory provides for the 
 # current FH group, defines the appropriate make target(s).

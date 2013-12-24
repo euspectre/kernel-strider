@@ -32,7 +32,9 @@
 #include "util.h"
 #include "sections.h"
 #include "hooks.h"
-#include "annot_impl.h"
+/* ====================================================================== */
+
+extern struct kedr_annotation kedr_annotation[KEDR_ANN_NUM_TYPES];
 /* ====================================================================== */
 
 static void ifunc_destroy(struct kedr_ifunc *func);
@@ -217,7 +219,7 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	++i13n->num_ifuncs;
 	
 	for (i = 0; i < (unsigned int)KEDR_ANN_NUM_TYPES; ++i) {
-		if (strcmp(tf->name, kedr_annotation_handlers[i].name) == 0)
+		if (strcmp(tf->name, kedr_annotation[i].name) == 0)
 			i13n->ann_addr[i] = tf->info.addr;
 	}
 	return 0;
