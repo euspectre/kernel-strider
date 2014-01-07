@@ -34,6 +34,7 @@
 #include <stdexcept>
 
 #include <kedr/object_types.h>
+#include <lzo/minilzo.h>
 
 #include "recorder.h"
 

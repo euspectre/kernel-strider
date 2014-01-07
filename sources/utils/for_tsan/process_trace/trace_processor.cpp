@@ -29,6 +29,7 @@
 #include <sys/wait.h>
 
 #include <kedr/object_types.h>
+#include <lzo/minilzo.h>
 
 #include "trace_processor.h"
 #include "module_info.h"

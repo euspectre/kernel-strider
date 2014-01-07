@@ -20,6 +20,12 @@ set(APP_SOURCES
 	rc_ptr.h
 	trace_processor.h
 	trace_processor.cpp
+
+	# LZO mini
+	"${CMAKE_SOURCE_DIR}/lzo/minilzo.c"
+	"${CMAKE_SOURCE_DIR}/lzo/minilzo.h"
+	"${CMAKE_SOURCE_DIR}/lzo/lzoconf.h"
+	"${CMAKE_SOURCE_DIR}/lzo/lzodefs.h"
 )
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
