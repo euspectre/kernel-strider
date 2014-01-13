@@ -6,7 +6,7 @@ configure_file(
 	@ONLY
 )
 
-kedr_test_add_script(util.init_not_first.01
+kedr_test_add_script(utils.init_not_first.01
 	test.sh
 )
 
