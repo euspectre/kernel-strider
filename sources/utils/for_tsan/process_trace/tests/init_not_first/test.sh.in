@@ -97,6 +97,12 @@ cleanupAll()
 ########################################################################
 doTest()
 {
+	# LZO compression API is used by the output subsystem. Load
+	# lzo_compress module just in case it is not built in and is not
+	# already loaded. Otherwise, 'modprobe' will be a no-op.
+	# This is needed for Debian 6, for example.
+	modprobe lzo_compress || exit 1
+
 	# Just in case
 	chmod +x "${APP_REC}"
 	chmod +x "${APP_PROCESS_TRACE}"

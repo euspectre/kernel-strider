@@ -12,6 +12,7 @@
 #include <map>
 
 #include <utils/simple_trace_recorder/recorder.h>
+#include <lzo/minilzo.h>
 /* ====================================================================== */
 
 /* An instance of this class performs the actual processing of the trace:
@@ -73,8 +74,7 @@ private:
 	void output_thread_list();
 	
 	struct kedr_tr_event_header *read_record(FILE *fd);
-	unsigned int get_tsan_thread_id(
-		const struct kedr_tr_event_header *record);
+	unsigned int get_tsan_thread_id(__u64 tid);
 	void output_tsan_event(const char *name, unsigned int tid, 
 			       unsigned long pc, unsigned long addr_id, 
 			       unsigned long size);
@@ -98,6 +98,9 @@ private:
 
 	void handle_thread_start_event(struct kedr_tr_event_tstart *ev);
 	void handle_thread_end_event(struct kedr_tr_event_tend *ev);
+	
+	void process_record(struct kedr_tr_event_header *record);
+	void process_compressed_events(struct kedr_tr_event_header *record);
 	
 private:
 	int in_pipe[2];

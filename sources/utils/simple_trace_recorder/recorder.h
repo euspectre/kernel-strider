@@ -2,7 +2,22 @@
  * part of the simple trace recorder. 
  *
  * Note that "thread create" and "thread join" pre/post events (see 
- * kedr/kedr_mem/core_api.h) are ignored by this output system */
+ * kedr/kedr_mem/core_api.h) are ignored by this output system.
+ *
+ * The data to be output is compressed first (except for some special events 
+ * like "session end" which are output "as is").
+ * 
+ * The process involves 3 in-kernel buffers. The events are first stored in
+ * the "accumulator buffer" (B0), in the order they appear in the output
+ * subsystem, without gaps inbetween. When an event arrives and B0 has no
+ * free space for it, the contents of B0 are compressed to the temporary
+ * storage buffer (B1). LZO is used for that, because it is already used in
+ * the kernel and is said to be fast. The contents of B1 are then copied to
+ * the output buffer (B2) which is visible from the user space. If the 
+ * output buffer does not have enough space at the moment, the events 
+ * accumulated so far are considered lost. Independent on the result of the
+ * output, B0 and B1 are now considered free. The original event is then 
+ * written to B0 and the process continues. */
 
 #ifndef RECORDER_H_1045_INCLUDED
 #define RECORDER_H_1045_INCLUDED
@@ -25,7 +40,8 @@
 #define KEDR_COMM_LEN 15
 
 /* Meaning of the commonly used fields of the event structures:
- *   tid - thread ID;
+ *   tid - thread ID, not used for module load/unload and session start/end 
+ *       events;
  *   pc - program counter (aka PC, instruction pointer, IP) - address of 
  *       a location in the code; 
  *   obj_id - ID of an object (lock, signal/wait object, ...); 
@@ -38,23 +54,10 @@
 struct kedr_tr_event_header
 {
 	/* Type of the event, see 'enum kedr_tr_event_type'. */
-	__u16 type; 
+	__u32 type; 
 	
 	/* Size of the event structure including this header. */
-	__u16 event_size; 
-	
-	/* (meaningful for memory access events only, not used for others)
-	 * Number of the events of the given type the event structure 
-	 * contains information about. */
-	__u16 nr_events; 
-	
-	/* Type of the object involved in the event (if any). See the 
-	 * description of the event structures below for details. */
-	__u16 obj_type; 
-	
-	/* ID of the thread where the event happened. Not used for module
-	 * load/unload and session start/end events. */
-	__u64 tid;
+	__u32 event_size;
 } __attribute__ ((packed));
 
 /* Types of the events. */
@@ -152,6 +155,11 @@ enum kedr_tr_event_type
 	 * Structure: kedr_tr_event_tend. */
 	KEDR_TR_EVENT_THREAD_END = 28,
 
+	/* The event represents a compressed series of events. LZO1X is used
+	 * for compression.
+	 * Structure: kedr_tr_event_compressed.*/
+	KEDR_TR_EVENT_COMPRESSED = 29,
+
 	/* The number of event types defined so far. */
 	KEDR_TR_EVENT_MAX
 };
@@ -200,12 +208,14 @@ struct kedr_tr_event_module
 struct kedr_tr_event_func
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	__u32 func;
 } __attribute__ ((packed));
 
 struct kedr_tr_event_call
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	__u32 func;
 	__u32 pc;
 } __attribute__ ((packed));
@@ -222,10 +232,16 @@ struct kedr_tr_event_mem_op
  * no more than 32 operations. 
  * For a locked memory access or an I/O operation accessing memory, the 
  * structure contains information about exactly that single operation. 
- * The value of 'header.nr_events' is ignored in this case. */
+ * The value of 'nr_events' is ignored in this case. */
 struct kedr_tr_event_mem
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
+	
+	/* (meaningful for memory access events only, not used for others)
+	 * Number of the events of the given type the event structure 
+	 * contains information about. */
+	__u32 nr_events;
 	
 	/* For each memory operation in this structure, 1 in the 
 	 * corresponding bit of 'read_mask' means that operation was a read
@@ -237,7 +253,7 @@ struct kedr_tr_event_mem
 	__u32 write_mask;
 	
 	/* Memory access operations. The array actually has 
-	 * 'header.nr_events' elements. Each element corresponds to an 
+	 * 'nr_events' elements. Each element corresponds to an 
 	 * operation that actually happened and should be reported.
 	 * 
 	 * [NB] 'kedr_tr_event_header::event_size' is the full size of this 
@@ -246,11 +262,13 @@ struct kedr_tr_event_mem
 } __attribute__ ((packed));
 
 /* Memory barrier. 
- * 'header.obj_type' is a type of the barrier, see 'enum kedr_barrier_type'
+ * 'obj_type' is a type of the barrier, see 'enum kedr_barrier_type'
  * in <kedr/object_types.h>. */
 struct kedr_tr_event_barrier
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
+	__u32 obj_type;
 	__u32 pc;
 } __attribute__ ((packed));
 
@@ -261,26 +279,30 @@ struct kedr_tr_event_barrier
 struct kedr_tr_event_alloc_free
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	__u64 addr;
 	__u32 size;
 	__u32 pc;
 } __attribute__ ((packed));
 
 /* A synchronization event (lock/unlock, signal/wait).
- * 'header.obj_type' is a type of the synchronization object involved:
+ * 'obj_type' is a type of the synchronization object involved:
  * - see 'enum kedr_lock_type' in <kedr/object_types.h> for the locks;
  * - see 'enum kedr_sw_object_type' in <kedr/object_types.h> for the objects
  * used in signal/wait operations. */
 struct kedr_tr_event_sync
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	__u64 obj_id;
+	__u32 obj_type;
 	__u32 pc;
 } __attribute__ ((packed));
 
 struct kedr_tr_event_block
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	__u32 pc;
 } __attribute__ ((packed));
 
@@ -290,6 +312,7 @@ struct kedr_tr_event_block
 struct kedr_tr_event_tstart
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
 	char comm[KEDR_COMM_LEN + 1];
 } __attribute__ ((packed));
 
@@ -297,6 +320,22 @@ struct kedr_tr_event_tstart
 struct kedr_tr_event_tend
 {
 	struct kedr_tr_event_header header;
+	__u64 tid;
+} __attribute__ ((packed));
+
+/* A compressed series of events. */
+struct kedr_tr_event_compressed
+{
+	struct kedr_tr_event_header header;
+	
+	/* Size of the original series of event structures, in bytes. */
+	__u32 orig_size;
+	
+	/* Size of the compressed data at the end of this event structure.*/
+	__u32 compressed_size;
+
+	/* The compressed data. */
+	unsigned char compressed[1];
 } __attribute__ ((packed));
 /* ====================================================================== */
 

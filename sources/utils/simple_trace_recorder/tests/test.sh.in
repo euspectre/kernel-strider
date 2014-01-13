@@ -89,6 +89,12 @@ cleanupAll()
 ########################################################################
 doTest()
 {
+	# LZO compression API is used by the output subsystem. Load
+	# lzo_compress module just in case it is not built in and is not
+	# already loaded. Otherwise, 'modprobe' will be a no-op.
+	# This is needed for Debian 6, for example.
+	modprobe lzo_compress || exit 1
+
 	insmod "${EVENT_GEN_MODULE}" || exit 1
 
 	mount -t debugfs none "${TEST_DEBUGFS_DIR}"
@@ -98,7 +104,7 @@ doTest()
 		exit 1
 	fi
 
-	insmod "${OUTPUT_MODULE}" nr_data_pages=4		
+	insmod "${OUTPUT_MODULE}"
 	if test $? -ne 0; then
 		printf "Failed to load the kernel-space part of the output system.\n"
 		cleanupAll

@@ -162,6 +162,28 @@ def start(components, module_path, verbose=False):
 
     failed = False
 
+    # LZO compression routines may be implemented in a kernel module rather
+    # than built in. Try to load the module anyway. If it is built in or is
+    # already loaded, 'modprobe lzo_compress' will be a no-op.
+    cmd = ['modprobe', 'lzo_compress']
+    if verbose:
+        print 'Trying to load \'lzo_compress\' (may be built-in)'
+        print 'Command:', ' '.join(cmd)
+
+    try:
+        ret = subprocess.call(cmd)
+        if ret != 0:
+            print >> sys.stderr, ' '.join([
+                'Failed to load lzo_compress:',
+                'the command returned %d.' % ret])
+            return False
+
+    except OSError as e:
+        print >> sys.stderr, '\n'.join([
+            'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+        return False
+    
+
     rollback = []
     for comp in components:
         if comp.start(module_path, verbose=verbose):

@@ -9,10 +9,10 @@
  * the options. */
 
 /* ========================================================================
- * Copyright (C) 2013, ROSA Laboratory
+ * Copyright (C) 2013-2014, ROSA Laboratory
  *
  * Author: 
- *      Eugene A. Shatokhin <eugene.shatokhin@rosalab.ru>
+ *      Eugene A. Shatokhin
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -246,6 +246,11 @@ main(int argc, char *argv[])
 	if (elf_version(EV_CURRENT) == EV_NONE) {
 		cerr << "Failed to initialize libelf: " << elf_errmsg(-1) 
 			<< endl;
+		return EXIT_FAILURE;
+	}
+	
+	if (lzo_init() != LZO_E_OK) {
+		cerr << "Failed to initialize LZO library." << endl;
 		return EXIT_FAILURE;
 	}
 	

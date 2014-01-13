@@ -16,7 +16,7 @@
  * also saves the remaining available data before exiting. */
 
 /* ========================================================================
- * Copyright (C) 2013, ROSA Laboratory
+ * Copyright (C) 2013-2014, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  *
  * Authors: 
@@ -67,8 +67,6 @@ static const char *param_file =
 static unsigned int nr_data_pages = 0;
 static unsigned long page_size = 0;
 static unsigned int buffer_size = 0;
-
-static unsigned long long nr_events = 0;
 
 static volatile int done = 0;
 /* ====================================================================== */
@@ -185,7 +183,7 @@ process_data(void *buffer, FILE *outf)
 		}
 		
 		/* Sanity check, just in case. */
-		if ((unsigned long)treh->event_size >= page_size) {
+		if ((unsigned int)treh->event_size >= buffer_size) {
 			fprintf(stderr, 
 				"Event size is too large: %u (pos=%u)\n",
 				(unsigned int)treh->event_size, 
@@ -193,7 +191,6 @@ process_data(void *buffer, FILE *outf)
 			return 1;
 		}
 		
-		++nr_events;
 		errno = 0;
 		fwrite(treh, (size_t)treh->event_size, 1, outf);
 		if (errno != 0) {
@@ -269,8 +266,6 @@ save_trace(int fd_in, FILE *outf)
 			strerror(errno));
 		return 1;
 	}
-	
-	printf("Recorded %llu event(s).\n", nr_events);
 	return err;
 }
 

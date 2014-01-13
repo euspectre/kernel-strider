@@ -1,3 +1,15 @@
+/* ========================================================================
+ * Copyright (C) 2013-2014, ROSA Laboratory
+ * Copyright (C) 2012, KEDR development team
+ * Authors: 
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published
+ * by the Free Software Foundation.
+ ======================================================================== */
+
 /* This module outputs the information about the events it receives from the 
  * core to a buffer attached to a file in debugfs 
  * ("kedr_simple_trace_recorder/buffer"). A user-space application
@@ -14,22 +26,29 @@
  * pages are called "data pages", they actually contain the event 
  * structures.
  * 
- * The module is not required to notify the user-space part about each new 
- * event stored in the buffer. Instead, this is done for each 'notify_mark'
- * pages written and also when "target unload" event is received. */
-
-/* ========================================================================
- * Copyright (C) 2013, ROSA Laboratory
- * Copyright (C) 2012, KEDR development team
- * Authors: 
- *      Eugene A. Shatokhin
- *      Andrey V. Tsyvarev
+ * [NB] The module is not required to notify the user-space part about each 
+ * new event stored in the buffer. This is done for each 'notify_mark' pages
+ * written and also when "session end" event is received. 
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation.
- ======================================================================== */
- 
+ * Notes for developers.
+ * Some of the events written to the output buffer are compressed, see 
+ * recorder.h for details.
+ * 3 buffers are involved: 
+ * - B0 - accumulator
+ * - B1 - temporary storage for compressed data
+ * - B2 - the output buffer visible from the user space.
+ * 
+ * If an event structure is created in the output buffer directly (e.g.
+ * "session end"), it cannot cross page boundary because the buffer may be
+ * non-contiguous from the kernel's point of view.
+ * If an event structure is first created somewhere else and is then copied
+ * to the output buffer (e.g. a compressed event), this restriction does not
+ * apply. The copying procedure must take the structure of the output buffer
+ * in account, of course. 
+ * 
+ * To serialize the accesses to the buffers B0, B1 and B2 from this module, 
+ * 'eh_lock' must be used. */
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -47,6 +66,7 @@
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
 #include <linux/string.h>
+#include <linux/lzo.h>		/* LZO1X compression support */
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/object_types.h>
@@ -62,13 +82,25 @@ MODULE_AUTHOR("Eugene A. Shatokhin");
 MODULE_LICENSE("GPL");
 /* ====================================================================== */
 
-/* If you need really large data buffers (> 256Mb), you can try increasing
- * this limit. */
-#define KEDR_TR_MAX_DATA_PAGES 65536
+#define KEDR_TR_NO_SPACE (__u32)(-1)
 
-/* Number of data pages in the buffer. Must be a power of 2. Must be less 
- * than or equal to KEDR_TR_MAX_DATA_PAGES. */
-unsigned int nr_data_pages = 128;
+/* If you need really large data buffers (> 256Mb), you can try increasing
+ * this limit although it is not recommended (the more kernel memory we 
+ * require the more problems for the whole system). */
+#define KEDR_TR_MAX_DATA_PAGES 65536
+#define KEDR_TR_B0_DATA_PAGES 32
+
+/* Number of data pages in the buffer B0. Must be a power of 2 because
+ * 'nr_data_pages' (see below) must be a power of 2 as well. 
+ * Do not use large numbers here because the compression of B0 may 
+ * occasionally be done in interrupt context. */
+static unsigned int b0_nr_data_pages = KEDR_TR_B0_DATA_PAGES;
+
+/* Number of data pages in the output buffer. Must be a power of 2. Must be 
+ * less than or equal to KEDR_TR_MAX_DATA_PAGES but no less than 
+ * 2 * b0_nr_data_pages because B1 must at least fit in. The size of B1 is
+ * always less than 2 * sizeof(B0). */
+unsigned int nr_data_pages = 4 * KEDR_TR_B0_DATA_PAGES;
 module_param(nr_data_pages, uint, S_IRUGO);
 
 /* For each 'notify_mark' data pages filled in the buffer, this module wakes
@@ -101,13 +133,25 @@ static const char *buffer_file_name = "buffer";
 /* A mutex to serialize operations with the buffer file. */
 static DEFINE_MUTEX(buffer_file_mutex);
 
-/* The buffer itself. */
+/* The buffer B0. */
+static void *b0_buffer = NULL;
+
+/* The buffer B1. */
+static void *b1_buffer = NULL;
+
+/* The output buffer (B2). */
 static unsigned long *page_buffer = NULL;
 
-/* The first page of the buffer, contains service data. */
+/* The first page of the output buffer, contains service data. */
 static struct kedr_tr_start_page *start_page = NULL;
 
-/* The total size of the data pages in the buffer. */
+/* The total size of the data in the buffer B0. */
+static unsigned int b0_data_size;
+
+/* The total number of events stored in B0, OR compressed in B1 */
+static unsigned int cached_events_num;
+
+/* The total size of the data pages in the output buffer. */
 static unsigned int buffer_size;
 
 /* 0 if the file has been opened, non-zero otherwise. */
@@ -122,6 +166,9 @@ static atomic_t buffer_file_available = ATOMIC_INIT(1);
  *
  * The accesses to this variable must be protected by 'eh_lock'. */
 static int signal_on_next_poll = 0;
+
+/* The LZO1X compressor working memory */
+static void *lzo_wrkmem = NULL;
 /* ====================================================================== */
 
 /* A wait queue for the reader to wait on until enough data become 
@@ -129,8 +176,8 @@ static int signal_on_next_poll = 0;
 static DECLARE_WAIT_QUEUE_HEAD(reader_queue);
 /* ====================================================================== */
 
-/* A spinlock to serialize the accesses to the buffer from the event 
- * handlers. */
+/* A spinlock to serialize the accesses to the output buffer, as well as the
+ * buffers B0 and B1 used for data compression, from the event handlers. */
 static DEFINE_SPINLOCK(eh_lock);
 /* ====================================================================== */
 
@@ -226,6 +273,13 @@ buffer_has_space(__u32 wp, __u32 rp, unsigned int size)
 	return (end_dist >= wp_dist);
 }
 
+static int
+b0_buffer_has_space(unsigned int size)
+{
+	unsigned long b0_buffer_space = b0_nr_data_pages << PAGE_SHIFT;
+	return (b0_buffer_space - b0_data_size >= size);
+}
+
 /* Returns the address of a memory location in the buffer corresponding to
  * the given position. It is OK for 'pos' to be greater than or equal to 
  * 'buffer_size', 'pos' modulo 'buffer_size' is the corresponding position
@@ -241,6 +295,13 @@ buffer_pos_to_addr(__u32 pos)
 	page_idx = ((unsigned int)pos >> PAGE_SHIFT) + 1;
 	
 	return (void *)(page_buffer[page_idx] + offset);
+}
+
+/* The area in B0 where the next event structure should be written. */
+static void *
+b0_buffer_write_pos(void)
+{
+	return (void *)((unsigned long)b0_buffer + b0_data_size);
 }
 
 /* Returns non-zero if a record of the given size would not cross page 
@@ -267,7 +328,7 @@ complete_buffer_page(__u32 wp)
 		struct kedr_tr_event_header *h;
 		h = buffer_pos_to_addr(wp);
 		h->type = KEDR_TR_EVENT_SKIP;
-		h->event_size = 0; /* just in case */
+		h->event_size = 0; /* all fields must be filled */
 	}
 	return ((wp + PAGE_SIZE) & ~(PAGE_SIZE - 1));
 }
@@ -279,17 +340,16 @@ complete_buffer_page(__u32 wp)
  * respectively; 'size' is the size of the record.
  * If there is enough space in the buffer to write the record, the function 
  * will return the position where the record should be written. Otherwise,
- * the function will return (__u32)(-1), which means that the event is lost. 
+ * the function will return KEDR_TR_NO_SPACE, which means that the event is 
+ * lost. 
  *
  * Must be called with 'eh_lock' locked. */
 static __u32
 record_write_common(__u32 wp, __u32 rp, unsigned int size)
 {
-	__u32 no_space = (__u32)(-1);
-
 	if (!buffer_has_space(wp, rp, size)) {
 		++events_lost;
-		return no_space;
+		return KEDR_TR_NO_SPACE;
 	}
 	
 	if (!fits_to_page(wp, size)) {
@@ -297,10 +357,77 @@ record_write_common(__u32 wp, __u32 rp, unsigned int size)
 		if (!buffer_has_space(wp, rp, size)) {
 			++events_lost;
 			set_write_pos_and_notify(wp, rp);
-			return no_space;
+			return KEDR_TR_NO_SPACE;
 		}
 	}
 	return wp;
+}
+
+static __u32
+lzo1x_compress_buf(void *buf, size_t buf_size)
+{
+	__u32 event_size;
+	size_t compressed_size;
+	struct kedr_tr_event_compressed *ec = b1_buffer;
+	int ret;
+	
+	ret = lzo1x_1_compress(buf, buf_size, &ec->compressed[0], 
+			       &compressed_size, lzo_wrkmem);
+	if (ret != LZO_E_OK) {
+		pr_warning(KEDR_MSG_PREFIX 
+			"lzo1x_compress_buf() failed, error: %d.\n", ret);
+		return 0;
+	}
+
+	event_size = sizeof(struct kedr_tr_event_compressed) - 1 + 
+		compressed_size;
+	ec->header.type = KEDR_TR_EVENT_COMPRESSED;
+	ec->header.event_size = event_size;
+	ec->orig_size = buf_size;
+	ec->compressed_size = compressed_size;
+	return event_size;
+}
+
+/* Compress the contents of B0 to B1 and copy the result to the output 
+ * buffer if there is enough space there. Otherwise, the events from B0 are 
+ * considered lost. After this function completes, B0 and B1 will be 
+ * available as if they were empty again. */
+static void
+compress_b0_to_output(void)
+{
+	__u32 wp;
+	__u32 rp;
+	__u32 nbytes;
+	__u32 pos = 0;
+	void *where = NULL;
+
+	rp = get_read_pos();
+	wp = start_page->write_pos;
+	
+	nbytes = lzo1x_compress_buf(b0_buffer, b0_data_size);
+	b0_data_size = 0; /* Mark the buffer empty. */
+	
+	if (nbytes == 0 || !buffer_has_space(wp, rp, nbytes)) { 
+		events_lost += cached_events_num;
+		cached_events_num = 0;
+		return;
+	}
+
+	/* Write the event page by page. Note that it is not needed to start
+	 * from a page boundary here. */
+	while (nbytes != 0) {
+		__u32 next_page = (wp + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+		__u32 avail = next_page - wp;
+		__u32 to_write = (nbytes > avail) ? avail : nbytes;
+		
+		where = buffer_pos_to_addr(wp);
+		memcpy(where, b1_buffer + pos, to_write);
+		pos += to_write;
+		wp += to_write;
+		nbytes -= to_write;
+	}
+	cached_events_num = 0;
+	set_write_pos_and_notify(wp, rp);
 }
 /* ====================================================================== */
 
@@ -437,17 +564,21 @@ handle_session_event_impl(enum kedr_tr_event_type et)
 	unsigned int size = (unsigned int)sizeof(*ev);
 
 	spin_lock_irqsave(&eh_lock, irq_flags);
+	
+	/* If session is ending, output the events accumulated in B0. */
+	if (et == KEDR_TR_EVENT_SESSION_END && cached_events_num != 0) {
+		/* B0 -> [LZO] -> B1 => B2 */
+		compress_b0_to_output();
+	}
+
 	rp = get_read_pos();
 	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
+	if (wp == KEDR_TR_NO_SPACE)
 		goto out;
 
 	ev = buffer_pos_to_addr(wp);
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = 0;
 
 	wp += size;
 	set_write_pos_and_notify(wp, rp);
@@ -462,6 +593,7 @@ handle_session_event_impl(enum kedr_tr_event_type et)
 	else {
 		signal_on_next_poll = 0;
 	}
+
 out:
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
@@ -469,8 +601,6 @@ out:
 static void
 handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_module *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);
@@ -481,12 +611,10 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 	 * the core ensures that. */
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
-	
-	ev = buffer_pos_to_addr(wp);
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
+
+	ev = b0_buffer_write_pos();
 	memset(ev, 0, size);
 	
 	ev->header.type = et;
@@ -503,10 +631,9 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 			ev->core_size = (__u32)mod->core_text_size;
 	}
 	
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-	
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -514,8 +641,6 @@ static void
 handle_function_event_impl(enum kedr_tr_event_type et, unsigned long tid, 
 	unsigned long func)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_func *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);
@@ -524,22 +649,18 @@ handle_function_event_impl(enum kedr_tr_event_type et, unsigned long tid,
 		return;
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 	ev->func = (__u32)func;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -547,8 +668,6 @@ static void
 handle_call_impl(enum kedr_tr_event_type et, unsigned long tid, 
 	unsigned long pc, unsigned long func)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_call *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
@@ -557,23 +676,19 @@ handle_call_impl(enum kedr_tr_event_type et, unsigned long tid,
 		return;
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 	ev->func = (__u32)func;
 	ev->pc = (__u32)pc;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -648,7 +763,7 @@ begin_memory_events(struct kedr_event_handlers *eh, unsigned long tid,
 	
 	/* ev->header.nr_events is now 0 */
 	ev->header.type = KEDR_TR_EVENT_MEM;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 	*pdata = ev; 
 }
 
@@ -665,7 +780,7 @@ on_memory_event(struct kedr_event_handlers *eh, unsigned long tid,
 	if (addr == 0 || ev == NULL)
 		return;
 	
-	nr = ev->header.nr_events;
+	nr = ev->nr_events;
 	event_bit = 1 << nr;
 	
 	ev->mem_ops[nr].addr = (__u64)addr;
@@ -689,35 +804,29 @@ on_memory_event(struct kedr_event_handlers *eh, unsigned long tid,
 			(int)type);
 	};
 	
-	++ev->header.nr_events;
+	++ev->nr_events;
 }
 
 static void
 report_block_enter_event(__u64 tid, __u32 pc)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_block *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = KEDR_TR_EVENT_BLOCK_ENTER;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = tid;
+	ev->tid = tid;
 	ev->pc = pc;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -725,37 +834,32 @@ static void
 end_memory_events(struct kedr_event_handlers *eh, unsigned long tid, 
 	void *data)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	unsigned int size;
 	struct kedr_tr_event_mem *ev = (struct kedr_tr_event_mem *)data;
 	void *where = NULL;
 	
-	if (ev == NULL || ev->header.nr_events == 0) {
+	if (ev == NULL || ev->nr_events == 0) {
 		kfree(ev);
 		return;
 	}
 	
-	report_block_enter_event(ev->header.tid, ev->mem_ops[0].pc);
+	report_block_enter_event(ev->tid, ev->mem_ops[0].pc);
 	
 	size = sizeof(struct kedr_tr_event_mem) + 
-		(ev->header.nr_events - 1) * 
-		sizeof(struct kedr_tr_event_mem_op);
+		(ev->nr_events - 1) * sizeof(struct kedr_tr_event_mem_op);
 	ev->header.event_size = size;
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
-	
-	where = buffer_pos_to_addr(wp);
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
+
+	where = b0_buffer_write_pos();
 	memcpy(where, ev, size);
 	
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 	kfree(ev);
 }
@@ -765,24 +869,19 @@ handle_locked_and_io_impl(enum kedr_tr_event_type et, unsigned long tid,
 	unsigned long pc, unsigned long addr, unsigned long sz, 
 	enum kedr_memory_event_type type)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_mem *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 1;
-	ev->header.obj_type = 0;
-	ev->header.tid = (__u64)tid;
+	ev->nr_events = 1;
+	ev->tid = (__u64)tid;
 	
 	ev->mem_ops[0].addr = (__u64)addr;
 	ev->mem_ops[0].size = (__u32)sz;
@@ -805,9 +904,9 @@ handle_locked_and_io_impl(enum kedr_tr_event_type et, unsigned long tid,
 			(int)type);
 	};
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -833,29 +932,24 @@ static void
 handle_memory_barrier_impl(enum kedr_tr_event_type et, unsigned long tid, 
 	unsigned long pc, enum kedr_barrier_type type)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_barrier *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = (__u16)type;
-	ev->header.tid = (__u64)tid;
+	ev->obj_type = (__u32)type;
+	ev->tid = (__u64)tid;
 	ev->pc = pc;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -879,31 +973,25 @@ static void
 handle_alloc_free_impl(enum kedr_tr_event_type et, unsigned long tid,
 	unsigned long pc, unsigned long sz, unsigned long addr)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_alloc_free *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = 0;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 	ev->pc = pc;
 	ev->size = sz;
 	ev->addr = (__u64)addr;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -940,30 +1028,25 @@ static void
 handle_sync_event_impl(enum kedr_tr_event_type et, unsigned long tid,
 	unsigned long pc, unsigned long obj_id, unsigned int obj_type)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_sync *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);	
 	
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	ev->header.type = et;
 	ev->header.event_size = size;
-	ev->header.nr_events = 0;
-	ev->header.obj_type = (__u16)obj_type;
-	ev->header.tid = (__u64)tid;
+	ev->obj_type = (__u32)obj_type;
+	ev->tid = (__u64)tid;
 	ev->obj_id = (__u64)obj_id;
 	ev->pc = pc;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -1039,31 +1122,27 @@ static void
 on_thread_start(struct kedr_event_handlers *eh, unsigned long tid,
 	const char *comm)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_tstart *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);
 
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	memset(ev, 0, size);
 	
 	ev->header.type = KEDR_TR_EVENT_THREAD_START;
 	ev->header.event_size = size;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 
 	/* The trailing 0 has been already written by memset. */
 	strncpy(&ev->comm[0], comm, KEDR_COMM_LEN);
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 
 }
@@ -1071,28 +1150,24 @@ out:
 static void
 on_thread_end(struct kedr_event_handlers *eh, unsigned long tid)
 {
-	__u32 wp;
-	__u32 rp;
 	unsigned long irq_flags;
 	struct kedr_tr_event_tend *ev;
 	unsigned int size = (unsigned int)sizeof(*ev);
 
 	spin_lock_irqsave(&eh_lock, irq_flags);
-	rp = get_read_pos();
-	wp = record_write_common(start_page->write_pos, rp, size);
-	if (wp == (__u32)(-1))
-		goto out;
+	if (!b0_buffer_has_space(size))
+		compress_b0_to_output();
 
-	ev = buffer_pos_to_addr(wp);
+	ev = b0_buffer_write_pos();
 	memset(ev, 0, size);
 
 	ev->header.type = KEDR_TR_EVENT_THREAD_END;
 	ev->header.event_size = size;
-	ev->header.tid = (__u64)tid;
+	ev->tid = (__u64)tid;
 
-	wp += size;
-	set_write_pos_and_notify(wp, rp);
-out:
+	++cached_events_num;
+	b0_data_size += size;
+
 	spin_unlock_irqrestore(&eh_lock, irq_flags);
 }
 
@@ -1189,6 +1264,49 @@ create_page_buffer(void)
 }
 /* ====================================================================== */
 
+static void
+destroy_b0_buffer(void)
+{
+	vfree(b0_buffer);
+}
+
+static int __init
+create_b0_buffer(void)
+{
+	b0_buffer = vmalloc(b0_nr_data_pages << PAGE_SHIFT);
+	if (b0_buffer == NULL)
+		return -ENOMEM;
+	
+	/* Just to make sure no older kernel data can leak to userspace via
+	 * this buffer. */
+	memset(b0_buffer, 0, b0_nr_data_pages << PAGE_SHIFT);
+	return 0;
+}
+
+static void
+destroy_b1_buffer(void)
+{
+	vfree(b1_buffer);
+}
+
+static int __init
+create_b1_buffer(void)
+{
+	unsigned int b1_size; 
+	
+	/* (-1) for unsigned char compressed[1]. */
+	b1_size = (unsigned int)sizeof(struct kedr_tr_event_compressed) - 1
+		+ lzo1x_worst_compress(b0_nr_data_pages * PAGE_SIZE);
+	
+	b1_buffer = vmalloc(b1_size);
+	if (b1_buffer == NULL)
+		return -ENOMEM;
+	
+	memset(b1_buffer, 0, b1_size); /* just in case */
+	return 0;
+}
+/* ====================================================================== */
+
 static void 
 test_remove_debugfs_files(void)
 {
@@ -1231,11 +1349,13 @@ out:
 static void __exit
 test_cleanup_module(void)
 {
+	/* Unregister the event handlers first. */
 	kedr_unregister_event_handlers(&eh);
 	
 	test_remove_debugfs_files();
 	debugfs_remove(debugfs_dir_dentry);
 	
+	vfree(lzo_wrkmem);
 	destroy_page_buffer();
 	return;
 }
@@ -1259,6 +1379,13 @@ test_init_module(void)
 		return -EINVAL;
 	}
 	
+	if (nr_data_pages < 2 * b0_nr_data_pages) {
+		pr_warning(KEDR_MSG_PREFIX
+	"'nr_data_pages' must not be less than %u.\n", 
+			2 * b0_nr_data_pages);
+		return -EINVAL;
+	}
+	
 	if (notify_mark < 1 || notify_mark > nr_data_pages) {
 		pr_warning(KEDR_MSG_PREFIX
 "'notify_mark' must be a positive value not greater than 'nr_data_pages'.\n");
@@ -1270,18 +1397,26 @@ test_init_module(void)
 	ret = create_page_buffer();
 	if (ret != 0)
 		return ret;
+
+	ret = create_b0_buffer();
+	if (ret != 0)
+		goto out_free_pgbuf;
+
+	ret = create_b1_buffer();
+	if (ret != 0)
+		goto out_free_b0;
 	
 	debugfs_dir_dentry = debugfs_create_dir(debugfs_dir_name, NULL);
 	if (debugfs_dir_dentry == NULL) {
 		pr_warning(KEDR_MSG_PREFIX
 			"Failed to create a directory in debugfs\n");
 		ret = -EINVAL;
-		goto out;
+		goto out_free_b1;
 	}
 	if (IS_ERR(debugfs_dir_dentry)) {
 		pr_warning(KEDR_MSG_PREFIX "Debugfs is not supported\n");
 		ret = -ENODEV;
-		goto out;
+		goto out_free_b1;
 	}
 
 	ret = test_create_debugfs_files();
@@ -1294,13 +1429,26 @@ test_init_module(void)
 	if (ret != 0)
 		goto out_rm_files;
 	
+	/* Allocate space for the LZO1X compressor working memory */
+	lzo_wrkmem = vmalloc(LZO1X_1_MEM_COMPRESS);
+	if(lzo_wrkmem == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+			"Failed to allocate lzo wrkmem (%lu bytes)\n",
+			(unsigned long)LZO1X_1_MEM_COMPRESS);
+		ret = -ENOMEM;
+		goto out_rm_files;
+	}
 	return 0;
 
 out_rm_files:
 	test_remove_debugfs_files();
 out_rmdir:
 	debugfs_remove(debugfs_dir_dentry);
-out:
+out_free_b1:
+	destroy_b1_buffer();
+out_free_b0:
+	destroy_b0_buffer();	
+out_free_pgbuf:
 	destroy_page_buffer();
 	return ret;
 }

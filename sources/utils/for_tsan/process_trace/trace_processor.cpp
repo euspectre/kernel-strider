@@ -2,10 +2,10 @@
  * collected in the kernel and to output the report. */
 
 /* ========================================================================
- * Copyright (C) 2013, ROSA Laboratory
+ * Copyright (C) 2013-2014, ROSA Laboratory
  *
  * Author: 
- *      Eugene A. Shatokhin <eugene.shatokhin@rosalab.ru>
+ *      Eugene A. Shatokhin
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -29,15 +29,39 @@
 #include <sys/wait.h>
 
 #include <kedr/object_types.h>
-#include <lzo/minilzo.h>
 
 #include "trace_processor.h"
 #include "module_info.h"
 
 using namespace std;
 /* ====================================================================== */
-
 extern bool debug_mode;
+/* ====================================================================== */
+
+/* A simple class that wraps a pointer to a malloc'ed memory block and frees
+ * that memory in its dtor. */
+class MemHelper
+{
+public:
+	explicit MemHelper(void *p = NULL)
+		: ptr(p)
+	{ }
+	
+	~MemHelper()
+	{
+		free(ptr);
+	}
+	
+private:
+	/* Prohibit copying and assignment. */
+	MemHelper(const MemHelper &other);
+	MemHelper & operator=(const MemHelper &p);
+	
+public:
+	/* [NB] Do not call free for this pointer other than in the dtor
+	 * of this class. */
+	void *ptr;
+};
 /* ====================================================================== */
 
 /* [NB] The failures in the child process will not be detected until the
@@ -549,17 +573,16 @@ TraceProcessor::read_record(FILE *fd)
 }
 
 unsigned int
-TraceProcessor::get_tsan_thread_id(
-	const struct kedr_tr_event_header *record)
+TraceProcessor::get_tsan_thread_id(__u64 tid)
 {
 	tid_map_t::iterator it;
-	it = tid_map.find(record->tid);
+	it = tid_map.find(tid);
 	
 	if (it == tid_map.end()) {
 		ostringstream err;
 		err << "Found an event with a real thread ID "
-			<< (void *)(unsigned long)record->tid
-	<< " with no previous \"thread start\" event for that thread.";
+			<< (void *)(unsigned long)tid
+			<< " with no previous \"thread start\" event for that thread.";
 		throw TraceProcessor::Error(err.str());
 	}
 	return it->second;
@@ -569,12 +592,12 @@ void
 TraceProcessor::handle_thread_start_event(struct kedr_tr_event_tstart *ev)
 {
 	tid_map_t::iterator it;
-	it = tid_map.find(ev->header.tid);
+	it = tid_map.find(ev->tid);
 
 	if (it != tid_map.end()) {
 		ostringstream err;
 		err << "Found \"thread start\" event with a real thread ID "
-			<< (void *)(unsigned long)ev->header.tid
+			<< (void *)(unsigned long)ev->tid
 			<< " but there were events with this thread ID "
 			<< "before without \"thread end\". ";
 		err << "Missing \"thread end\" event?";
@@ -582,7 +605,7 @@ TraceProcessor::handle_thread_start_event(struct kedr_tr_event_tstart *ev)
 	}
 
 	++nr_tids;
-	it = tid_map.insert(make_pair(ev->header.tid, nr_tids)).first;
+	it = tid_map.insert(make_pair(ev->tid, nr_tids)).first;
 	thread_names.push_back(&ev->comm[0]);
 	output_tsan_event("THR_START", nr_tids, 0, 0, 0);
 }
@@ -591,13 +614,13 @@ void
 TraceProcessor::handle_thread_end_event(struct kedr_tr_event_tend *ev)
 {
 	tid_map_t::size_type n;
-	n = tid_map.erase(ev->header.tid);
+	n = tid_map.erase(ev->tid);
 
 	if (n != 1) {
 		ostringstream err;
 		err << "Found \"thread end\" event "
 			<< "with an unknown real thread ID: "
-			<< (void *)(unsigned long)ev->header.tid;
+			<< (void *)(unsigned long)ev->tid;
 		throw TraceProcessor::Error(err.str());
 	}
 
@@ -608,8 +631,8 @@ void
 TraceProcessor::report_memory_events(const struct kedr_tr_event_mem *ev)
 {
 	unsigned int nr_events = (ev->header.type == KEDR_TR_EVENT_MEM) ? 
-		ev->header.nr_events : 1;
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+		ev->nr_events : 1;
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	
 	for (unsigned int i = 0; i < nr_events; ++i) {
 		const struct kedr_tr_event_mem_op *mem_op = &ev->mem_ops[i];
@@ -642,7 +665,7 @@ TraceProcessor::report_memory_events(const struct kedr_tr_event_mem *ev)
 void 
 TraceProcessor::report_block_event(const struct kedr_tr_event_block *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("SBLOCK_ENTER", tid, pc, 0, 0);
 }
@@ -650,7 +673,7 @@ TraceProcessor::report_block_event(const struct kedr_tr_event_block *ev)
 void 
 TraceProcessor::report_call_pre_event(const struct kedr_tr_event_call *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("RTN_CALL", tid, pc, 0, 0);
 }
@@ -658,7 +681,7 @@ TraceProcessor::report_call_pre_event(const struct kedr_tr_event_call *ev)
 void 
 TraceProcessor::report_call_post_event(const struct kedr_tr_event_call *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	output_tsan_event("RTN_EXIT", tid, 0, 0, 0);
 }
 
@@ -666,7 +689,7 @@ void
 TraceProcessor::report_alloc_event(
 	const struct kedr_tr_event_alloc_free *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("MALLOC", tid, pc, (unsigned long)ev->addr, 
 		(unsigned long)ev->size);
@@ -676,7 +699,7 @@ void
 TraceProcessor::report_free_event(
 	const struct kedr_tr_event_alloc_free *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("FREE", tid, pc, (unsigned long)ev->addr, 0);
 }
@@ -684,7 +707,7 @@ TraceProcessor::report_free_event(
 void 
 TraceProcessor::report_signal_event(const struct kedr_tr_event_sync *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("SIGNAL", tid, pc, (unsigned long)ev->obj_id, 0);
 }
@@ -692,7 +715,7 @@ TraceProcessor::report_signal_event(const struct kedr_tr_event_sync *ev)
 void 
 TraceProcessor::report_wait_event(const struct kedr_tr_event_sync *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("WAIT", tid, pc, (unsigned long)ev->obj_id, 0);
 }
@@ -700,9 +723,9 @@ TraceProcessor::report_wait_event(const struct kedr_tr_event_sync *ev)
 void 
 TraceProcessor::report_lock_event(const struct kedr_tr_event_sync *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
-	enum kedr_lock_type lt = (enum kedr_lock_type)ev->header.obj_type;
+	enum kedr_lock_type lt = (enum kedr_lock_type)ev->obj_type;
 	const char *name;
 	
 	if (lt == KEDR_LT_RLOCK) {
@@ -726,7 +749,7 @@ TraceProcessor::report_lock_event(const struct kedr_tr_event_sync *ev)
 void 
 TraceProcessor::report_unlock_event(const struct kedr_tr_event_sync *ev)
 {
-	unsigned int tid = get_tsan_thread_id(&ev->header);
+	unsigned int tid = get_tsan_thread_id(ev->tid);
 	unsigned long pc = code_address_from_raw(ev->pc);
 	output_tsan_event("UNLOCK", tid, pc, (unsigned long)ev->obj_id, 0);
 }
@@ -755,32 +778,157 @@ TraceProcessor::handle_fexit_event(struct kedr_tr_event_func *ev)
 {
 	ModuleInfo::on_function_exit(ev->func);
 }
-/* ====================================================================== */
 
-/* A simple class that wraps a pointer to a malloc'ed memory block and frees
- * that memory in its dtor. */
-class MemHelper
+void 
+TraceProcessor::process_record(struct kedr_tr_event_header *record)
 {
-public:
-	explicit MemHelper(struct kedr_tr_event_header *p = NULL)
-		: ptr(p)
-	{ }
+	switch (record->type) {
+	case KEDR_TR_EVENT_TARGET_LOAD:
+		handle_target_load_event(
+			(struct kedr_tr_event_module *)record);
+		break;
+
+	case KEDR_TR_EVENT_TARGET_UNLOAD:
+		handle_target_unload_event(
+			(struct kedr_tr_event_module *)record);
+		break;
+
+	case KEDR_TR_EVENT_FENTRY:
+		handle_fentry_event(
+			(struct kedr_tr_event_func *)record);
+		break;
+
+	case KEDR_TR_EVENT_FEXIT:
+		handle_fexit_event(
+			(struct kedr_tr_event_func *)record);
+		break;
+
+	case KEDR_TR_EVENT_BLOCK_ENTER:
+		report_block_event(
+			(struct kedr_tr_event_block *)record);
+		break;
 	
-	~MemHelper()
-	{
-		free(ptr);
+	case KEDR_TR_EVENT_CALL_PRE:
+		report_call_pre_event(
+			(struct kedr_tr_event_call *)record);
+		break;
+	
+	case KEDR_TR_EVENT_CALL_POST:
+		report_call_post_event(
+			(struct kedr_tr_event_call *)record);
+		break;
+	
+	case KEDR_TR_EVENT_MEM:
+	case KEDR_TR_EVENT_MEM_IO:
+		/* We currently do not output memory events from locked
+		 * operations to avoid false positives. It is not clear now
+		 * how these operations should be treated. In the future,
+		 * they should be output somehow too. */
+		report_memory_events(
+			(struct kedr_tr_event_mem *)record);
+		break;
+	
+	case KEDR_TR_EVENT_ALLOC_POST:
+		report_alloc_event(
+			(struct kedr_tr_event_alloc_free *)record);
+		break;
+	
+	case KEDR_TR_EVENT_FREE_PRE:
+		report_free_event(
+			(struct kedr_tr_event_alloc_free *)record);
+		break;
+	
+	case KEDR_TR_EVENT_SIGNAL_PRE:
+		report_signal_event(
+			(struct kedr_tr_event_sync *)record);
+		break;
+	
+	case KEDR_TR_EVENT_WAIT_POST:
+		report_wait_event(
+			(struct kedr_tr_event_sync *)record);
+		break;
+	
+	case KEDR_TR_EVENT_LOCK_POST:
+		report_lock_event(
+			(struct kedr_tr_event_sync *)record);
+		break;
+		
+	case KEDR_TR_EVENT_UNLOCK_PRE:
+		report_unlock_event(
+			(struct kedr_tr_event_sync *)record);
+		break;
+
+	case KEDR_TR_EVENT_THREAD_START:
+		handle_thread_start_event(
+			(struct kedr_tr_event_tstart *)record);
+		break;
+
+	case KEDR_TR_EVENT_THREAD_END:
+		handle_thread_end_event(
+			(struct kedr_tr_event_tend *)record);
+		break;
+		
+	default: 
+		break;
+	}
+}
+
+void
+TraceProcessor::process_compressed_events(
+	struct kedr_tr_event_header *record)
+{
+	struct kedr_tr_event_compressed *ec = 
+		(struct kedr_tr_event_compressed *)record;
+	if ((size_t)ec->orig_size < 
+		sizeof(struct kedr_tr_event_header)) {
+		ostringstream err;
+		err << "Record #" << nrec << ": " 
+			<< "invalid size of the data before compression: " 
+			<< (unsigned int)ec->orig_size << ".";
+		throw TraceProcessor::Error(err.str());
 	}
 	
-private:
-	/* Prohibit copying and assignment. */
-	MemHelper(const MemHelper &other);
-	MemHelper & operator=(const MemHelper &p);
+	MemHelper he(malloc(ec->orig_size));
+	unsigned char *events = (unsigned char *)he.ptr;
+	if (events == NULL)
+		throw TraceProcessor::Error("Out of memory.");
 	
-public:
-	/* [NB] Do not call free for this pointer other than in the dtor
-	 * of this class. */
-	struct kedr_tr_event_header *ptr;
-};
+	unsigned long to_process = (unsigned long)ec->orig_size;
+	
+	int ret = lzo1x_decompress_safe(
+		ec->compressed, ec->compressed_size,
+		events, &to_process, NULL);
+	if (ret != LZO_E_OK || ec->orig_size != to_process) {
+		ostringstream err;
+		err << "Record #" << nrec << ": " 
+			<< "failed to decompress data, error code: " << ret;
+		throw TraceProcessor::Error(err.str());
+	}
+	
+	while (to_process != 0) {
+		if (to_process < sizeof(
+			struct kedr_tr_event_header)) {
+			ostringstream err;
+			err << "Record #" << nrec << ": " 
+				<< "invalid size of a decompressed event.";
+			throw TraceProcessor::Error(err.str());
+		}
+		
+		struct kedr_tr_event_header *hdr = 
+			(struct kedr_tr_event_header *)events;
+		if (to_process < hdr->event_size) {
+			ostringstream err;
+			err << "Record #" << nrec << ": " 
+				<< "compressed event may be corrupted.";
+			throw TraceProcessor::Error(err.str());
+		}
+		
+		process_record(hdr);
+		
+		events = events + hdr->event_size;
+		to_process -= hdr->event_size;
+	}
+}
 
 void 
 TraceProcessor::process_trace()
@@ -792,103 +940,18 @@ TraceProcessor::process_trace()
 	thread_names.clear();
 	thread_names.push_back("A fake \"main\" thread, T0");
 	
-	while(true) {
+	while (true) {
 		MemHelper r(read_record(stdin));
-		record = r.ptr;
+		record = (struct kedr_tr_event_header *)r.ptr;
 		
 		if (record == NULL)
 			break;
 		
-		if (record->type == KEDR_TR_EVENT_TARGET_LOAD) {
-			handle_target_load_event(
-				(struct kedr_tr_event_module *)record);
-			continue;
-		} 
-		
-		if (record->type == KEDR_TR_EVENT_TARGET_UNLOAD) {
-			handle_target_unload_event(
-				(struct kedr_tr_event_module *)record);
-			continue;
+		if (record->type == KEDR_TR_EVENT_COMPRESSED) {
+			process_compressed_events(record);
 		}
-		
-		switch (record->type) {
-		case KEDR_TR_EVENT_FENTRY:
-			handle_fentry_event(
-				(struct kedr_tr_event_func *)record);
-			break;
-
-		case KEDR_TR_EVENT_FEXIT:
-			handle_fexit_event(
-				(struct kedr_tr_event_func *)record);
-			break;
-
-		case KEDR_TR_EVENT_BLOCK_ENTER:
-			report_block_event(
-				(struct kedr_tr_event_block *)record);
-			break;
-		
-		case KEDR_TR_EVENT_CALL_PRE:
-			report_call_pre_event(
-				(struct kedr_tr_event_call *)record);
-			break;
-		
-		case KEDR_TR_EVENT_CALL_POST:
-			report_call_post_event(
-				(struct kedr_tr_event_call *)record);
-			break;
-		
-		case KEDR_TR_EVENT_MEM:
-		case KEDR_TR_EVENT_MEM_IO:
-		/* We currently do not output memory events from locked
-		 * operations to avoid false positives. It is not clear now
-		 * how these operations should be treated. In the future,
-		 * they should be output somehow too. */
-			report_memory_events(
-				(struct kedr_tr_event_mem *)record);
-			break;
-		
-		case KEDR_TR_EVENT_ALLOC_POST:
-			report_alloc_event(
-				(struct kedr_tr_event_alloc_free *)record);
-			break;
-		
-		case KEDR_TR_EVENT_FREE_PRE:
-			report_free_event(
-				(struct kedr_tr_event_alloc_free *)record);
-			break;
-		
-		case KEDR_TR_EVENT_SIGNAL_PRE:
-			report_signal_event(
-				(struct kedr_tr_event_sync *)record);
-			break;
-		
-		case KEDR_TR_EVENT_WAIT_POST:
-			report_wait_event(
-				(struct kedr_tr_event_sync *)record);
-			break;
-		
-		case KEDR_TR_EVENT_LOCK_POST:
-			report_lock_event(
-				(struct kedr_tr_event_sync *)record);
-			break;
-			
-		case KEDR_TR_EVENT_UNLOCK_PRE:
-			report_unlock_event(
-				(struct kedr_tr_event_sync *)record);
-			break;
-
-		case KEDR_TR_EVENT_THREAD_START:
-			handle_thread_start_event(
-				(struct kedr_tr_event_tstart *)record);
-			break;
-
-		case KEDR_TR_EVENT_THREAD_END:
-			handle_thread_end_event(
-				(struct kedr_tr_event_tend *)record);
-			break;
-			
-		default: 
-			break;
+		else {
+			process_record(record);
 		}
 	}
 }

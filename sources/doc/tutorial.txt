@@ -67,6 +67,9 @@ mode components of KernelStrider, Python 2.7 is needed.
 
 Notes.
 
+LZO compression is used by KernelStrider and should be enabled in the kernel
+(CONFIG_LZO_COMPRESS is set to 'y' or 'm').
+
 If you would like to resolve the addresses in the report on the detected
 data races, that is, to find the matching lines of the source code of the
 module under analysis, CONFIG_DEBUG_INFO should also be set to "y" in the
@@ -270,6 +273,14 @@ For the workloads where the stream of events from the target module is not
 very intensive, the default value of "nr_data_pages" should be acceptable.
 
 3.1.1
+LZO compression is used by this output sybsystem. If LZO compression
+facilities are built as a module, you need to load it first:
+
+    # modprobe lzo_compress
+
+Note that if kedr.py is used to load the necessary components, it will take
+care of this automatically.
+
 Load the kernel-space part of the subsystem:
 
     # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko

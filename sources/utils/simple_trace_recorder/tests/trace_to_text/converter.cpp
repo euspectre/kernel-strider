@@ -11,11 +11,12 @@
  */
 
 /* ========================================================================
+ * Copyright (C) 2013-2014, ROSA Laboratory
  * Copyright (C) 2012, KEDR development team
  *
  * Authors: 
- *      Eugene A. Shatokhin <spectre@ispras.ru>
- *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
+ *      Eugene A. Shatokhin
+ *      Andrey V. Tsyvarev
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -188,9 +189,10 @@ get_maccess_type(__u32 read_mask, __u32 write_mask, unsigned int event_no)
 }
 
 static void
-report_memory_events(unsigned long tid, const struct kedr_tr_event_mem *ev)
+report_memory_events(const struct kedr_tr_event_mem *ev)
 {
-	unsigned int nr_events = ev->header.nr_events;
+	unsigned int nr_events = ev->nr_events;
+	unsigned long tid = (unsigned long)ev->tid;
 
 	for (unsigned int i = 0; i < nr_events; ++i) {
 		const struct kedr_tr_event_mem_op *mem_op = &ev->mem_ops[i];
@@ -204,11 +206,11 @@ report_memory_events(unsigned long tid, const struct kedr_tr_event_mem *ev)
 }
 
 static void
-report_locked_memory_event(unsigned long tid, 
-	const struct kedr_tr_event_mem *ev)
+report_locked_memory_event(const struct kedr_tr_event_mem *ev)
 {
 	const struct kedr_tr_event_mem_op *mem_op = &ev->mem_ops[0];
 	unsigned long pc = code_address_from_raw(mem_op->pc);
+	unsigned long tid = (unsigned long)ev->tid;
 		
 	printf("TID=0x%lx LOCKED %s pc=%lx addr=%lx size=%lu\n", tid, 
 		get_maccess_type(ev->read_mask, ev->write_mask, 0), 
@@ -217,11 +219,11 @@ report_locked_memory_event(unsigned long tid,
 }
 
 static void
-report_io_memory_event(unsigned long tid, 
-	const struct kedr_tr_event_mem *ev)
+report_io_memory_event(	const struct kedr_tr_event_mem *ev)
 {
 	const struct kedr_tr_event_mem_op *mem_op = &ev->mem_ops[0];
 	unsigned long pc = code_address_from_raw(mem_op->pc);
+	unsigned long tid = (unsigned long)ev->tid;
 		
 	printf("TID=0x%lx IO_MEM %s pc=%lx addr=%lx size=%lu\n", tid, 
 		get_maccess_type(ev->read_mask, ev->write_mask, 0), 
@@ -248,18 +250,18 @@ report_unload_event(const struct kedr_tr_event_module *ev)
 }
 
 static void
-report_func_event(unsigned long tid, const struct kedr_tr_event_func *ev, 
-	bool is_entry)
+report_func_event(const struct kedr_tr_event_func *ev, bool is_entry)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long func = code_address_from_raw(ev->func);
 	printf("TID=0x%lx %s %lx\n", tid, (is_entry ? "FENTRY" : "FEXIT"), 
 		func);
 }
 
 static void 
-report_call_event(unsigned long tid, const struct kedr_tr_event_call *ev,
-	bool is_pre)
+report_call_event(const struct kedr_tr_event_call *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	unsigned long func = code_address_from_raw(ev->func);
 	printf("TID=0x%lx CALL_%s pc=%lx %lx\n", tid, 
@@ -267,27 +269,28 @@ report_call_event(unsigned long tid, const struct kedr_tr_event_call *ev,
 }
 
 static void 
-report_block_event(unsigned long tid, const struct kedr_tr_event_block *ev)
+report_block_event(const struct kedr_tr_event_block *ev)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	printf("TID=0x%lx BLOCK_ENTER pc=%lx\n", tid, pc);
 }
 
 static void 
-report_barrier_event(unsigned long tid, 
-	const struct kedr_tr_event_barrier *ev, bool is_pre)
+report_barrier_event(const struct kedr_tr_event_barrier *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	enum kedr_barrier_type bt = 
-		(enum kedr_barrier_type)ev->header.obj_type;
+		(enum kedr_barrier_type)ev->obj_type;
 	printf("TID=0x%lx BARRIER %s %s pc=%lx\n", tid, 
 		barrier_type_to_string(bt), (is_pre ? "PRE" : "POST"), pc);
 }
 
 static void 
-report_alloc_event(unsigned long tid, 
-	const struct kedr_tr_event_alloc_free *ev, bool is_pre)
+report_alloc_event(const struct kedr_tr_event_alloc_free *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	if (is_pre) { 
 		printf("TID=0x%lx ALLOC PRE pc=%lx size=%lu\n", tid, pc,
@@ -301,21 +304,21 @@ report_alloc_event(unsigned long tid,
 }
 
 static void 
-report_free_event(unsigned long tid, 
-	const struct kedr_tr_event_alloc_free *ev, bool is_pre)
+report_free_event(const struct kedr_tr_event_alloc_free *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	printf("TID=0x%lx FREE %s pc=%lx addr=%lx\n", tid, 
 		(is_pre ? "PRE" : "POST"), pc, (unsigned long)ev->addr);
 }
 
 static void 
-report_signal_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
-	bool is_pre)
+report_signal_event(const struct kedr_tr_event_sync *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	enum kedr_sw_object_type ot = 
-		(enum kedr_sw_object_type)ev->header.obj_type;
+		(enum kedr_sw_object_type)ev->obj_type;
 	
 	printf("TID=0x%lx SIGNAL %s %s pc=%lx id=%lx\n", tid,
 		sw_type_to_string(ot), (is_pre ? "PRE" : "POST"), pc,
@@ -323,12 +326,12 @@ report_signal_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
 }
 
 static void 
-report_wait_event(unsigned long tid, const struct kedr_tr_event_sync *ev, 
-	bool is_pre)
+report_wait_event(const struct kedr_tr_event_sync *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
 	enum kedr_sw_object_type ot = 
-		(enum kedr_sw_object_type)ev->header.obj_type;
+		(enum kedr_sw_object_type)ev->obj_type;
 	
 	printf("TID=0x%lx WAIT %s %s pc=%lx id=%lx\n", tid,
 		sw_type_to_string(ot), (is_pre ? "PRE" : "POST"), pc,
@@ -337,11 +340,11 @@ report_wait_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
 
 
 static void 
-report_lock_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
-	bool is_pre)
+report_lock_event(const struct kedr_tr_event_sync *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
-	enum kedr_lock_type lt = (enum kedr_lock_type)ev->header.obj_type;
+	enum kedr_lock_type lt = (enum kedr_lock_type)ev->obj_type;
 	
 	printf("TID=0x%lx LOCK %s %s pc=%lx id=%lx\n", tid,
 		lock_type_to_string(lt), (is_pre ? "PRE" : "POST"), pc,
@@ -349,11 +352,11 @@ report_lock_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
 }
 
 static void 
-report_unlock_event(unsigned long tid, const struct kedr_tr_event_sync *ev,
-	bool is_pre)
+report_unlock_event(const struct kedr_tr_event_sync *ev, bool is_pre)
 {
+	unsigned long tid = (unsigned long)ev->tid;
 	unsigned long pc = code_address_from_raw(ev->pc);
-	enum kedr_lock_type lt = (enum kedr_lock_type)ev->header.obj_type;
+	enum kedr_lock_type lt = (enum kedr_lock_type)ev->obj_type;
 
 	printf("TID=0x%lx UNLOCK %s %s pc=%lx id=%lx\n", tid,
 		lock_type_to_string(lt), (is_pre ? "PRE" : "POST"), pc,
@@ -369,8 +372,6 @@ do_convert(FILE *fd)
 		record = read_record(fd);
 		if (record == NULL)
 			break;
-		
-		unsigned long tid = (unsigned long)record->tid;
 		
 		switch (record->type) {
 		case KEDR_TR_EVENT_SESSION_START:
@@ -388,118 +389,118 @@ do_convert(FILE *fd)
 			break;
 		
 		case KEDR_TR_EVENT_FENTRY:
-			report_func_event(tid,
+			report_func_event(
 				(struct kedr_tr_event_func *)record, true);
 			break;
 		
 		case KEDR_TR_EVENT_FEXIT:
-			report_func_event(tid,
+			report_func_event(
 				(struct kedr_tr_event_func *)record, false);
 			break;
 		
 		case KEDR_TR_EVENT_CALL_PRE:
-			report_call_event(tid,
+			report_call_event(
 				(struct kedr_tr_event_call *)record, true);
 			break;
 		
 		case KEDR_TR_EVENT_CALL_POST:
-			report_call_event(tid,
+			report_call_event(
 				(struct kedr_tr_event_call *)record, false);
 			break;
 		
 		case KEDR_TR_EVENT_MEM:
-			report_memory_events(tid,
+			report_memory_events(
 				(struct kedr_tr_event_mem *)record);
 			break;
 		
 		case KEDR_TR_EVENT_MEM_LOCKED:
-			report_locked_memory_event(tid,
+			report_locked_memory_event(
 				(struct kedr_tr_event_mem *)record);
 			break;
 		
 		case KEDR_TR_EVENT_MEM_IO:
-			report_io_memory_event(tid,
+			report_io_memory_event(
 				(struct kedr_tr_event_mem *)record);
 			break;
 		
 		case KEDR_TR_EVENT_BARRIER_PRE:
-			report_barrier_event(tid,
+			report_barrier_event(
 				(struct kedr_tr_event_barrier *)record,
 				true);
 			break;
 		
 		case KEDR_TR_EVENT_BARRIER_POST:
-			report_barrier_event(tid,
+			report_barrier_event(
 				(struct kedr_tr_event_barrier *)record,
 				false);
 			break;
 
 		case KEDR_TR_EVENT_ALLOC_PRE:
-			report_alloc_event(tid,
+			report_alloc_event(
 				(struct kedr_tr_event_alloc_free *)record,
 				true);
 			break;
 		
 		case KEDR_TR_EVENT_ALLOC_POST:
-			report_alloc_event(tid,
+			report_alloc_event(
 				(struct kedr_tr_event_alloc_free *)record,
 				false);
 			break;
 		
 		case KEDR_TR_EVENT_FREE_PRE:
-			report_free_event(tid,
+			report_free_event(
 				(struct kedr_tr_event_alloc_free *)record,
 				true);
 			break;
 		
 		case KEDR_TR_EVENT_FREE_POST:
-			report_free_event(tid,
+			report_free_event(
 				(struct kedr_tr_event_alloc_free *)record,
 				false);
 			break;
 		
 		case KEDR_TR_EVENT_SIGNAL_PRE:
-			report_signal_event(tid, 
+			report_signal_event(
 				(struct kedr_tr_event_sync *)record, true);
 			break;
 		
 		case KEDR_TR_EVENT_SIGNAL_POST:
-			report_signal_event(tid, 
+			report_signal_event(
 				(struct kedr_tr_event_sync *)record, false);
 			break;
 		
 		case KEDR_TR_EVENT_WAIT_PRE:
-			report_wait_event(tid, 
+			report_wait_event(
 				(struct kedr_tr_event_sync *)record, true);
 			break;
 			
 		case KEDR_TR_EVENT_WAIT_POST:
-			report_wait_event(tid, 
+			report_wait_event(
 				(struct kedr_tr_event_sync *)record, false);
 			break;
 		
 		case KEDR_TR_EVENT_LOCK_PRE:
-			report_lock_event(tid, 
+			report_lock_event(
 				(struct kedr_tr_event_sync *)record, true);
 			break;
 		
 		case KEDR_TR_EVENT_LOCK_POST:
-			report_lock_event(tid, 
+			report_lock_event(
 				(struct kedr_tr_event_sync *)record, false);
 			break;
 			
 		case KEDR_TR_EVENT_UNLOCK_PRE:
-			report_unlock_event(tid, 
+			report_unlock_event(
 				(struct kedr_tr_event_sync *)record, true);
 			break;
 		
 		case KEDR_TR_EVENT_UNLOCK_POST:
-			report_unlock_event(tid, 
+			report_unlock_event(
 				(struct kedr_tr_event_sync *)record, false);
 			break;
 		
 		case KEDR_TR_EVENT_BLOCK_ENTER:
-			report_block_event(tid, 
+			report_block_event(
 				(struct kedr_tr_event_block *)record);
 			break;
 
