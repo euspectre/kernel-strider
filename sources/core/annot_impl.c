@@ -12,6 +12,7 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
