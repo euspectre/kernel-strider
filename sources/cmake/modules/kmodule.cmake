@@ -275,7 +275,7 @@ macro(check_kernel_version kversion_major kversion_minor kversion_micro)
 	)
 	message(STATUS "${check_kernel_version_message}")
 
-	string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+"
+	string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+\\.[0-9]+-[0-9]+"
 		KERNEL_VERSION
 		"${KBUILD_VERSION_STRING}"
 	)
