@@ -34,11 +34,6 @@ via "nr_data_pages" parameter.
 For the workloads where the stream of events from the target module is not 
 very intensive, the default value of "nr_data_pages" should be acceptable.
 
-- notify_mark
-For each "notify_mark" data pages filled in the buffer, the kernel-space 
-part wakes up the user-space part of the subsystem waiting for the data to 
-become available for reading. The default value should be OK in most cases.
-
 - no_call_events
 0 by default. If non-zero, function entry/exit and call pre/post events 
 will not be recorded in the trace. 
