@@ -30,6 +30,7 @@
 #include <cerrno>
 
 #include <iostream>
+#include <sstream>
 #include <iomanip>
 #include <string>
 #include <stdexcept>
@@ -364,6 +365,209 @@ report_unlock_event(const struct kedr_tr_event_sync *ev, bool is_pre)
 }
 
 static void
+process_record(kedr_tr_event_header *record)
+{
+	switch (record->type) {
+	case KEDR_TR_EVENT_SESSION_START:
+	case KEDR_TR_EVENT_SESSION_END:
+		break;
+
+	case KEDR_TR_EVENT_TARGET_LOAD:
+		report_load_event((struct kedr_tr_event_module *)record);
+		break;
+
+	case KEDR_TR_EVENT_TARGET_UNLOAD:
+		report_unload_event((struct kedr_tr_event_module *)record);
+		break;
+
+	case KEDR_TR_EVENT_FENTRY:
+		report_func_event(
+			(struct kedr_tr_event_func *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_FEXIT:
+		report_func_event(
+			(struct kedr_tr_event_func *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_CALL_PRE:
+		report_call_event(
+			(struct kedr_tr_event_call *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_CALL_POST:
+		report_call_event(
+			(struct kedr_tr_event_call *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_MEM:
+		report_memory_events(
+			(struct kedr_tr_event_mem *)record);
+		break;
+
+	case KEDR_TR_EVENT_MEM_LOCKED:
+		report_locked_memory_event(
+			(struct kedr_tr_event_mem *)record);
+		break;
+
+	case KEDR_TR_EVENT_MEM_IO:
+		report_io_memory_event(
+			(struct kedr_tr_event_mem *)record);
+		break;
+
+	case KEDR_TR_EVENT_BARRIER_PRE:
+		report_barrier_event(
+			(struct kedr_tr_event_barrier *)record,
+			true);
+		break;
+
+	case KEDR_TR_EVENT_BARRIER_POST:
+		report_barrier_event(
+			(struct kedr_tr_event_barrier *)record,
+			false);
+		break;
+
+	case KEDR_TR_EVENT_ALLOC_PRE:
+		report_alloc_event(
+			(struct kedr_tr_event_alloc_free *)record,
+			true);
+		break;
+
+	case KEDR_TR_EVENT_ALLOC_POST:
+		report_alloc_event(
+			(struct kedr_tr_event_alloc_free *)record,
+			false);
+		break;
+
+	case KEDR_TR_EVENT_FREE_PRE:
+		report_free_event(
+			(struct kedr_tr_event_alloc_free *)record,
+			true);
+		break;
+
+	case KEDR_TR_EVENT_FREE_POST:
+		report_free_event(
+			(struct kedr_tr_event_alloc_free *)record,
+			false);
+		break;
+
+	case KEDR_TR_EVENT_SIGNAL_PRE:
+		report_signal_event(
+			(struct kedr_tr_event_sync *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_SIGNAL_POST:
+		report_signal_event(
+			(struct kedr_tr_event_sync *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_WAIT_PRE:
+		report_wait_event(
+			(struct kedr_tr_event_sync *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_WAIT_POST:
+		report_wait_event(
+			(struct kedr_tr_event_sync *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_LOCK_PRE:
+		report_lock_event(
+			(struct kedr_tr_event_sync *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_LOCK_POST:
+		report_lock_event(
+			(struct kedr_tr_event_sync *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_UNLOCK_PRE:
+		report_unlock_event(
+			(struct kedr_tr_event_sync *)record, true);
+		break;
+
+	case KEDR_TR_EVENT_UNLOCK_POST:
+		report_unlock_event(
+			(struct kedr_tr_event_sync *)record, false);
+		break;
+
+	case KEDR_TR_EVENT_BLOCK_ENTER:
+		report_block_event(
+			(struct kedr_tr_event_block *)record);
+		break;
+
+	case KEDR_TR_EVENT_THREAD_START:
+	case KEDR_TR_EVENT_THREAD_END:
+		/* For now, ignore these events in the tests. */
+		break;
+
+	default:
+		cerr << "Record #" << nrec <<
+			": unknown event type: " << record->type <<
+			"." << endl;
+		free(record);
+		throw runtime_error("invalid event information.");
+		break;
+	}
+}
+
+static void
+process_compressed_record(kedr_tr_event_header *record)
+{
+	struct kedr_tr_event_compressed *ec =
+		(struct kedr_tr_event_compressed *)record;
+
+	if ((size_t)ec->orig_size <
+		sizeof(struct kedr_tr_event_header)) {
+		ostringstream err;
+		err << "Record #" << nrec << ": "
+			<< "invalid size of the data before compression: "
+			<< (unsigned int)ec->orig_size << ".";
+		throw runtime_error(err.str());
+	}
+
+	unsigned char *events = (unsigned char *)malloc(ec->orig_size);
+	if (events == NULL)
+		throw runtime_error("Out of memory.");
+
+	unsigned long to_process = (unsigned long)ec->orig_size;
+
+	int ret = lzo1x_decompress_safe(
+		ec->compressed, ec->compressed_size,
+		events, &to_process, NULL);
+	if (ret != LZO_E_OK || ec->orig_size != to_process) {
+		ostringstream err;
+		err << "Record #" << nrec << ": "
+			<< "failed to decompress data, error code: " << ret;
+		throw runtime_error(err.str());
+	}
+
+	while (to_process != 0) {
+		if (to_process < sizeof(
+			struct kedr_tr_event_header)) {
+			ostringstream err;
+			err << "Record #" << nrec << ": "
+				<< "invalid size of a decompressed event.";
+			throw runtime_error(err.str());
+		}
+
+		struct kedr_tr_event_header *hdr =
+			(struct kedr_tr_event_header *)events;
+		if (to_process < hdr->event_size) {
+			ostringstream err;
+			err << "Record #" << nrec << ": "
+				<< "compressed event may be corrupted.";
+			throw runtime_error(err.str());
+		}
+
+		process_record(hdr);
+
+		events = events + hdr->event_size;
+		to_process -= hdr->event_size;
+	}
+}
+
+static void
 do_convert(FILE *fd)
 {
 	struct kedr_tr_event_header *record = NULL;
@@ -372,152 +576,13 @@ do_convert(FILE *fd)
 		record = read_record(fd);
 		if (record == NULL)
 			break;
-		
-		switch (record->type) {
-		case KEDR_TR_EVENT_SESSION_START:
-		case KEDR_TR_EVENT_SESSION_END:
-			break;
 
-		case KEDR_TR_EVENT_TARGET_LOAD:
-			report_load_event(
-				(struct kedr_tr_event_module *)record);
-			break;
-		
-		case KEDR_TR_EVENT_TARGET_UNLOAD:
-			report_unload_event(
-				(struct kedr_tr_event_module *)record);
-			break;
-		
-		case KEDR_TR_EVENT_FENTRY:
-			report_func_event(
-				(struct kedr_tr_event_func *)record, true);
-			break;
-		
-		case KEDR_TR_EVENT_FEXIT:
-			report_func_event(
-				(struct kedr_tr_event_func *)record, false);
-			break;
-		
-		case KEDR_TR_EVENT_CALL_PRE:
-			report_call_event(
-				(struct kedr_tr_event_call *)record, true);
-			break;
-		
-		case KEDR_TR_EVENT_CALL_POST:
-			report_call_event(
-				(struct kedr_tr_event_call *)record, false);
-			break;
-		
-		case KEDR_TR_EVENT_MEM:
-			report_memory_events(
-				(struct kedr_tr_event_mem *)record);
-			break;
-		
-		case KEDR_TR_EVENT_MEM_LOCKED:
-			report_locked_memory_event(
-				(struct kedr_tr_event_mem *)record);
-			break;
-		
-		case KEDR_TR_EVENT_MEM_IO:
-			report_io_memory_event(
-				(struct kedr_tr_event_mem *)record);
-			break;
-		
-		case KEDR_TR_EVENT_BARRIER_PRE:
-			report_barrier_event(
-				(struct kedr_tr_event_barrier *)record,
-				true);
-			break;
-		
-		case KEDR_TR_EVENT_BARRIER_POST:
-			report_barrier_event(
-				(struct kedr_tr_event_barrier *)record,
-				false);
-			break;
-
-		case KEDR_TR_EVENT_ALLOC_PRE:
-			report_alloc_event(
-				(struct kedr_tr_event_alloc_free *)record,
-				true);
-			break;
-		
-		case KEDR_TR_EVENT_ALLOC_POST:
-			report_alloc_event(
-				(struct kedr_tr_event_alloc_free *)record,
-				false);
-			break;
-		
-		case KEDR_TR_EVENT_FREE_PRE:
-			report_free_event(
-				(struct kedr_tr_event_alloc_free *)record,
-				true);
-			break;
-		
-		case KEDR_TR_EVENT_FREE_POST:
-			report_free_event(
-				(struct kedr_tr_event_alloc_free *)record,
-				false);
-			break;
-		
-		case KEDR_TR_EVENT_SIGNAL_PRE:
-			report_signal_event(
-				(struct kedr_tr_event_sync *)record, true);
-			break;
-		
-		case KEDR_TR_EVENT_SIGNAL_POST:
-			report_signal_event(
-				(struct kedr_tr_event_sync *)record, false);
-			break;
-		
-		case KEDR_TR_EVENT_WAIT_PRE:
-			report_wait_event(
-				(struct kedr_tr_event_sync *)record, true);
-			break;
-			
-		case KEDR_TR_EVENT_WAIT_POST:
-			report_wait_event(
-				(struct kedr_tr_event_sync *)record, false);
-			break;
-		
-		case KEDR_TR_EVENT_LOCK_PRE:
-			report_lock_event(
-				(struct kedr_tr_event_sync *)record, true);
-			break;
-		
-		case KEDR_TR_EVENT_LOCK_POST:
-			report_lock_event(
-				(struct kedr_tr_event_sync *)record, false);
-			break;
-			
-		case KEDR_TR_EVENT_UNLOCK_PRE:
-			report_unlock_event(
-				(struct kedr_tr_event_sync *)record, true);
-			break;
-		
-		case KEDR_TR_EVENT_UNLOCK_POST:
-			report_unlock_event(
-				(struct kedr_tr_event_sync *)record, false);
-			break;
-		
-		case KEDR_TR_EVENT_BLOCK_ENTER:
-			report_block_event(
-				(struct kedr_tr_event_block *)record);
-			break;
-
-        case KEDR_TR_EVENT_THREAD_START:
-        case KEDR_TR_EVENT_THREAD_END:
-            /* For now, ignore these events in the tests. */
-            break;
-        
-		default: 
-			cerr << "Record #" << nrec << 
-				": unknown event type: " << record->type <<
-				"." << endl;
-			free(record);
-			throw runtime_error("invalid event information.");
-			break;
+		if (record->type == KEDR_TR_EVENT_COMPRESSED) {
+			process_compressed_record(record);
 		}
-
+		else {
+			process_record(record);
+		}
 		free(record);
 	}
 }
@@ -531,6 +596,11 @@ main(int argc, char *argv[])
 	
 	if (argc != 2) {
 		usage();
+		return EXIT_FAILURE;
+	}
+
+	if (lzo_init() != LZO_E_OK) {
+		cerr << "Failed to initialize LZO library." << endl;
 		return EXIT_FAILURE;
 	}
 
