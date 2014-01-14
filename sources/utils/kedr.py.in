@@ -105,7 +105,7 @@ def create_supported():
     Returns the dict {name: KModComponent} for the supported components.
     """
     comps = [
-        KModComponent('kedr_mem_core', ['targets']),
+        KModComponent('kedr_mem_core', ['targets', 'sampling_rate']),
         KModComponent('kedr_fh_drd_common'),
         KModComponent('kedr_fh_drd_cdev'),
         KModComponent('kedr_fh_drd_net'),
@@ -281,6 +281,18 @@ if __name__ == '__main__':
                       '2 - 65536, must be a power of 2']))
 
     parser.add_argument(
+        '--sampling_rate', metavar='S',
+        help=''.join([
+            'sampling rate for memory events, ',
+            'controls how often memory events from each block of code are ',
+            'skipped (not reported). ',
+            'The higher the value, the more events are skipped. ',
+            '0 or 1 - 31. If it is 0 (default), sampling is disabled, ',
+            'all events will be reported. ',
+            'May help handle intense event streams at the cost of ',
+            'potentially  missed races.']))
+
+    parser.add_argument(
         '--verbose', help='if specified, more messages will be output',
         action='store_true', default=False)
 
@@ -299,7 +311,8 @@ if __name__ == '__main__':
 
         # [NB] If new parameters are added, do not forget to list them here.
         params = {'targets': args.targets,
-                  'nr_data_pages': args.nr_data_pages}
+                  'nr_data_pages': args.nr_data_pages,
+                  'sampling_rate': args.sampling_rate}
 
         _, _, release, _, _ = os.uname()
         module_path = os.path.join(args.prefix, MODULES_SUBDIR, release,
