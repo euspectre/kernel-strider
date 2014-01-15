@@ -44,7 +44,8 @@
  * If an event structure is first created somewhere else and is then copied
  * to the output buffer (e.g. a compressed event), this restriction does not
  * apply. The copying procedure must take the structure of the output buffer
- * in account, of course. 
+ * in account, of course. Besides that, an event header must not cross the
+ * page boundary in this case too, for convenience.
  * 
  * To serialize the accesses to the buffers B0, B1 and B2 from this module, 
  * 'eh_lock' must be used. */
@@ -314,6 +315,12 @@ fits_to_page(__u32 wp, unsigned int size)
 	return (offset + size <= PAGE_SIZE);
 }
 
+static __u32
+to_next_page(__u32 wp)
+{
+	return ((wp + PAGE_SIZE) & ~(PAGE_SIZE - 1));
+}
+
 /* This function should be called if fits_to_page() returns 0 for an object.
  * The function returns the position corresponding to the next page and, if
  * possible, writes a special event to the current page to indicate that
@@ -329,7 +336,7 @@ complete_buffer_page(__u32 wp)
 		h->type = KEDR_TR_EVENT_SKIP;
 		h->event_size = 0; /* all fields must be filled */
 	}
-	return ((wp + PAGE_SIZE) & ~(PAGE_SIZE - 1));
+	return to_next_page(wp);
 }
 
 /* Performs the common operations needed before writing a record to the 
@@ -402,20 +409,23 @@ compress_b0_to_output(void)
 
 	rp = get_read_pos();
 	wp = start_page->write_pos;
-	
+
 	nbytes = lzo1x_compress_buf(b0_buffer, b0_data_size);
 	b0_data_size = 0; /* Mark the buffer empty. */
 	
-	if (nbytes == 0 || !buffer_has_space(wp, rp, nbytes)) { 
-		events_lost += cached_events_num;
-		cached_events_num = 0;
-		return;
-	}
+	if (nbytes == 0 || !buffer_has_space(wp, rp, nbytes))
+		goto out_lost;
+
+	if (!fits_to_page(wp, sizeof(struct kedr_tr_event_header)))
+		wp = to_next_page(wp);
+
+	if (!buffer_has_space(wp, rp, nbytes))
+		goto out_lost;
 
 	/* Write the event page by page. Note that it is not needed to start
 	 * from a page boundary here. */
 	while (nbytes != 0) {
-		__u32 next_page = (wp + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+		__u32 next_page = to_next_page(wp);
 		__u32 avail = next_page - wp;
 		__u32 to_write = (nbytes > avail) ? avail : nbytes;
 		
@@ -425,8 +435,15 @@ compress_b0_to_output(void)
 		wp += to_write;
 		nbytes -= to_write;
 	}
+
 	cached_events_num = 0;
 	set_write_pos_and_notify(wp, rp);
+	return;
+
+out_lost:
+	events_lost += cached_events_num;
+	cached_events_num = 0;
+	return;
 }
 /* ====================================================================== */
 
