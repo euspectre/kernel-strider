@@ -580,6 +580,9 @@ handle_session_event_impl(enum kedr_tr_event_type et)
 	unsigned int size = (unsigned int)sizeof(*ev);
 
 	spin_lock_irqsave(&eh_lock, irq_flags);
+
+	if (et == KEDR_TR_EVENT_SESSION_START)
+		events_lost = 0;
 	
 	/* If session is ending, output the events accumulated in B0. */
 	if (et == KEDR_TR_EVENT_SESSION_END && cached_events_num != 0) {
