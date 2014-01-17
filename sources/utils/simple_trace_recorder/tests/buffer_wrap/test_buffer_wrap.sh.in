@@ -277,7 +277,7 @@ doTest()
 	
 	# Convert the trace to text format, this may fail if the trace is
 	# corrupted, such errors would be therefore caught here.
-	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" > "${TEST_TRACE_TEXT_FILE}"
+	"${TRACE_TO_TEXT}" "${TEST_TRACE_RAW_FILE}" > /dev/null
 	if test $? -ne 0; then
 		printf "Failed to convert the trace to text format.\n"
 		cleanupAll

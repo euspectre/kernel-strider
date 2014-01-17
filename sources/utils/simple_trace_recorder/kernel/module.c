@@ -315,6 +315,8 @@ fits_to_page(__u32 wp, unsigned int size)
 	return (offset + size <= PAGE_SIZE);
 }
 
+/* The value returned by this function must always be greater than wp, the
+ * code below may use something like 'avail = to_next_page(wp) - wp'. */
 static __u32
 to_next_page(__u32 wp)
 {
@@ -366,7 +368,9 @@ record_write_common(__u32 wp, __u32 rp, unsigned int size)
 			return KEDR_TR_NO_SPACE;
 		}
 	}
-	return wp;
+
+	/* This also makes sure 'wp' does not grow indefinitely. */
+	return wp & (buffer_size - 1);
 }
 
 static __u32
@@ -432,8 +436,11 @@ compress_b0_to_output(void)
 		where = buffer_pos_to_addr(wp);
 		memcpy(where, b1_buffer + pos, to_write);
 		pos += to_write;
-		wp += to_write;
 		nbytes -= to_write;
+
+		/* [NB] This also makes sure 'wp' does not grow
+		 * indefinitely. */
+		wp = (wp + to_write) & (buffer_size - 1);
 	}
 
 	cached_events_num = 0;

@@ -190,17 +190,48 @@ process_data(void *buffer, FILE *outf)
 				(unsigned int)rp);
 			return 1;
 		}
-		
-		errno = 0;
-		fwrite(treh, (size_t)treh->event_size, 1, outf);
-		if (errno != 0) {
-			fprintf(stderr, 
+
+		/* As the buffer "wraps" at the end, an event may cross the
+		 * end of the buffer but event header can never do so (the
+		 * kernel-mode part of the recorder ensures that). */
+		if (rp + treh->event_size > (__u32)buffer_size) {
+			/* Save the both parts of the event. */
+			__u32 size_part = (__u32)buffer_size - rp;
+
+			errno = 0;
+			fwrite(treh, (size_t)size_part, 1, outf);
+			if (errno != 0) {
+				fprintf(stderr,
 		"Failed to write an event (pos=%u) to the file: %s\n",
-				(unsigned int)rp, 
-				strerror(errno));
-			return 1;
+					(unsigned int)rp,
+					strerror(errno));
+				return 1;
+			}
+
+			fwrite(buffer_pos_to_addr(buffer, 0),
+			       (size_t)(treh->event_size - size_part),
+			       1,
+			       outf);
+			if (errno != 0) {
+				fprintf(stderr,
+		"Failed to write an event (pos=0) to the file: %s\n",
+					strerror(errno));
+				return 1;
+			}
 		}
-		rp += treh->event_size;
+		else {
+			/* The event does not cross the end of the buffer.*/
+			errno = 0;
+			fwrite(treh, (size_t)treh->event_size, 1, outf);
+			if (errno != 0) {
+				fprintf(stderr,
+		"Failed to write an event (pos=%u) to the file: %s\n",
+					(unsigned int)rp,
+					strerror(errno));
+				return 1;
+			}
+		}
+		rp = (rp + treh->event_size) & (buffer_size - 1);
 				
 		/* Finish if the last target module has been unloaded
 		 * (that is, the session has ended). */
