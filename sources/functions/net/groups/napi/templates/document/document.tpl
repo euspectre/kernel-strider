@@ -39,11 +39,11 @@
  * 4. End of the callback HB end of netif_napi_del().
  *    ID: (ulong)napi + 1.
  *
- * 5. For a given napi_struct instance, the callback is executed under
- * napi->poll_lock spinlock if CONFIG_NETPOLL is set in the kernel config. 
- * For simplicity, we assume this lock is always taken when the callback
- * executes, no matter if CONFIG_NETPOLL is set.
- *    Lock ID: (ulong)napi + 2.
+ * 5. Note that the callback is not always executed under napi->poll_lock
+ * spinlock even if CONFIG_NETPOLL is set in the kernel config.
+ * For example, net_rx_action (net/core/dev.c) calls napi->poll() w/o
+ * napi->poll_lock. net_rx_action() is the softirq function for
+ * NET_RX_SOFTIRQ. So, we imply no additional locking here.
  *
  * 6. The callback executes in BH context. */
 /* ====================================================================== */
@@ -57,10 +57,7 @@ poll_pre(struct kedr_local_storage *ls)
 	
 	/* Relation #6 */
 	kedr_bh_start(tid, func);
-	
-	/* Relation #5 */
-	kedr_locked_start(ls, func, KEDR_LOCK_MASK_POLL, 
-			  (unsigned long)napi + 2, KEDR_LT_SPINLOCK);
+
 	/* Relation #1 */
 	kedr_happens_after(tid, func, (unsigned long)napi->dev);
 	
@@ -80,10 +77,7 @@ poll_post(struct kedr_local_storage *ls)
 	
 	/* Relation #4 */
 	kedr_happens_before(tid, func, (unsigned long)napi + 1);
-	
-	/* Relation #5 */
-	kedr_locked_end(ls, func, KEDR_LOCK_MASK_POLL, 
-			  (unsigned long)napi + 2, KEDR_LT_SPINLOCK);
+
 	/* Relation #6 */
 	kedr_bh_end(tid, func);
 }
