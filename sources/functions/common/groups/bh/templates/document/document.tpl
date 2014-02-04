@@ -25,7 +25,7 @@
 /* ====================================================================== */<$endif$>
 
 static struct kedr_fh_handlers *handlers[] = {
-	<$if concat(handlerItem)$><$handlerItem: join(,\n\t)$>,
+	<$if concat(function.name)$><$handlerItem: join(,\n\t)$>,
 	<$endif$>NULL
 };
 /* ====================================================================== */
