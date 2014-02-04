@@ -13,8 +13,7 @@
 	
 	prepare_args.post =>>
 		unsigned long order = KEDR_LS_ARG3(ls);
-		struct page *page = (struct page *)KEDR_LS_RET_VAL(ls);
 		size = (size_t)(PAGE_SIZE << order);
-		addr = (unsigned long)page_address(page);
+		addr = KEDR_LS_RET_VAL(ls);
 	<<
 #######################################################################
