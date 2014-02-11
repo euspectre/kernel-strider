@@ -30,7 +30,7 @@ class KModComponent(object):
     """
 
     def __init__(self, name, params=None):
-        self.name = name        
+        self.name = name
 
         if params:
             self.params = dict([(par, None) for par in params])
@@ -44,30 +44,30 @@ class KModComponent(object):
         Returns False on failure, True if successful.
         """
         path = os.path.join(module_path, self.name + ".ko")
-        
+
         param_spec = []
         for par in self.params:
             if self.params[par]:
                 param_spec.append(par + '=' + params[par])
-        
+
         cmd = ['insmod', path]
         cmd.extend(param_spec)
 
         if verbose:
-            print 'Starting', self.name
-            print 'Command:', ' '.join(cmd)
+            sys.stdout.write('Starting ' + self.name + '\n')
+            sys.stdout.write('Command: ' + ' '.join(cmd) + '\n')
 
         try:
             ret = subprocess.call(cmd)
             if ret != 0:
-                print >> sys.stderr, ' '.join([
+                sys.stderr.write(' '.join([
                     'Failed to start the component:',
-                    'the command returned %d.' % ret])
+                    'the command returned %d.' % ret]) + '\n')
                 return False
-            
+
         except OSError as e:
-            print >> sys.stderr, '\n'.join([
-                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+            sys.stderr.write('\n'.join([
+                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e), '']))
             return False
 
         return True
@@ -78,22 +78,22 @@ class KModComponent(object):
         Returns False on failure, True if successful.
         """
         cmd = ['rmmod', self.name]
-        
+
         if verbose:
-            print 'Stopping', self.name
-            print 'Command:', ' '.join(cmd)
+            sys.stdout.write('Stopping ' + self.name + '\n')
+            sys.stdout.write('Command: ' + ' '.join(cmd) + '\n')
 
         try:
             ret = subprocess.call(cmd)
             if ret != 0:
-                print >> sys.stderr, ' '.join([
+                sys.stderr.write(' '.join([
                     'Failed to stop the component:',
-                    'the command returned %d.' % ret])
+                    'the command returned %d.' % ret]) + '\n')
                 return False
 
         except OSError as e:
-            print >> sys.stderr, '\n'.join([
-                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+            sys.stderr.write('\n'.join([
+                'Failed to execute \'%s\':' % (' '.join(cmd)), str(e), '']))
             return False
 
         return True
@@ -111,7 +111,7 @@ def create_supported():
         KModComponent('kedr_fh_drd_net'),
         KModComponent('kedr_simple_trace_recorder', ['nr_data_pages'])]
     return dict([(c.name, c) for c in comps])
-    
+
 
 def _process_kernel_strider(supported):
     return [supported['kedr_mem_core'],
@@ -129,19 +129,19 @@ def choose_components(tools, params):
     known_tools = {'KernelStrider': _process_kernel_strider}
     supported = create_supported()
     components = []
-    
+
     for tool in tools:
         if tool in known_tools:
             components.extend(known_tools[tool](supported))
         else:
-            print >> sys.stderr, 'Unknown tool:', tool
+            sys.stderr.write('Unknown tool: ' + tool + '\n')
             return None
 
     for par in params:
         for comp in components:
             if par in comp.params:
                 comp.params[par] = params[par]
-    
+
     return components
 
 
@@ -149,15 +149,18 @@ def start(components, module_path, verbose=False):
     """Start all components, in order."""
 
     if os.path.exists(running_file):
-        print >> sys.stderr, ' '.join([
-            'KEDR tools are already running or were not stopped properly.'])
+        sys.stderr.write(
+            'KEDR tools are already running or were not stopped properly.\n')
         if verbose:
-            print 'The special file', running_file, 'exists.',
-            print 'If KEDR tools are not running but just were not stopped',
-            print 'properly before reboot, etc., you can remove',
-            print running_file, 'and try again.'
-            print '\'lsmod | grep kedr\' will show if the main components',
-            print 'are loaded.'
+            sys.stdout.write('The special file %s exists. ' % running_file)
+            sys.stdout.write(
+                'If KEDR tools are not running but just were not stopped ')
+            sys.stdout.write(
+                'properly before reboot, etc., you can remove ')
+            sys.stdout.write('%s and try again.\n' % running_file)
+            sys.stdout.write(
+                '\'lsmod | grep kedr\' will show if the main components ')
+            sys.stdout.write('are loaded.\n')
         return False
 
     failed = False
@@ -167,22 +170,23 @@ def start(components, module_path, verbose=False):
     # already loaded, 'modprobe lzo_compress' will be a no-op.
     cmd = ['modprobe', 'lzo_compress']
     if verbose:
-        print 'Trying to load \'lzo_compress\' (may be built-in)'
-        print 'Command:', ' '.join(cmd)
+        sys.stdout.write(
+            'Trying to load \'lzo_compress\' (may be built-in)\n')
+        sys.stdout.write('Command: ' + ' '.join(cmd) + '\n')
 
     try:
         ret = subprocess.call(cmd)
         if ret != 0:
-            print >> sys.stderr, ' '.join([
+            sys.stderr.write(' '.join([
                 'Failed to load lzo_compress:',
-                'the command returned %d.' % ret])
+                'the command returned %d.\n' % ret]))
             return False
 
     except OSError as e:
-        print >> sys.stderr, '\n'.join([
-            'Failed to execute \'%s\':' % (' '.join(cmd)), str(e)])
+        sys.stderr.write('\n'.join([
+            'Failed to execute \'%s\':' % (' '.join(cmd)), str(e), '']))
         return False
-    
+
 
     rollback = []
     for comp in components:
@@ -194,8 +198,8 @@ def start(components, module_path, verbose=False):
 
     if failed:
         if verbose:
-            print ' '.join(['Failed to start some components,',
-                            'performing rollback.'])
+            sys.stdout.write(
+                'Failed to start some components, performing rollback.\n')
         for comp in rollback:
             comp.stop(verbose=verbose)
     else:
@@ -203,10 +207,10 @@ def start(components, module_path, verbose=False):
             with open(running_file, "w") as rf:
                 for comp in rollback:
                     rf.write(comp.name + '\n')
-                    
+
         except IOError as e:
-            print >> sys.stderr, '\n'.join([
-                'Failed to write data to %s:' % running_file, str(e)])
+            sys.stderr.write('\n'.join([
+                'Failed to write data to %s:' % running_file, str(e), '']))
             for comp in rollback:
                 comp.stop(verbose=verbose)
             failed = True
@@ -221,7 +225,7 @@ def stop(verbose=False):
     """
     is_ok = True
     supported = create_supported()
-    
+
     try:
         with open(running_file, 'r') as rf:
             for comp in rf:
@@ -230,29 +234,30 @@ def stop(verbose=False):
                     if not supported[comp].stop(verbose=verbose):
                         is_ok = False
                 else:
-                    print >> sys.stderr, 'Unknown component:', comp
+                    sys.stderr.write('Unknown component: %s\n' % comp)
                     is_ok = False
 
     except IOError as e:
-        print >> sys.stderr, 'KEDR tools are not running.'
+        sys.stderr.write('KEDR tools are not running.\n')
         if verbose:
-            print 'Failed to open %s:\n%s' % (running_file, str(e))
+            sys.stdout.write(
+                'Failed to open %s:\n%s\n' % (running_file, str(e)))
         is_ok = False
 
     if is_ok:
         if os.path.exists(running_file):
             os.remove(running_file)
-        
+
     return is_ok
-    
-        
+
+
 if __name__ == '__main__':
     desc = 'This script starts and stops KEDR tools.'
     usage = '\n'.join([
         '',
         '\t%(prog)s start [--tools=...] [--targets=...] [other options]',
         '\t%(prog)s stop'])
-    
+
     parser = argparse.ArgumentParser(description=desc, usage=usage)
 
     grp_action = parser.add_argument_group('actions')
@@ -319,22 +324,21 @@ if __name__ == '__main__':
                                     'misc')
 
         if args.verbose:
-            print 'Module path:', module_path
+            sys.stdout.write('Module path: %s\n' % module_path)
 
         components = choose_components(tools, params)
         if not components:
-            print >> sys.stderr, 'Found no components to be started.'
+            sys.stderr.write('Found no components to be started.\n')
             sys.exit(1)
-        
+
         if not start(components, module_path, verbose=args.verbose):
             sys.exit(1)
 
     elif args.action == 'stop':
         if not stop(verbose=args.verbose):
-            #print >> sys.stderr, 'Failed to stop one or more components.'
             sys.exit(1)
 
     else:
-        print >> sys.stderr, 'Unknown action:', args.action
+        sys.stderr.write('Unknown action: %s\n' % args.action)
         sys.exit(1)
 
