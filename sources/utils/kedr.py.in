@@ -105,7 +105,8 @@ def create_supported():
     Returns the dict {name: KModComponent} for the supported components.
     """
     comps = [
-        KModComponent('kedr_mem_core', ['targets', 'sampling_rate']),
+        KModComponent('kedr_mem_core',
+            ['targets', 'sampling_rate', 'umh_dir']),
         KModComponent('kedr_fh_drd_common'),
         KModComponent('kedr_fh_drd_cdev'),
         KModComponent('kedr_fh_drd_net'),
@@ -301,6 +302,11 @@ if __name__ == '__main__':
         '--verbose', help='if specified, more messages will be output',
         action='store_true', default=False)
 
+    parser.add_argument(
+        '--umh_dir', help=' '.join([
+            'directory where the modules will look for the ',
+            'usermode helper scrits (used mostly for testing)']))
+
     args = parser.parse_args()
 
     # On some older systems, /run/ may be unavailable, /var/tmp/ will be
@@ -317,7 +323,8 @@ if __name__ == '__main__':
         # [NB] If new parameters are added, do not forget to list them here.
         params = {'targets': args.targets,
                   'nr_data_pages': args.nr_data_pages,
-                  'sampling_rate': args.sampling_rate}
+                  'sampling_rate': args.sampling_rate,
+                  'umh_dir': args.umh_dir}
 
         _, _, release, _, _ = os.uname()
         module_path = os.path.join(args.prefix, MODULES_SUBDIR, release,

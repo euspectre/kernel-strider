@@ -61,6 +61,18 @@ option(KEDR_USE_SPARSE
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 find_package(Kbuild)
 
+# Taken from CMake 3.8.12 because 3.6.4-3.8.0+ do not provide convenient
+# means to get the version of Python, which is needed here.
+find_package(PythonInterp)
+if (PYTHON_VERSION_STRING VERSION_LESS "2.7.0")
+	set(KEDR_PYTHON_OK "FALSE")
+	message(WARNING "Python version 2.7 or newer is needed for "
+		"some of the tools in this package (e.g. kedr.py helper). "
+		"Such tools will not be installed.")
+else ()
+	set(KEDR_PYTHON_OK "TRUE")
+endif ()
+
 include(cmake_useful)
 include(kbuild_system)
 include(kmodule)
