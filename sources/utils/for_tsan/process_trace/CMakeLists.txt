@@ -8,9 +8,18 @@ enable_language(CXX)
 #######################################################################
 
 include_directories (
-    "${CMAKE_SOURCE_DIR}"
-    "${CMAKE_SOURCE_DIR}/include"
+	"${CMAKE_SOURCE_DIR}"
+	"${CMAKE_SOURCE_DIR}/include"
+	"${CMAKE_CURRENT_BINARY_DIR}"
 )
+
+check_dwfl_report_elf()
+
+# [NB] This file is not named config.h to avoid conflicts with the top-level
+# config.h of the project.
+configure_file(
+	"${CMAKE_CURRENT_SOURCE_DIR}/config_process_trace.h.in"
+	"${CMAKE_CURRENT_BINARY_DIR}/config_process_trace.h")
 
 set(APP_SOURCES
 	main.cpp
@@ -20,6 +29,7 @@ set(APP_SOURCES
 	rc_ptr.h
 	trace_processor.h
 	trace_processor.cpp
+	"${CMAKE_CURRENT_BINARY_DIR}/config_process_trace.h"
 
 	# LZO mini
 	"${CMAKE_SOURCE_DIR}/lzo/minilzo.c"

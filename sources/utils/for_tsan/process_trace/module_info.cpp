@@ -39,6 +39,8 @@
 #include "module_info.h"
 #include "rc_ptr.h"
 
+#include "config_process_trace.h"
+
 using namespace std;
 /* ====================================================================== */
 
@@ -98,7 +100,7 @@ load_dwarf_info(rc_ptr<ModuleInfo> &mi, Elf * /* unused */, int fd)
 			"Failed to duplicate a file descriptor.");
 	}
 	
-	mi->dwfl_mod = dwfl_report_elf(
+	mi->dwfl_mod = my_dwfl_report_elf(
 		dwfl->get_handle(), mi->name.c_str(), mi->path.c_str(), 
 		dwfl_fd, 0 /* base address */);
 	

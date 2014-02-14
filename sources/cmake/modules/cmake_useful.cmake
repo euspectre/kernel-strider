@@ -106,6 +106,39 @@ function(check_libdw_devel)
 	message(STATUS "${checking_message}")
 endfunction(check_libdw_devel)
 
+# dwfl_report_elf() may have different parameters depending on the version
+# of libdw/libdwfl. See commit 904aec2c2f62b729a536c2259274fdd440b0d923 
+# "Add parameter add_p_vaddr to dwfl_report_elf" in elfutils repository
+# for example.
+# This function sets KEDR_DWFL_REPORT_ELF_ADD_P_VADDR if dwfl_report_elf()
+# has add_p_vaddr parameter.
+function(check_dwfl_report_elf)
+	set(checking_message "Checking the signature of dwfl_report_elf()")
+	message(STATUS "${checking_message}")
+
+	if(DEFINED dwfl_report_elf_add_p_vaddr_checked)
+		message(STATUS "${checking_message} [cached] - done")
+	else()
+
+		try_compile(dwfl_report_elf_result # Result variable
+			"${CMAKE_BINARY_DIR}/check_dwfl_report_elf/main" # Binary dir
+			"${CMAKE_SOURCE_DIR}/cmake/other_sources/dwfl_report_elf_check.c" # Source file
+			CMAKE_FLAGS "-DLINK_LIBRARIES:string=elf;dw"
+			OUTPUT_VARIABLE compile_out)
+	
+		if (dwfl_report_elf_result)
+			set(KEDR_DWFL_REPORT_ELF_ADD_P_VADDR "1"
+				CACHE INTERNAL
+				"dwfl_report_elf() has add_p_vaddr parameter.")
+		endif()
+
+		set(dwfl_report_elf_add_p_vaddr_checked "YES" CACHE INTERNAL
+			"dwfl_report_elf() was checked.")
+
+		message(STATUS "${checking_message} - done")
+	endif()
+endfunction(check_dwfl_report_elf)
+
 ########################################################################
 # Test-related macros
 ########################################################################
