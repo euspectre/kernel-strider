@@ -66,7 +66,7 @@ find_package(Kbuild)
 find_package(PythonInterp)
 if (PYTHON_VERSION_STRING VERSION_LESS "2.7.0")
 	set(KEDR_PYTHON_OK "FALSE")
-	message(WARNING "Python version 2.7 or newer is needed for "
+	message(WARNING "\nPython version 2.7 or newer is needed for "
 		"some of the tools in this package (e.g. kedr.py helper). "
 		"Such tools will not be installed.")
 else ()
