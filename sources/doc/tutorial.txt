@@ -71,6 +71,10 @@ needed, for example, for kedr.py helper script that manages the kernel-mode
 components of the system. It is possible to get away without it, although
 each components needs to be loaded manually in this case.
 
+Note that some distros may provide /usr/bin/python2.7, for example, but not
+/usr/bin/python. For convenience, it is recommended to create 
+/usr/bin/python as a symlink to the former.
+
 Notes.
 
 LZO compression is used by KernelStrider and should be enabled in the kernel
