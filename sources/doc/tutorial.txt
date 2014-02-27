@@ -44,7 +44,7 @@ debugfs support enabled in the configuration (see also the notes below).
 4. Everything necessary to build Linux kernel modules for the currently
 running kernel.
 
-5. CMake 2.6 or newer (http://cmake.org/).
+5. CMake 2.6 or newer (http://cmake.org/), 2.8 or newer is recommended.
 
 6. readelf and addr2line. These tools are usually present (they are from 
 "binutils" package).
@@ -69,7 +69,10 @@ separately.
 10. It is also recommended to have Python 2.7 or newer installed. It is
 needed, for example, for kedr.py helper script that manages the kernel-mode
 components of the system. It is possible to get away without it, although
-each components needs to be loaded manually in this case.
+each component needs to be loaded manually in this case. In this tutorial,
+it is assumed that Python 2.7 or newer is available. If it is not, see the
+instructions in the Appendix. It is described there how to load the 
+components of KernelStrider manually.
 
 Note that some distros may provide /usr/bin/python2.7, for example, but not
 /usr/bin/python. For convenience, it is recommended to create 
@@ -77,15 +80,18 @@ Note that some distros may provide /usr/bin/python2.7, for example, but not
 
 Notes.
 
+1.
 LZO compression is used by KernelStrider and should be enabled in the kernel
 (CONFIG_LZO_COMPRESS is set to 'y' or 'm').
 
+2.
 If you would like to resolve the addresses in the report on the detected
 data races, that is, to find the matching lines of the source code of the
 module under analysis, CONFIG_DEBUG_INFO should also be set to "y" in the
 kernel configuration ("Kernel hacking" - "Compile the kernel with debug
 info").
 
+3.
 It is also convenient (although not required for this particular tutorial)
 to have the following parameters set in the kernel configuration:
 
@@ -101,6 +107,20 @@ that each function of the target module is at least 5 bytes long (size of
 the relative near jump instruction) and is therefore instrumentable by
 KernelStrider core. Sometimes it can be necessary for all the functions of
 the target module to be "visible" to KernelStrider, even the short ones.
+
+4.
+There are also kernel patches that help KernelStrider detect more
+synchronization constructs and therefore reduce the number of false
+positives it produces even further in some cases. The patches are available
+here:
+http://code.google.com/p/kernel-strider/source/browse/?repo=aux#hg%2Fkernel_patches
+
+If, for example, you build the kernel yourself rather than use a
+distro-packaged one, consider applying these patches too and setting
+CONFIG_KEDR_ANNOTATIONS=y.
+
+This is not required for this particular tutorial but is often handy for the
+real-world tasks.
 ========================================================================
 
 Building ThreadSanitizer
@@ -125,17 +145,17 @@ ThreadSanitizer executable should now be in
 "x86-linux-debug-ts_offline" or something like that.
 
 It is convenient to make a symlink to that executable somewhere in $PATH. 
-For example, (assuming /home/user/bin is in $PATH):
+For example, (assuming /usr/local/bin/ is in $PATH):
 
-    $ ln -s 
+    # ln -s
 /home/user/temp/data-race-test/tsan/bin/amd64-linux-debug-ts_offline \
-        /home/user/bin/ts_offline
+        /usr/local/bin/ts_offline
 ========================================================================
 
 Building and Installing KernelStrider
 
 Get the latest release of KernelStrider here:
-http://code.google.com/p/kernel-strider/downloads/. Unpack the archive to a 
+http://code.google.com/p/kernel-strider/. Unpack the archive to a
 directory of your choice.
 
 Alternatively, you can checkout the latest sources from the repository, see 
@@ -220,25 +240,12 @@ Note. The operations with the kernel-space parts of KernelStrider require
 root privileges.
 
 1.
-First, load the core components of KernelStrider:
+First, load the kernel-mode components of KernelStrider:
  
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
-        targets=buggy01
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_common.ko
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_cdev.ko
-
-These components are responsible for the instrumentation of the target 
-module and for collecting the data about it in the kernel space.
-
-The name of the target module is specified via parameter "targets" of 
-"kedr_mem_core" module.
-
-Note that you can also use a helper script, /usr/local/bin/kedr.py, to load
-and unload all kernel-mode components of KernelStrider in one step.
     # /usr/local/bin/kedr.py start --tools=KernelStrider --targets=buggy01
-    # /usr/local/bin/kedr.py stop
 
-See '/usr/local/bin/kedr.py --help' for details.
+Actually, "--targets" accepts a comma-separated list of kernel modules to
+be analyzed.
 
 2. 
 In this tutorial, we assume that debugfs is mounted to /sys/kernel/debug. 
@@ -246,76 +253,42 @@ If it is not, you can mount it:
 
     # mount -t debugfs none /sys/kernel/debug
 
-3. 
-To output the data to the user space for analysis, KernelStrider provides 
-two different subsystems.
+3. Collecting Data
 
-One of the output subsystems (the "simple" one) allows to save the data 
-collected in the kernel ("the trace") to a file on a local machine. It is
-quite easy to use.
+3.1
+The collected data are transferred by KernelStrider from the kernel to the
+user space through a memory buffer and then are stored in a file. If the
+data stream is intense and the user-space part of KernelStrider cannot keep
+up, the information about the newer events in the target module will be
+lost making the collected data unusable. You can view the current count of
+lost events in "/sys/kernel/debug/kedr_simple_trace_recorder/events_lost".
 
-The other output subsystem (the "professional" one) is more complex but 
-richer in features. It allows to output the trace to a file either on the
-same machine or on some other machine on the network. It also allows more
-fine-grained control over the recording of the trace.
+To avoid problems due to lost events, you have the following options.
 
-This tutorial will show how to use each of the output subsystems.
+* Instruct KernelStrider to use a larger memory buffer for output.
+Use "--nr_data_pages" option of kedr.py to set the size of the buffer (the
+number of memory pages) when loading the tool. The value must be a
+power of 2 and it must be less than or equal to 65536. Default value: 128.
 
-3.1. Collecting Data Using the "Simple" Output Subsystem
+* Enable sampling to reduce the intensity of the data stream. See this guide
+for details: http://code.google.com/p/kernel-strider/wiki/Sampling
 
-The subsystem consists of kernel-space and user-space parts. The data are 
-transferred from the former to the latter through a memory buffer. If the
-data stream is intense and the user-space part cannot keep up with the
-kernel-space part writing the data to the buffer, the information about the
-newer events in the target module will be lost. You can read the current
-count of such events from "kedr_simple_trace_recorder/events_lost" in
-debugfs.
+Both approaches can be used at the same time.
 
-To avoid losing events, you can instruct the subsystem to use a larger 
-buffer. To do so, set "nr_data_pages" parameter of the kernel-space
-component ("kedr_simple_trace_recorder") when loading the latter.
-
-"nr_data_pages" is the number of memory pages in the ring buffer used to 
-transfer data from the kernel space to the use space. It must be a power of
-2 and it must be less than or equal to 65536. The default value is 128.
-
-For the workloads where the stream of events from the target module is not 
-very intensive, the default value of "nr_data_pages" should be acceptable.
-
-3.1.1
-LZO compression is used by this output sybsystem. If LZO compression
-facilities are built as a module, you need to load it first:
-
-    # modprobe lzo_compress
-
-Note that if kedr.py is used to load the necessary components, it will take
-care of this automatically.
-
-Load the kernel-space part of the subsystem:
-
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko
-
-If you would like to set the size of the buffer used for data transfer to, 
-say, 4096 memory pages (16 megabytes on the systems with the pages of 4
-kilobytes each), you can load this part as follows instead:
-
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko \
-        nr_data_pages=4096
-
-3.1.2
-Load the user-space part of the system, specifying the path to the trace 
-file as an argument (requires root privileges):
+3.2
+Load the user-space part of the system and specify the path to the file
+where the collected data should be saved (requires root privileges):
 
     # /usr/local/bin/kedr_st_recorder trace.dat &
 
 If "trace.dat" file already exists, it will be cleared automatically.
 
-3.1.3
+3.3
 Now it is time to load the target module. 
 
     # insmod /home/user/temp/buggy01/buggy01.ko
 
-3.1.4
+3.4
 To be able to analyze the target's code, you need to make that code execute 
 somehow. One could operate on the device that the module services, run some
 specific tests on it, etc.
@@ -331,7 +304,7 @@ When you are done with the target module, unload it:
 
     # rmmod buggy01
 
-3.1.5
+3.5
 The user-space part of the output system ("kedr_st_recorder" process) 
 should stop automatically when the target is unloaded. If it fails to stop
 for some reason, send SIGINT or SIGTERM to it ('kill -INT <PID>' or 'kill
@@ -342,28 +315,27 @@ Check if the output system has been able to save information for all events:
     # cat /sys/kernel/debug/kedr_simple_trace_recorder/events_lost
 
 If "events_lost" contains a non-zero value, you would probably want to 
-unload "kedr_simple_trace_recorder" and then retry from the step 3.1.1 with
-a greater value of "nr_data_pages" parameter.
+stop KernelStrider and then retry from the first step. This is because the
+saved data could be unreliable in this case (especially if some
+"lock"/"unlock" events have been lost).
 
-3.1.6 
+3.6
 If you would like to check some other operations with the target module and 
-record the corresponding trace, you can start from step 3.1.2 (probably
-with a different file to save the trace to) and go on as described above.
+record the corresponding trace of events, you can start from step 3.2
+(probably with a different file to save the trace to) and go on as described
+above.
 
-3.1.7
+3.7
 When you have collected all the traces you wanted to, the kernel-space 
 components of KernelStrider can be unloaded.
 
-    # rmmod kedr_simple_trace_recorder 
-    # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
-    # rmmod kedr_mem_core
+    # /usr/local/bin/kedr.py stop
 
-3.1.8
-For the simple output subsystem, KernelStrider provides a helper tool,
-tsan_process_trace. It automatically converts the trace to the format 
-ThreadSanitizer understands, feeds the trace to the latter and outputs the 
-report. The tool looks for ThreadSanitizer (ts_offline, etc.) in $PATH by 
-default.
+3.8
+To analyze the collected data, "tsan_process_trace" tool can be used. It
+automatically converts the trace to the format ThreadSanitizer understands,
+feeds the trace to the latter and outputs the report. The tool looks for
+ThreadSanitizer (ts_offline, etc.) in $PATH by default.
 
     $ /usr/local/bin/tsan_process_trace /home/user/temp/buggy01/buggy01.ko \
         < trace.dat > tsan_report.txt
@@ -379,236 +351,17 @@ To get more information about the abilities of tsan_process_trace tool,
 execute
 
     $ /usr/local/bin/tsan_process_trace --help
+========================================================================
 
-----------------------------------------------------------------------------
-3.2. Collecting Data Using the "Professional" Output Subsystem
-
-(See output/user/README in KernelStrider sources for more details about 
-this output subsystem.)
-
-3.2.1
-Load the kernel-mode component of the output subsystem:
-    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_trace_sender.ko
-
-3.2.2
-At this step, we will instruct the output system to prepare to record the 
-trace to /home/user/temp/trace/. It is recommended to start recording trace
-to a clean directory, so remove /home/user/temp/trace if it exists before
-executing the commands below.
-
-Operations with "kedr_save_trace" do not require root privileges.
-
-    $ /usr/local/bin/kedr_save_trace --start /home/user/temp/trace/
-    $ /usr/local/bin/kedr_save_trace --init-session 127.0.0.1
-
-Here we assume the data are collected and processed on the same machine, so 
-127.0.0.1 is used as an IP address of the machine where the target module
-(as well as "kedr_trace_sender" module) operates. If the target is on a
-different machine than "kedr_save_trace", we would need to specify the IP
-address of that machine instead.
-
-Note. If "kedr_save_trace" hangs, you can kill its process, unload 
-"kedr_trace_sender" module then load it once more and execute
-"kedr_save_trace" again as described above.
-
-The next 3 steps are the same as with the "simple" output subsystem.
-
-3.2.3
-Load the target module. 
-
-    # insmod /home/user/temp/buggy01/buggy01.ko
-
-3.2.4
-The kernel modules do not have fixed load addresses. So it is recommended 
-to obtain the memory addresses at least for the loaded sections of the
-target module now, while it is loaded:
-
-    # /usr/local/bin/kedr_show_target_sections.sh \
-        buggy01 > /home/user/temp/sections.dat
-
-The information collected at this step will be used later to properly 
-resolve the addresses of the instructions in the report produced by
-ThreadSanitizer.
-
-If you like, you could save more detailed information instead, not only for 
-the sections but also for the symbols in the target module:
-
-    # /usr/local/bin/kedr_show_target_symbols.sh \
-        buggy01 > /home/user/temp/symbols.dat
-
-3.2.5
-Do something with the target module then unload it.
-
-    # /home/user/temp/test_buggy01/test_buggy01
-    # rmmod buggy01
-
-3.2.6
-Stop recording the trace:
-
-    $ /usr/local/bin/kedr_save_trace --break-session 127.0.0.1
-    $ /usr/local/bin/kedr_save_trace --stop
-
-3.2.7 
-If you would like to check some other operations with the target module and 
-record the corresponding trace, you can start from step 3.2.2 (probably
-with a different path to save the trace to) and go on as described above.
-
-3.2.8
-When you have collected all the traces you wanted to, the kernel-space 
-components of KernelStrider can be unloaded.
-
-    # rmmod kedr_trace_sender
-    # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
-    # rmmod kedr_mem_core
-
-3.2.9
-Convert the saved trace to a format that ThreadSanitizer understands:
-    $ /usr/local/bin/kedr_trace_converter_tsan \
-        /home/user/temp/trace > /home/user/temp/trace_tsan.tst
-
-trace_tsan.tst now contains the trace in the needed format.
-
-3.2.10
-Here and below we assume the current directory is /home/user/temp/.
-
-Let us use ThreadSanitizer on the trace:
-    $ ts_offline  \
-        --show-pc < trace_tsan.tst 2> tsan_report_raw.txt
-
-By default, ThreadSanitizer operates in the so called "pure happens-before" 
-mode. If you would like it to operate in the "hybrid" mode instead (more
-predictable, allows to find more races but may also result in more false
-positives), execute it as follows instead:
-
-    $ ts_offline --hybrid=yes \
-        --show-pc < trace_tsan.tst 2> tsan_report_raw.txt
-
-The detailed description of these modes is available here: 
-http://code.google.com/p/data-race-test/wiki/PureHappensBeforeVsHybrid
-
-3.2.11
-Now tsan_report_raw.txt contains the information about the potential data 
-races found by ThreadSanitizer.
-
-At this point, only the raw memory addresses of the relevant locations in 
-the code are shown there, for example:
-
-------------------------------------
-WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
-   T2 (L{}):
-    #0  0x3ffffffa00f6060:  
-  Concurrent write(s) happened at (OR AFTER) these points:
-   T1 (L{}):
-    #0  0xffffffffa0005016:  
-  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
-  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
-    #0  0xffffffffa00f61d9:  
-    #1  0xffffffffa000500e:  
-   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
-}}}
-------------------------------------
-
-Note. On x86-64, ThreadSanitizer uses the higher bits of the addresses for 
-its own purposes. As a result, some of the addresses in the raw report may
-start with 0x3ff rather than 0xffff as they should. This is no problem
-because the raw reports are rarely used by themselves. The converters you
-will apply at the next steps will take care of these addresses
-automatically.
-
-3.2.12
-It is not very convenient to analyze the raw addresses in the report. If 
-the target kernel module contains debugging information, you can use a tool
-provided with KernelStrider to resolve the appropriate lines of the source
-code. To do this, you need the information about the target's sections
-(file "sections.dat" prepared on step 3.2.4) and the binary file
-of the target module ("buggy.ko").
-
-    $ /usr/local/bin/tsan_report_addr2line \
-        /home/user/temp/buggy01/buggy01.ko sections.dat \
-        < tsan_report_raw.txt > tsan_report.txt
-
-Note. On some systems, the debug information for the stock kernel modules 
-is available in separate files rather than in the ".ko" files of the
-modules themselves. When processing the reports for such modules with
-tsan_report_addr2line, you can try to use the path to the file with the
-debugging information for the module instead of the ".ko" file itself.
-
-The relevant part of "tsan_report.txt" should now look like this:
-
-------------------------------------
-WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
-   T2 (L{}):
-    #0  sample_open module.c:43:  
-  Concurrent write(s) happened at (OR AFTER) these points:
-   T1 (L{}):
-    #0  sample_init_module module.c:122:  
-  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
-  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
-    #0  kmalloc slab_def.h:161:  
-    #1  sample_init_module module.c:122:  
-   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
-}}}
-------------------------------------
-
-Now that the relevant positions in the source code of "buggy01" have been 
-found, the report should be easier to analyze.
-
-If the target module does not have debugging information, you still can use 
-the tools provided by KernelStrider to at least resolve section or symbol
-names in the report. "sections.dat" and "symbols.dat" prepared during step
-3.2.4 are needed here.
-
-    $ /usr/local/bin/kedr_symbolize_tsan_report \
-        tsan_report_raw.txt sections.dat > tsan_report_with_sections.txt
-
-Here is the corresponding fragment of "tsan_report_with_sections.txt":
-
-------------------------------------
-WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
-   T2 (L{}):
-    #0  .text+0x60 (0xffffffffa00f6060):  
-  Concurrent write(s) happened at (OR AFTER) these points:
-   T1 (L{}):
-    #0  .init.text+0x16 (0xffffffffa0005016):  
-  Location 0xffff88004b3dbda8 is 8 bytes inside a block 
-  starting at 0xffff88004b3dbda0 of size 16 allocated by T1 from heap:
-    #0  .text.unlikely+0x9 (0xffffffffa00f61d9):  
-    #1  .init.text+0xe (0xffffffffa000500e):  
-   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
-}}}
-------------------------------------
-
-You can now disassemble the target module (for example, with "objdump" 
-tool), look for the locations in the code mentioned in
-"tsan_report_with_sections.txt" in the resulting assembly listing and
-analyze what was going on. This can be less convenient than if debug
-information were available but still much better than nothing.
-
-If you would like to resolve symbol names instead of section names, just 
-use "symbols.dat" file instead of "sections.dat" in the command above.
-
-4. Analyzing the trace
-
-Regardless of which of the output subsystems you have used above, now you 
-have the report listing the potential data races in tsan_report.txt.
+4. Analyzing the report
 
 4.1
 Before you begin to analyze the report produced by ThreadSanitizer, there 
 is a couple of important points to consider.
 
 First, the number and the contents of the warnings about potential data 
-races may vary.
-
-One of the reasons is that, for simplicity, not all operations with the 
-target module are actually executed in parallel in this example.
-KernelStrider distinguishes the threads by the addresses of their
-"task_struct" objects and it can rarely detect that a thread has finished.
-When a thread finishes, the kernel releases the "task_struct" object
-associated with it. The chances are, a thread that starts after that will
-get the same memory block for its "task_struct". So, there two threads will
-look like a single thread to KernelStrider. The races that could be between
-these threads if they executed concurrently will not be detected in this
-case.
+races may vary. It depends on the actual interleaving of the threads that
+execute the code of the target modules.
 
 Second, not all warnings describe real races. That is, false positives are 
 possible.
@@ -624,16 +377,16 @@ some synchronization primitives used in the kernel are inlined and
 difficult to detect at the level of binary code.
 
 When ThreadSanitizer is used in "hybrid" mode, the amount of false 
-positives may grow further, see
+positives may grow further but the tool may find more real races too, see
 http://code.google.com/p/data-race-test/wiki/PureHappensBeforeVsHybrid
 
 You can help KernelStrider recognize synchronization and other ordering 
 relationships in the target module by placing special annotations in it.
 
 We are working on KernelStrider for it to be able to detect ordering 
-relationships in some widely used kinds of kernel modules (e. g. networking
-and file systems). This is a work in progress and even when it is done,
-annotations will still be necessary in sometimes.
+relationships in some widely used kinds of kernel modules (e.g. networking).
+This is a work in progress and even with that, annotations are still needed
+sometimes.
 
 We will describe below how to use dynamic annotations in the code of the 
 target module to reduce the number of the reported false positives.
@@ -654,14 +407,15 @@ WARNING: Possible data race during read of size 4 at 0xffff88004b3dbda8: {{{
     #0  kmalloc (slab_def.h:161)
     #0  kzalloc (slab.h:340)
     #1  sample_init_module (module.c:122)
-   Race verifier data: 0x3ffffffa00f6060,0xffffffffa0005016
 }}}
 ------------------------------------
 
 Note that the same index of the stack items (#0 for kmalloc and kzalloc 
 above) is used for the "calls" ("substitutions") of inline functions.
 
-ThreadSanitizer suspects there is a data race between threads T2 and T1. 
+ThreadSanitizer suspects there is a data race between threads T2 and T1.
+You can find the list of threads at the end of the report.
+
 T2 reads 4 bytes starting from address 0xffff88004b3dbda8, this happens in 
 sample_open() function in a statement that begins at the line 43 of
 "module.c" file. Here is the fragment of the source code:
@@ -716,15 +470,15 @@ orts
 So, is that a data race? Is that possible for these operations to execute 
 concurrently?
 
-In this case, the answer is "no". The read access mentioned in this report 
-happens in sample_open(), a file operation provided by "buggy01" to
-maintain its file in debugfs. But "some_data->count" is written to in the
+In this case, the answer is "most likely no". The read access mentioned in
+this report happens in sample_open(), a file operation provided by "buggy01"
+to maintain its file in debugfs. But "some_data->count" is written to in the
 init function of the target module before that file is created by
 debugfs_create_file() at line 136.
 
 sample_open() cannot be called for a file before debugfs_create_file() 
-creates that file. So these two accesses to "some_data->count" never happen
-concurrently and this is a false positive.
+creates that file. So these two accesses to "some_data->count" are extremely
+unlikely to happen concurrently, if that is possible at all.
 
 Indeed, there are at least the following facts about the file operation 
 callbacks (sample_open(), sample_read() and sample_release() in this
@@ -764,17 +518,18 @@ is, they are not ignored by the compiler but rather expand to the
 appropriate code fragments and are processed by KernelStrider when the
 target module is loaded.
 
-To use these annotations, you need "kedr_annotations.c" and 
+If your kernel is patched to enable the annotations (and
+CONFIG_KEDR_ANNOTATIONS is 'y') then no changes are needed in the Kbuild
+file of the target module. Otherwise, you need "kedr_annotations.c" and
 "kedr_annotations.h" provided by KernelStrider (they are installed to
 "/usr/local/share/kedr/annotations/"). Copy these files to the directory
-where the source code of the target module is. Add
-    #include "kedr_annotations.h"
-to the source files of the target module where you would like to use the 
-annotations. #define CONFIG_KEDR_ANNOTATIONS to a non-zero value in the
-compiler options, usually - in "ccflags-y" in "Kbuild" file of the target
-module. You also need to instruct the build system of the target module to
-compile "kedr_annotations.c" and link the resulting object file into the
-target module.
+where the source code of the target module is.
+
+#define CONFIG_KEDR_ANNOTATIONS to a non-zero value in the compiler options,
+usually - in "ccflags-y" in "Kbuild" file of the target module. You also
+need to instruct the build system of the target module to compile
+"kedr_annotations.c" and link the resulting object file into the target
+module.
 
 Here is "Kbuild" file for "buggy01_annotated":
 
@@ -786,10 +541,18 @@ obj-m := $(MODULE_NAME).o
 $(MODULE_NAME)-y := module.o kedr_annotations.o
 ------------------------------------
 
-Note that a target module containing the describe here annotations can be 
+Note that a kernel module containing the annotations described here can be
 used normally even if KernelStrider is not loaded.
 
 4.4
+Add
+    #include <linux/kedr_annotations.h>
+or, if the support for annotations is not provided by the kernel
+    #include "kedr_annotations.h"
+
+to the source files of the target module where you would like to use the
+annotations.
+
 You also need to choose the identifiers for happens-before "links" ("arcs") 
 you are going to specify in the code with the annotations. An ID is a
 non-zero unsigned long value. Sometimes it is convenient to use the address
@@ -943,7 +706,6 @@ WARNING: Possible data race during read of size 8 at 0xffff88003795ab80: {{{
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
     #0  sample_open (module.c:79)
-   Race verifier data: 0x3ffffffa014e0da,0xffffffffa00050c5
 }}}
 
 [W2]
@@ -962,7 +724,6 @@ WARNING: Possible data race during write of size 1 at 0xffff8800347f6700:
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
     #0  sample_open (module.c:79)
-   Race verifier data: 0x3ffffffa014e0e5,0xffffffffa00050c5
 }}}
 
 [W3]
@@ -980,7 +741,6 @@ WARNING: Possible data race during read of size 4 at 0xffff88003795ab88: {{{
   Locks involved in this report (reporting last lock sites): {L1}
    L1 (0xffffffffa01500e0)
     #0  sample_read (module.c:127)
-   Race verifier data: 0x3ffffffa014e0a7,0xffffffffa014e0bd
 }}}
 ------------------------------------
 
@@ -1110,3 +870,45 @@ line 79.
 So, you have found 3 real data races in "buggy01" module with the help of 
 KernelStrider and ThreadSanitizer during this tutorial.
 ========================================================================
+
+Appendix.
+
+Loading the components of KernelStrider without kedr.py
+
+This may help, for example if neither Python 2.7.x nor Python 3.x is
+available.
+
+1.
+Load the following components first:
+
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_mem_core.ko \
+        targets=buggy01
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_common.ko
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_fh_drd_cdev.ko
+
+These components are responsible for the instrumentation of the target
+module and for collecting the data about it in the kernel space.
+
+The name of the target module is specified via parameter "targets" of
+"kedr_mem_core" module.
+
+The parameters "targets" and "sampling_rate" of kedr_mem_core module as well
+as "nr_data_pages" of kedr_simple_trace_recorder correspond to "--targets",
+"--sampling_rate" and "--nr_data_pages" options of kedr.py script.
+
+2.
+LZO compression is used by the output sybsystem. If LZO compression
+facilities are built as a module, you need to load it first:
+
+    # modprobe lzo_compress
+
+Load the kernel-space part of the output subsystem:
+
+    # insmod /usr/local/lib/modules/`uname -r`/misc/kedr_simple_trace_recorder.ko
+
+3.
+To stop KernelStrider, you can simply unload the appropriate kernel modules:
+
+    # rmmod kedr_simple_trace_recorder
+    # rmmod kedr_fh_drd_common kedr_fh_drd_cdev
+    # rmmod kedr_mem_core
