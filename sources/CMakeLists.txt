@@ -23,7 +23,7 @@ set(KEDR_KS_PACKAGE_NAME "KernelStrider")
 
 set(KEDR_KS_VERSION_MAJOR 0)
 set(KEDR_KS_VERSION_MINOR 3)
-set(KEDR_KS_VERSION_MICRO 0)
+set(KEDR_KS_VERSION_MICRO 1)
 #set(KEDR_KS_VERSION_SUFFIX "-devel" CACHE STRING
 set(KEDR_KS_VERSION_SUFFIX "" CACHE STRING
 	"Version suffix, a string that should be appended to the version"
