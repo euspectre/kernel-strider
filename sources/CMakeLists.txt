@@ -401,14 +401,24 @@ endif (KEDR_GEN)
 message (STATUS "Creating \"kedr_gen\" - done")
 #######################################################################
 
+# The CTF-based output subsystem still needs work to be usable. It is now
+# disabled by default.
+option (CTF_OUTPUT_SUBSYSTEM 
+	"Build the components to output and process trace in CTF-like format." 
+	OFF
+)
+#######################################################################
+
 add_subdirectory(core)
 add_subdirectory(functions)
 
 # Should be before 'output'.
 add_subdirectory(utils)
-add_subdirectory(output)
 
-add_subdirectory(converter)
+if (CTF_OUTPUT_SUBSYSTEM)
+	add_subdirectory(output)
+	add_subdirectory(converter)
+endif (CTF_OUTPUT_SUBSYSTEM)
 
 add_subdirectory(include)
 

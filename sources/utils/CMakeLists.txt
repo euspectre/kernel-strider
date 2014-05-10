@@ -1,5 +1,8 @@
-add_subdirectory(ctf_reader)
-add_subdirectory(kedr_trace_reader)
+if (CTF_OUTPUT_SUBSYSTEM)
+	add_subdirectory(ctf_reader)
+	add_subdirectory(kedr_trace_reader)
+endif ()
+
 add_subdirectory(simple_trace_recorder)
 add_subdirectory(for_tsan)
 
