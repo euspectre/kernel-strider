@@ -22,6 +22,7 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -31,6 +32,9 @@
 #include <linux/string.h>
 #include <linux/spinlock.h>
 #include <asm/uaccess.h>
+
+#include <asm/cacheflush.h> 	/* set_memory_ro, set_memory_rw */
+#include <linux/pfn.h> 		/* PFN_* macros */
 
 #include <kedr/kedr_mem/core_api.h>
 #include <kedr/kedr_mem/local_storage.h>
@@ -796,6 +800,62 @@ session_end(void)
 	providers_put();
 }
 
+/* Starting from commit 4982223e51e8ea9d09bb33c8323b5ec1877b2b51 which went 
+ * into kernel 3.16, the code of a kernel module becomes read only before
+ * the notification about MODULE_STATE_COMING triggers.
+ * 
+ * To be able to instrument the module anyway, we use the approach Ftrace
+ * relies upon: temporarily make the code RW and make in RO again after the
+ * instrumentation. */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) && \
+    defined(CONFIG_DEBUG_SET_MODULE_RONX)
+
+/* Copied from kernel/module.c */
+static void 
+set_page_attributes(void *start, void *end, 
+		    int (*set)(unsigned long start, int num_pages))
+{
+	unsigned long begin_pfn = PFN_DOWN((unsigned long)start);
+	unsigned long end_pfn = PFN_DOWN((unsigned long)end);
+
+	if (end_pfn > begin_pfn)
+		set(begin_pfn << PAGE_SHIFT, end_pfn - begin_pfn);
+}
+    
+static void
+set_module_text_rw(struct module* mod)
+{
+	if (mod->module_core != NULL && mod->core_text_size) {
+		set_page_attributes(mod->module_core, 
+				    mod->module_core + mod->core_text_size,
+				    set_memory_rw);
+	}
+	if (mod->module_init != NULL && mod->init_text_size) {
+		set_page_attributes(mod->module_init, 
+				    mod->module_init + mod->init_text_size, 
+				    set_memory_rw);
+	}
+}
+
+static void
+set_module_text_ro(struct module* mod)
+{
+	if (mod->module_core != NULL && mod->core_text_size) {
+		set_page_attributes(mod->module_core, 
+				    mod->module_core + mod->core_text_size,
+				    set_memory_ro);
+	}
+	if (mod->module_init != NULL && mod->init_text_size) {
+		set_page_attributes(mod->module_init, 
+				    mod->module_init + mod->init_text_size, 
+				    set_memory_ro);
+	}
+}
+#else
+static inline void set_module_text_rw(struct module* mod) { }
+static inline void set_module_text_ro(struct module* mod) { }
+#endif
+
 /* on_module_load() handles loading of the target module. This function is
  * called after the target module has been loaded into memory but before it
  * begins its initialization.
@@ -835,7 +895,10 @@ on_module_load(struct kedr_target *t)
 		"Target module \"%s\" has just loaded.\n",
 		module_name(t->mod));
 	
+	set_module_text_rw(t->mod);
 	t->i13n = kedr_i13n_process_module(t->mod);
+	set_module_text_ro(t->mod);
+	
 	BUG_ON(t->i13n == NULL);
 	if (IS_ERR(t->i13n)) {
 		t->i13n = NULL;
