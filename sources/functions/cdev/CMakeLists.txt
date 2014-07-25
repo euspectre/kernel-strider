@@ -26,7 +26,7 @@ if (num_funcs)
 		"${CMAKE_BINARY_DIR}/config.h"
 	)
 	
-	add_dependencies(${KMODULE_NAME} func_drd_${GROUP_NAME})
+	#add_dependencies(${KMODULE_NAME} func_drd_${GROUP_NAME})
 	kedr_install_kmodule(${KMODULE_NAME})
 	kedr_install_symvers(${KMODULE_NAME})
 endif (num_funcs)
