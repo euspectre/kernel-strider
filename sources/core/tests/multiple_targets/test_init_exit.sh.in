@@ -185,8 +185,7 @@ checkLoadedTargets()
 doTest()
 {
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY}" \
-		umh_dir="@KEDR_UMH_DIR@"
+		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY}"
 	if test $? -ne 0; then
 		printf "Failed to load the core module: ${CORE_MODULE}\n"
 		cleanupAll

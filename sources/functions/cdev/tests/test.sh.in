@@ -86,8 +86,7 @@ cleanupAll()
 doTest()
 {
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" || exit 1
+		targets="${TARGET_MODULE_NAME}" || exit 1
 
 	insmod "${REPORTER_MODULE}" \
 		report_calls=1 report_mem=1 report_block_enter=0 \

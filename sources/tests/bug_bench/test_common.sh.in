@@ -134,7 +134,6 @@ doTest()
 	"${KEDR_SCRIPT}" --prefix="${TEST_TMP_DIR}" \
 		--tools=KernelStrider \
 		--targets=buggy01,kedr_sample_target \
-		--umh_dir="${UMH_DIR}" \
 		start
 	if test $? -ne 0; then
 		printf "Failed to start the tools.\n"

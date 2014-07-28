@@ -87,8 +87,7 @@ unloadTarget()
 doTest()
 {
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@"
+		targets="${TARGET_NAME}" 
 	if test $? -ne 0; then
 		printf "Failed to load the core module: ${CORE_MODULE}\n"
 		cleanupAll

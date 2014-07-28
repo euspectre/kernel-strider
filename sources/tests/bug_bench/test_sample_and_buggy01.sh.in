@@ -149,8 +149,7 @@ doTest()
 	chmod +x "${APP_PROCESS_TRACE}"
 	
 	insmod "${MODULE_CORE}" \
-		targets=buggy01,kedr_sample_target \
-		umh_dir="${UMH_DIR}"
+		targets=buggy01,kedr_sample_target
 	if test $? -ne 0; then
 		printf "Failed to load the core module: ${MODULE_CORE}\n"
 		cleanupAll

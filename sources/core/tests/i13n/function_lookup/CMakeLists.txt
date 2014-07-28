@@ -13,11 +13,13 @@ configure_file (
   @ONLY
 )
 
-kedr_test_add_script (mem_core.i13n.func_lookup.01 
-    test.sh "sample_target"
-)
-kedr_test_add_script (mem_core.i13n.func_lookup.02 
-    test.sh "dummy_target"
-)
+# TODO: update the tests so that they do not rely on the addresses of 
+# ELF sections, then enable them again
+#kedr_test_add_script (mem_core.i13n.func_lookup.01 
+#    test.sh "sample_target"
+#)
+#kedr_test_add_script (mem_core.i13n.func_lookup.02 
+#    test.sh "dummy_target"
+#)
 
 add_subdirectory (test_module)

@@ -43,7 +43,6 @@
 #include "config.h"
 #include "core_impl.h"
 
-#include "sections.h"
 #include "module_ms_alloc.h"
 #include "i13n.h"
 #include "hooks.h"
@@ -80,8 +79,8 @@ module_param(targets, charp, S_IRUGO);
 
 /* Path where the user-mode helper scripts are located. Normally, the user
  * would not change it, it is mainly for testing purposes. */
-char *umh_dir = KEDR_UM_HELPER_PATH;
-module_param(umh_dir, charp, S_IRUGO);
+/*char *umh_dir = KEDR_UM_HELPER_PATH;
+module_param(umh_dir, charp, S_IRUGO);*/
 
 /* This parameter controls whether to track memory accesses that actually
  * read and/or modify data on stack. Namely, if this parameter is zero,
@@ -801,12 +800,15 @@ session_end(void)
 }
 
 /* Starting from commit 4982223e51e8ea9d09bb33c8323b5ec1877b2b51 which went 
- * into kernel 3.16, the code of a kernel module becomes read only before
- * the notification about MODULE_STATE_COMING triggers.
+ * into kernel 3.16, the code and rodata of a kernel module become read 
+ * only before the notification about MODULE_STATE_COMING triggers.
  * 
  * To be able to instrument the module anyway, we use the approach Ftrace
- * relies upon: temporarily make the code RW and make in RO again after the
- * instrumentation. */
+ * relies upon: temporarily make the code and rodata pages RW and make them
+ * RO again after the instrumentation. 
+ *
+ * We need to do this for rodata too, not only for the code, because jump
+ * tables are commonly stored in rodata areas. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) && \
     defined(CONFIG_DEBUG_SET_MODULE_RONX)
 
@@ -821,39 +823,39 @@ set_page_attributes(void *start, void *end,
 	if (end_pfn > begin_pfn)
 		set(begin_pfn << PAGE_SHIFT, end_pfn - begin_pfn);
 }
-    
+
 static void
-set_module_text_rw(struct module* mod)
+set_module_pages_rw(struct module* mod)
 {
 	if (mod->module_core != NULL && mod->core_text_size) {
 		set_page_attributes(mod->module_core, 
-				    mod->module_core + mod->core_text_size,
+				    mod->module_core + mod->core_ro_size,
 				    set_memory_rw);
 	}
 	if (mod->module_init != NULL && mod->init_text_size) {
 		set_page_attributes(mod->module_init, 
-				    mod->module_init + mod->init_text_size, 
+				    mod->module_init + mod->init_ro_size, 
 				    set_memory_rw);
 	}
 }
 
 static void
-set_module_text_ro(struct module* mod)
+set_module_pages_ro(struct module* mod)
 {
 	if (mod->module_core != NULL && mod->core_text_size) {
 		set_page_attributes(mod->module_core, 
-				    mod->module_core + mod->core_text_size,
+				    mod->module_core + mod->core_ro_size,
 				    set_memory_ro);
 	}
 	if (mod->module_init != NULL && mod->init_text_size) {
 		set_page_attributes(mod->module_init, 
-				    mod->module_init + mod->init_text_size, 
+				    mod->module_init + mod->init_ro_size, 
 				    set_memory_ro);
 	}
 }
 #else
-static inline void set_module_text_rw(struct module* mod) { }
-static inline void set_module_text_ro(struct module* mod) { }
+static inline void set_module_pages_rw(struct module* mod) { }
+static inline void set_module_pages_ro(struct module* mod) { }
 #endif
 
 /* on_module_load() handles loading of the target module. This function is
@@ -895,9 +897,9 @@ on_module_load(struct kedr_target *t)
 		"Target module \"%s\" has just loaded.\n",
 		module_name(t->mod));
 	
-	set_module_text_rw(t->mod);
+	set_module_pages_rw(t->mod);
 	t->i13n = kedr_i13n_process_module(t->mod);
-	set_module_text_ro(t->mod);
+	set_module_pages_ro(t->mod);
 	
 	BUG_ON(t->i13n == NULL);
 	if (IS_ERR(t->i13n)) {
@@ -1521,13 +1523,9 @@ core_init_module(void)
 	if (ret != 0)
 		goto out_cleanup_resolve_ip;
 
-	ret = kedr_init_section_subsystem(debugfs_dir_dentry);
-	if (ret != 0)
-		goto out_remove_files;
-
 	ret = kedr_init_module_ms_alloc();
 	if (ret != 0)
-		goto out_cleanup_sections;
+		goto out_remove_files;
 
 	ret = kedr_thread_handling_init(gc_msec);
 	if (ret != 0)
@@ -1593,9 +1591,6 @@ out_cleanup_tid:
 out_cleanup_alloc:
 	kedr_cleanup_module_ms_alloc();
 
-out_cleanup_sections:
-	kedr_cleanup_section_subsystem();
-
 out_remove_files:
 	remove_debugfs_files();
 
@@ -1622,7 +1617,6 @@ core_exit_module(void)
 
 	kedr_thread_handling_cleanup();
 	kedr_cleanup_module_ms_alloc();
-	kedr_cleanup_section_subsystem();
 
 	remove_debugfs_files();
 	kedr_cleanup_resolve_ip();

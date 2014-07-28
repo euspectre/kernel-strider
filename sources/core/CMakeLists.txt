@@ -11,7 +11,7 @@ set(KEDR_MEM_CORE_DEBUGFS_DIR "${KMODULE_NAME}")
 # The file in ${KEDR_MEM_CORE_DEBUGFS_DIR} directory where the helper
 # script should write the information about the sections of the target
 # module.
-set(KEDR_MEM_CORE_SECTIONS_FILE "sections") 
+#set(KEDR_MEM_CORE_SECTIONS_FILE "sections") 
 
 configure_file (
 	"${CMAKE_CURRENT_SOURCE_DIR}/core_impl.h.in"
@@ -41,7 +41,7 @@ kbuild_add_module(${KMODULE_NAME}
 # Sources:
 	"module.c"
 	"tid.c"
-	"sections.c"
+#	"sections.c"
 	"module_ms_alloc.c"
 	"i13n.c"
 	"ifunc.c"
@@ -58,7 +58,7 @@ kbuild_add_module(${KMODULE_NAME}
 # Headers
 	"core_impl.h"
 	"tid.h"
-	"sections.h"
+#	"sections.h"
 	"module_ms_alloc.h"
 	"i13n.h"
 	"ifunc.h"
@@ -157,7 +157,9 @@ kedr_install_symvers(${KMODULE_NAME})
 ########################################################################
 
 # User-mode helpers
-add_subdirectory(um_helpers)
+# [NB] These were used to get the addresses of the target's loaded sections
+# only. KernelStrider no longer relies on that information.
+#add_subdirectory(um_helpers)
 
 # The files needed for the target modules using dynamic annotations
 add_subdirectory(annotations)

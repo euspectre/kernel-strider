@@ -30,7 +30,6 @@
 #include "i13n.h"
 #include "module_ms_alloc.h"
 #include "util.h"
-#include "sections.h"
 #include "hooks.h"
 /* ====================================================================== */
 
@@ -285,8 +284,7 @@ construct_special_item(unsigned long addr)
 }
 
 /* Creates the list of the special items, i.e. the instances of 
- * struct kedr_ifunc representing sections and the ends of the areas of the
- * given module. 
+ * struct kedr_ifunc the ends of the areas of the given module. 
  * The items will be added to the specified list (must be empty on entry).
  * If successful, the function returns the number of items created (>= 0).
  * A negative error code is returned in case of failure. */
@@ -296,22 +294,10 @@ create_special_items(struct kedr_i13n *i13n, struct list_head *items_list)
 	int num = 0;
 	int ret = 0;
 	struct module *target = i13n->target;
-	struct kedr_section *sec;
 	struct kedr_ifunc *item;
 	
 	BUG_ON(items_list == NULL);
 	BUG_ON(!list_empty(items_list));
-	BUG_ON(list_empty(&i13n->sections)); 
-	
-	list_for_each_entry(sec, &i13n->sections, list) {
-		item = construct_special_item(sec->addr);
-		if (item == NULL) {
-			ret = -ENOMEM;
-			goto out;
-		}
-		list_add_tail(&item->list, items_list);
-		++num;
-	}
 	
 	/* Here we rely on the fact that the code is placed at the beginning
 	 * of "init" and "core" areas of the module by the module loader. 
@@ -351,7 +337,7 @@ out:
 /* A helper structure that is used to implement stable sorting of function
  * boundaries (to determine function size later). 
  * '*obj' may represent a function or a special item (like the end of "init"
- * or "core" area or a start of an ELF section). 
+ * or "core" area). 
  * 'index' is the original index of an item, i.e. the index in the array 
  * before sorting. */
 struct func_boundary_item
@@ -633,12 +619,6 @@ kedr_get_functions(struct kedr_i13n *i13n)
 	int ret = 0;
 	
 	BUG_ON(i13n == NULL);
-	
-	/* The section lookup subsystem must be called before 
-	 * kedr_get_functions(). That subsystem either returns an error or a 
-	 * non-empty list of sections. We must not get here if the list of 
-	 * sections is empty. */
-	BUG_ON(list_empty(&i13n->sections));
 	
 	ret = find_functions(i13n);
 	if (ret != 0)

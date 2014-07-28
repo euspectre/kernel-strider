@@ -122,8 +122,7 @@ cleanupAll()
 loadCore()
 {
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY},${TARGET_NAME_BUGGY}" \
-		umh_dir="@KEDR_UMH_DIR@"
+		targets="${TARGET_NAME_SAMPLE},${TARGET_NAME_DUMMY},${TARGET_NAME_BUGGY}"
 	if test $? -ne 0; then
 		printf "Failed to unload the core module: ${CORE_MODULE}\n"
 		cleanupAll

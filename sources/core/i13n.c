@@ -23,7 +23,6 @@
 #include "config.h"
 #include "core_impl.h"
 
-#include "sections.h"
 #include "module_ms_alloc.h"
 #include "i13n.h"
 #include "ifunc.h"
@@ -619,7 +618,6 @@ kedr_i13n_process_module(struct module *target)
 		return ERR_PTR(-ENOMEM);
 	
 	i13n->target = target;
-	INIT_LIST_HEAD(&i13n->sections);
 	INIT_LIST_HEAD(&i13n->ifuncs);
 	
 	ret = create_fi_table(i13n);
@@ -633,18 +631,11 @@ kedr_i13n_process_module(struct module *target)
 		goto out_del_fi;
 	}
 	
-	ret = kedr_get_sections(target, &i13n->sections);
-	if (ret != 0) {
-		pr_warning(KEDR_MSG_PREFIX
-	"Failed to obtain names and addresses of the target's sections.\n");
-		goto out_free_fb;
-	}
-	
 	ret = kedr_get_functions(i13n);
 	if (ret != 0) {
 		pr_warning(KEDR_MSG_PREFIX
 	"Failed to prepare the list of functions to be processed.\n");
-		goto out_free_sections;
+		goto out_free_fb;
 	}
 	/* If there are no instrumentable functions, nothing to do. */
 	if (list_empty(&i13n->ifuncs)) 
@@ -699,8 +690,6 @@ kedr_i13n_process_module(struct module *target)
 
 out_free_functions:
 	kedr_release_functions(i13n);
-out_free_sections:
-	kedr_release_sections(&i13n->sections);
 out_free_fb:
 	free_fallback_areas(i13n);
 out_del_fi:
@@ -722,7 +711,6 @@ kedr_i13n_cleanup(struct kedr_i13n *i13n)
 	kedr_module_free(i13n->detour_buffer);
 	i13n->detour_buffer = NULL;
 	
-	kedr_release_sections(&i13n->sections);
 	free_fallback_areas(i13n);
 	kfree(i13n);
 }

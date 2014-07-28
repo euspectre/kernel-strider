@@ -113,8 +113,7 @@ processTarget()
 doTest()
 {
     insmod "${CORE_MODULE}" \
-        targets="${TARGET_MODULE_NAME}" \
-        umh_dir="@KEDR_UMH_DIR@" ${PROCESS_STACK} || exit 1
+        targets="${TARGET_MODULE_NAME}" ${PROCESS_STACK} || exit 1
 
     ii=0
     while test ${ii} -lt ${NUM_REPEAT}; do

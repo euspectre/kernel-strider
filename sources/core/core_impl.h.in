@@ -45,7 +45,7 @@ extern struct kedr_core_hooks *core_hooks;
 
 /* Path where the user-mode helper scripts are located. Normally, the user
  * would not change it, it is mainly for testing purposes. */
-extern char *umh_dir;
+/*extern char *umh_dir;*/
 
 /* This parameter specifies whether to report memory events for stack 
  * accesses. */

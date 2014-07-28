@@ -77,8 +77,7 @@ cleanupAll()
 doTest()
 {
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" ${PROCESS_STACK} || exit 1
+		targets="${TARGET_MODULE_NAME}" ${PROCESS_STACK} || exit 1
 
 	insmod "${ACCESSOR_MODULE}" target_function="${TARGET_FUNCTION}"
 	if test $? -ne 0; then

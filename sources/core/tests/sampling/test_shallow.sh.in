@@ -59,7 +59,7 @@ doTest()
 	# sampling itself is not checked in this test.
 	insmod "${CORE_MODULE}" \
 		targets="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" sampling_rate=1 || exit 1
+		sampling_rate=1 || exit 1
 
 	sh "${TARGET_CONTROL_SCRIPT}" load
 	if test $? -ne 0; then

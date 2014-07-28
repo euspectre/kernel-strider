@@ -90,8 +90,7 @@ doTest()
 	# 2. Now load KernelStrider, load the target again and check if the 
 	# expected events have been recorded in the trace.
 	insmod "${CORE_MODULE}" \
-		targets="${TARGET_MODULE_NAME}" \
-		umh_dir="@KEDR_UMH_DIR@" || exit 1
+		targets="${TARGET_MODULE_NAME}" || exit 1
 
 	insmod "${MODULE_FH_COMMON}"
 	if test $? -ne 0; then
