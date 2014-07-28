@@ -38,7 +38,7 @@ Prerequisites
 
 2. GNU make.
 
-3. Linux kernel version 2.6.32 or newer with loadable module support and 
+3. Linux kernel version 3.2 or newer with loadable module support and 
 debugfs support enabled in the configuration (see also the notes below). 
 
 4. Everything necessary to build Linux kernel modules for the currently

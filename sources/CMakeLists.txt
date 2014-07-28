@@ -171,9 +171,9 @@ set(KEDR_UM_HELPER_PATH "${KEDR_INSTALL_PREFIX_EXEC}")
 
 # Perform basic checks
 
-# Check if we use kernel version 2.6.32 or newer.
+# Check if we use kernel version 3.2 or newer.
 # This macro also set KERNEL_VERSION.
-check_kernel_version(2 6 32)
+check_kernel_version(3 2 0)
 
 # Check if kernel modules can be built on this system.
 check_module_build()
