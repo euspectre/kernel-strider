@@ -26,6 +26,7 @@
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/percpu.h>
+#include <linux/version.h>
 
 #include <kedr/kedr_mem/core_api.h>
 
@@ -104,8 +105,43 @@ struct kedr_thread_info
 	/* Start time of the thread, see task_struct::real_start_time.
 	 * It is used to detect the new threads with the same addresses
 	 * of task_struct instances as some already ended threads. */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0))
+	u64 real_start_time;
+#else
 	struct timespec real_start_time;
+#endif
 };
+
+/* Comparison and assignment of 'real_start_time' fields differs depending
+ * on the kernel version. */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0))
+/* real_start_time is of type u64 */
+static inline int
+real_start_time_equal(const u64 *t1, const u64 *t2)
+{
+	return (*t1 == *t2);
+}
+
+static inline void
+real_start_time_copy(const u64 *from, u64 *to)
+{
+	*to = *from;
+}
+
+#else /* real_start_time is of type struct timespec here */
+static inline int
+real_start_time_equal(const struct timespec *t1, const struct timespec *t2)
+{
+	return (t1->tv_sec == t2->tv_sec && t1->tv_nsec == t2->tv_nsec);
+}
+
+static inline void
+real_start_time_copy(const struct timespec *from, struct timespec *to)
+{
+	to->tv_sec = from->tv_sec; 
+	to->tv_nsec = from->tv_nsec;
+}
+#endif
 
 /* The hash table {thread ID, thread info}.
  * Reading a bucket from this table requries rcu_read_lock/unlock.
@@ -172,9 +208,9 @@ is_same_thread(struct task_struct *task, struct kedr_thread_info *item)
 	if (tid != (item->tid | KEDR_LIVE_THREAD_MASK))
 		return 0;
 	
-	if (task->real_start_time.tv_sec != item->real_start_time.tv_sec ||
-	    task->real_start_time.tv_nsec != item->real_start_time.tv_nsec)
-	        return 0;
+	if (!real_start_time_equal(
+		&task->real_start_time, &item->real_start_time))
+		return 0;
 
 	return 1;
 }
@@ -269,11 +305,8 @@ create_new_bucket(const struct kedr_thread_info *old_bucket,
 			return ERR_PTR(-ENOMEM);
 
 		item->tid = (unsigned long)task;
-		item->real_start_time.tv_sec = 
-			task->real_start_time.tv_sec;
-		item->real_start_time.tv_nsec = 
-			task->real_start_time.tv_nsec;
-
+		real_start_time_copy(&task->real_start_time, 
+				     &item->real_start_time);
 		base.next = item;
 	}
 	else {
@@ -300,11 +333,8 @@ create_new_bucket(const struct kedr_thread_info *old_bucket,
 		}
 
 		new_item->tid = old_item->tid;
-		new_item->real_start_time.tv_sec = 
-			old_item->real_start_time.tv_sec;
-		new_item->real_start_time.tv_nsec = 
-			old_item->real_start_time.tv_nsec;
-
+		real_start_time_copy(&old_item->real_start_time, 
+				     &new_item->real_start_time);
 		item->next = new_item;
 		item = new_item;
 	}
@@ -658,8 +688,8 @@ kedr_thread_handle_changes(void)
 		return add_thread_info(task);
 	}
 
-	if (info->real_start_time.tv_sec != task->real_start_time.tv_sec ||
-	    info->real_start_time.tv_nsec != task->real_start_time.tv_nsec)
+	if (!real_start_time_equal(&info->real_start_time, 
+		&task->real_start_time))
 	{
 		/* The thread is new but its task_struct occupies the 
 		 * memory block previously occupied by the task_struct of a 
