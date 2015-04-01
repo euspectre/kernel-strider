@@ -18,9 +18,3 @@ both 32- and 64-bit.
 
 See doc/tutorial.txt for a step-by-step guide on how to build, install and 
 use KernelStrider.
-
-Project site: http://code.google.com/p/kernel-strider/
-
-Some of the technologies and tools that are to be developed in this project 
-may later be incorporated into KEDR framework
-(http://code.google.com/p/kedr/).
