@@ -88,7 +88,7 @@ static inline int miscdev_file_operations_interceptor_forget_norestore(
 /* Helper for find miscdevice for file */
 static inline struct miscdevice* misc_for_file(struct file* filp)
 {
-    return miscdev_list_find(filp->f_dentry->d_inode->i_rdev);
+    return miscdev_list_find(filp->f_path.dentry->d_inode->i_rdev);
 }
 
 #endif /* KEDR_COI_INTERCEPTOR_miscdev_file_operations_interceptor */

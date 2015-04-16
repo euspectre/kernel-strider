@@ -309,7 +309,7 @@ fop_read_pre(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_pre(KEDR_CB_CDEV_READ, ls->fi->addr,
-		       filp->f_dentry->d_inode, filp, ls->fi->owner);
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -318,7 +318,7 @@ fop_read_post(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_post(KEDR_CB_CDEV_READ, ls->fi->addr,
-			filp->f_dentry->d_inode, filp, ls->fi->owner);
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -327,7 +327,7 @@ fop_write_pre(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_pre(KEDR_CB_CDEV_WRITE, ls->fi->addr,
-		       filp->f_dentry->d_inode, filp, ls->fi->owner);
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -336,7 +336,7 @@ fop_write_post(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_post(KEDR_CB_CDEV_WRITE, ls->fi->addr,
-			filp->f_dentry->d_inode, filp, ls->fi->owner);
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -345,7 +345,7 @@ fop_llseek_pre(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_pre(KEDR_CB_CDEV_LLSEEK, ls->fi->addr,
-		       filp->f_dentry->d_inode, filp, ls->fi->owner);
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 static void 
@@ -354,7 +354,7 @@ fop_llseek_post(struct kedr_local_storage *ls)
 	struct file *filp;
 	filp = (struct file *)KEDR_LS_ARG1(ls);
 	fop_common_post(KEDR_CB_CDEV_LLSEEK, ls->fi->addr,
-			filp->f_dentry->d_inode, filp, ls->fi->owner);
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
 /* [NB] Mind the order of the initializers. */
