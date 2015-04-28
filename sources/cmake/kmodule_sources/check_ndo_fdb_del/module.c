@@ -21,12 +21,23 @@ my_func(struct ndmsg *ndm, struct net_device *dev,
 	return 0;
 }
 #elif defined(IS_NDO_FDB_DEL_DEV3)
+/* What is actually needed here, its to check if 'struct net_device *' is 
+ * the third argument to ndo_fdb_del. */
+#  if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+static int 
+my_func(struct ndmsg *ndm, struct nlattr *tb[], struct net_device *dev, 
+	const unsigned char *addr, u16 vid)
+{
+	return 0;
+}
+#  else
 static int 
 my_func(struct ndmsg *ndm, struct nlattr *tb[], struct net_device *dev, 
 	const unsigned char *addr)
 {
 	return 0;
-}	
+}
+#  endif
 #else
 # error "Unknown request"
 #endif
