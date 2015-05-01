@@ -13,6 +13,7 @@
  ======================================================================== */
 
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/kallsyms.h>
 #include <linux/errno.h>
 #include <linux/string.h>
@@ -40,7 +41,12 @@
  * I hope I will find a better way in the future. */
 
 void *(*module_alloc_func)(unsigned long) = NULL;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+void (*module_memfree_func)(void *) = NULL;
+#else
 void (*module_free_func)(struct module *, void *) = NULL;
+#endif
 /* ====================================================================== */
 
 /* This function will be called for each symbol known to the system.
@@ -63,15 +69,28 @@ symbol_walk_callback(void *data, const char *name, struct module *mod,
 "Found two \"module_alloc\" symbols in the kernel, unable to continue\n");
 			return -EFAULT;
 		}
-		module_alloc_func = (void *(*)(unsigned long))addr;
-	} else if (strcmp(name, "module_free") == 0) {
+		module_alloc_func = (typeof(module_alloc_func))addr;
+		return 0;
+	}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+	if (strcmp(name, "module_memfree") == 0) {
+		if (module_memfree_func != NULL) {
+			pr_warning(KEDR_MSG_PREFIX
+"Found two \"module_memfree\" symbols in the kernel, unable to continue\n");
+			return -EFAULT;
+		}
+		module_memfree_func = (typeof(module_memfree_func))addr;
+	}
+#else
+	if (strcmp(name, "module_free") == 0) {
 		if (module_free_func != NULL) {
 			pr_warning(KEDR_MSG_PREFIX
 "Found two \"module_free\" symbols in the kernel, unable to continue\n");
 			return -EFAULT;
 		}
-		module_free_func = (void (*)(struct module *, void *))addr;
+		module_free_func = (typeof(module_free_func))addr;
 	}
+#endif
 	return 0;
 }
 
@@ -88,13 +107,20 @@ kedr_init_module_ms_alloc(void)
 		"Unable to find \"module_alloc\" function\n");
 		return -EFAULT;
 	}
-	
-	if (module_free_func == NULL) {
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+	if (module_memfree_func == NULL) {
 		pr_warning(KEDR_MSG_PREFIX
-		"Unable to find \"module_free\" function\n");
+		"Unable to find \"module_memfree\" function.\n");
 		return -EFAULT;
 	}
-		
+#else
+	if (module_free_func == NULL) {
+		pr_warning(KEDR_MSG_PREFIX
+		"Unable to find \"module_free\" function.\n");
+		return -EFAULT;
+	}
+#endif
 	return 0; /* success */
 }
 
@@ -102,7 +128,11 @@ void
 kedr_cleanup_module_ms_alloc(void)
 {
 	module_alloc_func = NULL;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+	module_memfree_func = NULL;
+#else
 	module_free_func = NULL;
+#endif
 }
 
 void *
@@ -115,8 +145,14 @@ kedr_module_alloc(unsigned long size)
 void 
 kedr_module_free(void *buf)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
+	BUG_ON(module_memfree_func == NULL);
+	if (buf != NULL)
+		module_memfree_func(buf);
+#else
 	BUG_ON(module_free_func == NULL);
 	if (buf != NULL)
 		module_free_func(NULL, buf);
+#endif
 }
 /* ====================================================================== */
