@@ -1578,14 +1578,6 @@ core_init_module(void)
 		goto out_cleanup_tid;
 	}
 
-	ret = register_module_notifier(&detector_nb);
-	if (ret < 0) {
-		pr_warning(KEDR_MSG_PREFIX
-			"register_module_notifier() failed with error %d\n",
-			ret);
-		goto out_unlock;
-	}
-
 	/* Check if one or more targets are already loaded. */
 	if (some_targets_loaded())
 	{
@@ -1593,7 +1585,17 @@ core_init_module(void)
 "One or more target modules are already loaded. Processing of already loaded target modules is not supported\n");
 
 		ret = -EEXIST;
-		goto out_unreg_notifier;
+	}
+	mutex_unlock(&module_mutex);
+	if (ret)
+		goto out_cleanup_tid;
+
+	ret = register_module_notifier(&detector_nb);
+	if (ret < 0) {
+		pr_warning(KEDR_MSG_PREFIX
+			"register_module_notifier() failed with error %d\n",
+			ret);
+		goto out_cleanup_tid;
 	}
 
 	ret = mutex_lock_killable(&session_mutex);
@@ -1607,17 +1609,12 @@ core_init_module(void)
 	handle_module_notifications = 1;
 	mutex_unlock(&session_mutex);
 
-	mutex_unlock(&module_mutex);
-
 /* From now on, our module will be notified when the target module
  * is loaded or have finished cleaning-up and is just about to unload. */
 	return 0; /* success */
 
 out_unreg_notifier:
 	unregister_module_notifier(&detector_nb);
-
-out_unlock:
-	mutex_unlock(&module_mutex);
 
 out_cleanup_tid:
 	kedr_thread_handling_cleanup();
