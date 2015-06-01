@@ -44,6 +44,10 @@ enum kedr_cdev_callback_type {
 	KEDR_CB_CDEV_READ,
 	KEDR_CB_CDEV_WRITE,
 	KEDR_CB_CDEV_LLSEEK,
+	KEDR_CB_CDEV_COMPAT_IOCTL,
+	KEDR_CB_CDEV_UNLOCKED_IOCTL,
+	KEDR_CB_CDEV_MMAP,
+	KEDR_CB_CDEV_POLL,
 	
 	/* Number of the known types, keep this item last. */
 	KEDR_CB_CDEV_COUNT
@@ -357,6 +361,78 @@ fop_llseek_post(struct kedr_local_storage *ls)
 			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
+static void
+fop_compat_ioctl_pre(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_pre(KEDR_CB_CDEV_COMPAT_IOCTL, ls->fi->addr,
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_compat_ioctl_post(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_post(KEDR_CB_CDEV_COMPAT_IOCTL, ls->fi->addr,
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_unlocked_ioctl_pre(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_pre(KEDR_CB_CDEV_UNLOCKED_IOCTL, ls->fi->addr,
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_unlocked_ioctl_post(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_post(KEDR_CB_CDEV_UNLOCKED_IOCTL, ls->fi->addr,
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_mmap_pre(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_pre(KEDR_CB_CDEV_MMAP, ls->fi->addr,
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_mmap_post(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_post(KEDR_CB_CDEV_MMAP, ls->fi->addr,
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_poll_pre(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_pre(KEDR_CB_CDEV_POLL, ls->fi->addr,
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_poll_post(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_post(KEDR_CB_CDEV_POLL, ls->fi->addr,
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
 /* [NB] Mind the order of the initializers. */
 static void (*pre_handler[])(struct kedr_local_storage *ls) = {
 	fop_open_pre,
@@ -364,6 +440,10 @@ static void (*pre_handler[])(struct kedr_local_storage *ls) = {
 	fop_read_pre,
 	fop_write_pre,
 	fop_llseek_pre,
+	fop_compat_ioctl_pre,
+	fop_unlocked_ioctl_pre,
+	fop_mmap_pre,
+	fop_poll_pre,
 };
 static void (*post_handler[])(struct kedr_local_storage *ls) = {
 	fop_open_post,
@@ -371,6 +451,10 @@ static void (*post_handler[])(struct kedr_local_storage *ls) = {
 	fop_read_post,
 	fop_write_post,
 	fop_llseek_post,
+	fop_compat_ioctl_post,
+	fop_unlocked_ioctl_post,
+	fop_mmap_post,
+	fop_poll_post,
 };
 
 /* Checks if the callbacks in '*p' can be found in the target module and if
@@ -393,6 +477,10 @@ set_callback_handlers(struct cdev *p)
 	cb_addr[KEDR_CB_CDEV_READ] = 	fops->read;
 	cb_addr[KEDR_CB_CDEV_WRITE] = 	fops->write;
 	cb_addr[KEDR_CB_CDEV_LLSEEK] = 	fops->llseek;
+	cb_addr[KEDR_CB_CDEV_COMPAT_IOCTL] = 	fops->compat_ioctl;
+	cb_addr[KEDR_CB_CDEV_UNLOCKED_IOCTL] = 	fops->unlocked_ioctl;
+	cb_addr[KEDR_CB_CDEV_MMAP] = 	fops->mmap;
+	cb_addr[KEDR_CB_CDEV_POLL] = 	fops->poll;
 	
 	for (i = 0; i < KEDR_CB_CDEV_COUNT; ++i) {
 		if (cb_addr[i] == 0)
