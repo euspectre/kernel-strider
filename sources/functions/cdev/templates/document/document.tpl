@@ -48,6 +48,7 @@ enum kedr_cdev_callback_type {
 	KEDR_CB_CDEV_UNLOCKED_IOCTL,
 	KEDR_CB_CDEV_MMAP,
 	KEDR_CB_CDEV_POLL,
+	KEDR_CB_CDEV_GET_UNMAPPED_AREA,
 	
 	/* Number of the known types, keep this item last. */
 	KEDR_CB_CDEV_COUNT
@@ -433,6 +434,24 @@ fop_poll_post(struct kedr_local_storage *ls)
 			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
 }
 
+static void
+fop_get_unmapped_area_pre(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_pre(KEDR_CB_CDEV_GET_UNMAPPED_AREA, ls->fi->addr,
+		       filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
+static void
+fop_get_unmapped_area_post(struct kedr_local_storage *ls)
+{
+	struct file *filp;
+	filp = (struct file *)KEDR_LS_ARG1(ls);
+	fop_common_post(KEDR_CB_CDEV_GET_UNMAPPED_AREA, ls->fi->addr,
+			filp->f_path.dentry->d_inode, filp, ls->fi->owner);
+}
+
 /* [NB] Mind the order of the initializers. */
 static void (*pre_handler[])(struct kedr_local_storage *ls) = {
 	fop_open_pre,
@@ -444,6 +463,7 @@ static void (*pre_handler[])(struct kedr_local_storage *ls) = {
 	fop_unlocked_ioctl_pre,
 	fop_mmap_pre,
 	fop_poll_pre,
+	fop_get_unmapped_area_pre,
 };
 static void (*post_handler[])(struct kedr_local_storage *ls) = {
 	fop_open_post,
@@ -455,6 +475,7 @@ static void (*post_handler[])(struct kedr_local_storage *ls) = {
 	fop_unlocked_ioctl_post,
 	fop_mmap_post,
 	fop_poll_post,
+	fop_get_unmapped_area_post,
 };
 
 /* Checks if the callbacks in '*p' can be found in the target module and if
@@ -481,6 +502,7 @@ set_callback_handlers(struct cdev *p)
 	cb_addr[KEDR_CB_CDEV_UNLOCKED_IOCTL] = 	fops->unlocked_ioctl;
 	cb_addr[KEDR_CB_CDEV_MMAP] = 	fops->mmap;
 	cb_addr[KEDR_CB_CDEV_POLL] = 	fops->poll;
+	cb_addr[KEDR_CB_CDEV_GET_UNMAPPED_AREA] = fops->get_unmapped_area;
 	
 	for (i = 0; i < KEDR_CB_CDEV_COUNT; ++i) {
 		if (cb_addr[i] == 0)
