@@ -1,11 +1,11 @@
 /* thunks_*.S - thunks used when handling function calls.
- * The thunks are responsible for calling pre- and post- handlers and the 
- * replacement function for the target in the correct environment 
+ * The thunks are responsible for calling pre- and post- handlers and the
+ * replacement function for the target in the correct environment
  * (registers, etc.). */
 
 /* ========================================================================
  * Copyright (C) 2012, KEDR development team
- * Authors: 
+ * Authors:
  *      Eugene A. Shatokhin <spectre@ispras.ru>
  *      Andrey V. Tsyvarev  <tsyvarev@ispras.ru>
  *
@@ -18,7 +18,7 @@
 
 #include "kedr_asm_offsets.h"
 
-/* Within the thunks, %rbx is used to contain the address of the 
+/* Within the thunks, %rbx is used to contain the address of the
  * local storage, %rbp - the address of the call_info instance.
  * Both of these registers are non-scratch and are therefore preserved
  * by the handlers called from the thunks, which is convenient. */
@@ -33,7 +33,7 @@
 	mov %r10, KEDR_LSTORAGE_r10(%rbx); \
 	mov %r11, KEDR_LSTORAGE_r11(%rbx); \
 	mov %rsp, KEDR_LSTORAGE_sp(%rbx);
-	
+
 #define restore_scratch_but_ax \
 	mov KEDR_LSTORAGE_r11(%rbx), %r11; \
 	mov KEDR_LSTORAGE_r10(%rbx), %r10; \
@@ -47,65 +47,77 @@
 /* ====================================================================== */
 
 .global kedr_thunk_call
-.type   kedr_thunk_call,@function; 
+.type   kedr_thunk_call,@function;
 
 kedr_thunk_call:
 	/* We cannot use the spill slots for %rbx and %rbp to save the
 	 * values of these registers there. This is because if one of
 	 * these is %base in the caller function, we would corrupt the
-	 * original value of %base this way. So, use 'temp' and 'temp1'. */
+	 * original value of %base this way. So, use 'temp_*'. */
 	mov %rbx, KEDR_LSTORAGE_temp_bx(%rax);
 	mov %rax, %rbx;
-	
+
 	mov %rbp, KEDR_LSTORAGE_temp_bp(%rbx);
 	mov KEDR_LSTORAGE_info(%rbx), %rbp;
-	
+
 	/* The thunk has been called with CALL instruction, so the return
 	 * address of the thunk should now be on the top of the stack.
 	 * Below it lies the stack that the target function might expect.
-	 * So we remove the return address from the stack restoring the 
+	 * So we remove the return address from the stack restoring the
 	 * latter and will place the return address back again later. */
 	popq KEDR_LSTORAGE_ret_addr(%rbx);
-	
-	/* Now all the scratch registers except %rax have the needed 
+
+	/* Now all the scratch registers except %rax have the needed
 	 * values, and so does %rsp. Save their values in the respective
 	 * spill slots in the local storage, because the handlers may need
 	 * them and are not obliged to preserve the scratch registers.
 	 * Note that the needed value of %rax is already in its slot. */
 	save_sp_and_scratch_but_ax;
-	
+
 	/* The first argument is passed via %rdi on x86-64. */
 	mov %rax, %rdi;
 	call *KEDR_CALL_INFO_pre_handler(%rbp);
-	
+
 	/* The values of the scratch registers might have been changed,
 	 * restore them. */
 	restore_scratch_but_ax;
 	mov KEDR_LSTORAGE_ax(%rbx), %rax;
-	
-	/* Call the replacement function for the target, in the same 
+
+	/* Some exported kernel functions (like __put_user_<N>) actually
+	 * clobber %ebx/%rbx. Fortunately, they seem not to clobber other
+	 * non-scratch registers, so we use %edi on i586 and %r15 on x86_64
+	 * to save %ebx/%rbx. local_storage::temp_aux is used for the
+	 * original values of %edi/%r15 (for the same reason, 'temp_bx' and
+	 * 'temp_bp' are used above). */
+	mov %r15, KEDR_LSTORAGE_temp_aux(%rbx);
+	mov %rbx, %r15;
+
+	/* Call the replacement function for the target, in the same
 	 * environment (registers, etc.) as the target would be called. */
 	call *KEDR_CALL_INFO_repl(%rbp);
-	
+
+	mov %r15, %rbx;
+	mov KEDR_LSTORAGE_temp_aux(%rbx), %r15;
+
 	/* Push the return address of the thunk back on the stack. We can
 	 * do it here because the original value of %rsp is already in the
 	 * local storage in case the post-handler needs that. */
-	pushq KEDR_LSTORAGE_ret_addr(%rbx); 
-	
-	/* Save %rax and %rdx because the function might have returned 
+	pushq KEDR_LSTORAGE_ret_addr(%rbx);
+
+	/* Save %rax and %rdx because the function might have returned
 	 * something in these registers. If it did not, their contents are
-	 * unspecified, which is OK (we give no stronger guarantees for 
+	 * unspecified, which is OK (we give no stronger guarantees for
 	 * the thunks than there are for the target function). */
 	mov %rax, KEDR_LSTORAGE_ret_val(%rbx);
 	mov %rdx, KEDR_LSTORAGE_ret_val_high(%rbx);
-	
-	/* We do not need to restore the scratch registers again as the 
+
+	/* We do not need to restore the scratch registers again as the
 	 * post-handler will take their values from the local storage
 	 * anyway. We only need to prepare the argument of the handler. */
 	mov %rbx, %rdi;
 	call *KEDR_CALL_INFO_post_handler(%rbp);
-	
-	/* Restore %rax and %rdx from the 'ret_val*' slots, they may 
+
+	/* Restore %rax and %rdx from the 'ret_val*' slots, they may
 	 * contain the return value of the replacement function. */
 	mov KEDR_LSTORAGE_ret_val(%rbx), %rax;
 	mov KEDR_LSTORAGE_ret_val_high(%rbx), %rdx;
@@ -115,7 +127,7 @@ kedr_thunk_call:
 	 * preserving the registers. Namely, some of these functions
 	 * preserve all the registers that can be used for parameter
 	 * transfer (or even all?) and the compiler takes that into
-	 * account. To avoid problems, restore the values of such 
+	 * account. To avoid problems, restore the values of such
 	 * scratch registers that have not been restored yet.
 	 * Note that %rax and %rdx have the desired values already. */
 #ifdef CONFIG_FUNCTION_TRACER
@@ -127,11 +139,11 @@ kedr_thunk_call:
 	mov KEDR_LSTORAGE_si(%rbx), %rsi;
 	mov KEDR_LSTORAGE_cx(%rbx), %rcx;
 #endif
-	
+
 	/* Restore %rbx and %rbp. Among the remaining registers,
-	 * %rax and %rdx have already been restored, the non-scratch 
+	 * %rax and %rdx have already been restored, the non-scratch
 	 * registers did not change their values except %rbx and %rbp.
-	 * As for the remaining scratch registers, the target itself 
+	 * As for the remaining scratch registers, the target itself
 	 * does not guarantee they will not change except if it is
 	 * mcount() or something similar from Ftrace. */
 	mov KEDR_LSTORAGE_temp_bp(%rbx), %rbp
@@ -142,7 +154,7 @@ kedr_thunk_call:
 /* ====================================================================== */
 
 .global kedr_thunk_jmp
-.type   kedr_thunk_jmp,@function; 
+.type   kedr_thunk_jmp,@function;
 
 kedr_thunk_jmp:
 	/* This thunk gets called via JMP instruction. All registers except
@@ -156,45 +168,50 @@ kedr_thunk_jmp:
 
 	mov %rbp, KEDR_LSTORAGE_bp(%rbx)
 	mov KEDR_LSTORAGE_info(%rbx), %rbp
-	
+
 	/* The thunk has been called using JMP instruction, so the return
-	 * address for the function the thunk has been called from 
+	 * address for the function the thunk has been called from
 	 * ("caller") should now be on the top of the stack.
 	 * Below it lies the stack that the target function might expect.
 	 * The target/replacement function will be called with CALL rather
 	 * than with JMP instruction. To make sure the callee will find
-	 * the stack-based arguments exactly where it expects them, we 
-	 * need to remove the return address from the stack here and 
+	 * the stack-based arguments exactly where it expects them, we
+	 * need to remove the return address from the stack here and
 	 * place it there back again after the callee exits. */
 	popq KEDR_LSTORAGE_ret_addr(%rbx);
-	
+
 	/* [NB] If the target receives some of its arguments on stack, the
 	 * saved value of %rsp will point to the first of such arguments. */
 	save_sp_and_scratch_but_ax;
 	mov %rax, %rdi;
 	call *KEDR_CALL_INFO_pre_handler(%rbp);
-	
+
 	restore_scratch_but_ax;
 	mov KEDR_LSTORAGE_ax(%rbx), %rax;
-	
+
+	mov %r15, KEDR_LSTORAGE_temp_aux(%rbx);
+	mov %rbx, %r15;
 	call *KEDR_CALL_INFO_repl(%rbp);
-	
-	pushq KEDR_LSTORAGE_ret_addr(%rbx); 
-	
+	mov %r15, %rbx;
+	mov KEDR_LSTORAGE_temp_aux(%rbx), %r15;
+
+
+	pushq KEDR_LSTORAGE_ret_addr(%rbx);
+
 	/* Save the possible return value of the function. */
 	mov %rax, KEDR_LSTORAGE_ret_val(%rbx);
 	mov %rdx, KEDR_LSTORAGE_ret_val_high(%rbx);
-	
+
 	mov %rbx, %rdi;
 	call *KEDR_CALL_INFO_post_handler(%rbp);
-	
+
 	/* Restore the possible return value of the function. */
 	mov KEDR_LSTORAGE_ret_val(%rbx), %rax;
 	mov KEDR_LSTORAGE_ret_val_high(%rbx), %rdx;
-	
+
 	/* Restore %rbp. */
 	mov KEDR_LSTORAGE_bp(%rbx), %rbp;
-	
+
 #ifdef CONFIG_FUNCTION_TRACER
 	mov KEDR_LSTORAGE_r11(%rbx), %r11;
 	mov KEDR_LSTORAGE_r10(%rbx), %r10;
@@ -204,12 +221,12 @@ kedr_thunk_jmp:
 	mov KEDR_LSTORAGE_si(%rbx), %rsi;
 	mov KEDR_LSTORAGE_cx(%rbx), %rcx;
 #endif
-	
+
 	/* Now all the registers except %rbx have their needed values.
-	 * Restore %rbx and call the exit handler for the function 
-	 * passing the pointer to the local storage to it via %rax. 
-	 * No need to bother saving the value of %rdx before calling 
-	 * kedr_on_function_exit_wrapper() because the wrappers preserve 
+	 * Restore %rbx and call the exit handler for the function
+	 * passing the pointer to the local storage to it via %rax.
+	 * No need to bother saving the value of %rdx before calling
+	 * kedr_on_function_exit_wrapper() because the wrappers preserve
 	 * all registers except %rax. */
 	push  %rax;
 	mov   %rbx, %rax;

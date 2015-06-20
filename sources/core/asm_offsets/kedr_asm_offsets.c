@@ -59,6 +59,7 @@ kedr_offsets_holder(void)
 	OFFSET(KEDR_LSTORAGE_ret_val, kedr_local_storage, ret_val);
 	OFFSET(KEDR_LSTORAGE_ret_val_high, kedr_local_storage, ret_val_high);
 	OFFSET(KEDR_LSTORAGE_ret_addr, kedr_local_storage, ret_addr);
+	OFFSET(KEDR_LSTORAGE_temp_aux, kedr_local_storage, temp_aux);
 	BLANK();
 	
 	/* kedr_call_info */

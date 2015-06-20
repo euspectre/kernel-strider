@@ -151,8 +151,8 @@ struct kedr_local_storage
 	unsigned long temp;
 	unsigned long temp1;
 	
-	/* Another two slots for temporary data. To be used by 
-	 * kedr_thunk_call() only.
+	/* Another group of slots for temporary data. To be used by 
+	 * kedr_thunk_call() and kedr_thunk_jmp() only.
 	 * DO NOT USE these in other places. */
 	unsigned long temp_bx;
 	unsigned long temp_bp;
@@ -220,6 +220,10 @@ struct kedr_local_storage
 	 * 'lock_status' if it has emitted "lock" event and the post handler
 	 * needs to emit "unlock" event. */
 	unsigned long lock_status;
+
+	/* Similar to 'temp_bx' and 'temp_bp', an additional temporary slot
+	 * used in kedr_thunk_*(). */
+	unsigned long temp_aux;
 };
 
 /* The allocator of kedr_local_storage instances. 
