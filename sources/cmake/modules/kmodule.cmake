@@ -1,14 +1,46 @@
 set(kmodule_this_module_dir "${CMAKE_SOURCE_DIR}/cmake/modules/")
 set(kmodule_test_sources_dir "${CMAKE_SOURCE_DIR}/cmake/kmodule_sources")
+############################################################################
+
+# Checks if the function 'func_name' is exported by the given module
+# ('module_name') or the kernel ('module_name' is 'kernel' or 'vmlinux',
+# or is empty). Sets 'out_var' to TRUE or FALSE accordingly.
+#
+# [NB] If this function is used to check the presence of a kernel function,
+# it may be needed to also consider the case when the module is built-in.
+function (kmodule_is_exported func_name module_name out_var)
+	if (NOT module_name OR (module_name STREQUAL "kernel"))
+		set(module_name "vmlinux")
+	endif ()
+	set(symvers_file "${KBUILD_BUILD_DIR}/Module.symvers")
+
+	execute_process(
+		COMMAND "grep" "-E"
+		"\\s+${func_name}(\\s+.*/|\\s+)${module_name}\\s+EXPORT_SYMBOL"
+		"${symvers_file}"
+		OUTPUT_QUIET
+		RESULT_VARIABLE exit_code)
+
+	if (exit_code EQUAL 0)
+		set(${out_var} TRUE PARENT_SCOPE)
+	elseif (exit_code EQUAL 1)
+		set(${out_var} FALSE PARENT_SCOPE)
+	else ()
+		message(FATAL_ERROR
+"Failed to determine if ${func_name} is exported by ${module_name}. "
+"grep returned: ${exit_code}.")
+	endif ()
+endfunction ()
+############################################################################
 
 set(kmodule_function_map_file "")
 if (CMAKE_CROSSCOMPILING)
 	if (KEDR_SYSTEM_MAP_FILE)
 		set (kmodule_function_map_file "${KEDR_SYSTEM_MAP_FILE}")
 	else (KEDR_SYSTEM_MAP_FILE)
-# KEDR_SYSTEM_MAP_FILE is not specified, construct the default path 
+# KEDR_SYSTEM_MAP_FILE is not specified, construct the default path
 # to the symbol map file.
-		set (kmodule_function_map_file 
+		set (kmodule_function_map_file
 	"${KEDR_ROOT_DIR}/boot/System.map-${KBUILD_VERSION_STRING}"
 		)
 	endif (KEDR_SYSTEM_MAP_FILE)
@@ -42,13 +74,13 @@ function(kmodule_try_compile RESULT_VAR bindir srcfile)
 			set(copy_file_variable "${arg}")
 			set(state "None")
 		else(arg STREQUAL "COMPILE_DEFINITIONS")
-			message(FATAL_ERROR 
+			message(FATAL_ERROR
 				"Unexpected parameter passed to kmodule_try_compile: '${arg}'."
 			)
 		endif(arg STREQUAL "COMPILE_DEFINITIONS")
 	endforeach(arg ${ARGN})
-	set(cmake_params 
-		"-DSRC_FILE:path=${src_abs_path}" 
+	set(cmake_params
+		"-DSRC_FILE:path=${src_abs_path}"
 		"-DKERNELDIR=${KBUILD_BUILD_DIR}"
 		"-DKEDR_ARCH=${KEDR_ARCH}"
 		"-DKEDR_CROSS_COMPILE=${KEDR_CROSS_COMPILE}"
@@ -80,7 +112,7 @@ endfunction(kmodule_try_compile RESULT_VAR bindir srcfile)
 # be exported and mentioned in System.map but still cannot be used
 # because no header provides their declarations.
 set(unreliable_functions_list
-    "__kmalloc_node"
+	"__kmalloc_node"
 	"kmem_cache_alloc_node"
 	"kmem_cache_alloc_node_notrace"
 	"kmem_cache_alloc_node_trace"
@@ -123,7 +155,7 @@ function(kmodule_is_function_exist function_name RESULT_VAR)
         elseif(kmodule_is_function_exist_result EQUAL 1)
             set(${RESULT_VAR} "FALSE" CACHE INTERNAL "Does ${function_name} exist in the kernel?")
         else(kmodule_is_function_exist_result EQUAL 0)
-            message(FATAL_ERROR 
+            message(FATAL_ERROR
 "Cannot determine whether function '${function_name}' exists in the kernel"
 			)
         endif(kmodule_is_function_exist_result EQUAL 0)
@@ -135,26 +167,26 @@ function(kmodule_is_function_exist function_name RESULT_VAR)
     endif(${RESULT_VAR})
 endfunction(kmodule_is_function_exist function_name RESULT_VAR)
 
-# Creates the list of functions that actually exist on the 
+# Creates the list of functions that actually exist on the
 # current system.
 #
-# kmodule_configure_kernel_functions(output_list 
+# kmodule_configure_kernel_functions(output_list
 #	{[REQUIRED | OPTIONAL] {func | ONE_OF_LIST}} ...)
 #
 # ONE_OF_LIST := ONE_OF_BEGIN {func ...} ONE_OF_END
 #
-# There are 2 modes of function lookup: 
+# There are 2 modes of function lookup:
 # OPTIONAL - if the function doesn't exist, it is silently ignored.
 # REQUIRED - if the function doesn't exist, FATAL_ERROR message is printed.
 #
-# Initial mode is REQUIRED, and it can be changed at any time by REQUIRED 
+# Initial mode is REQUIRED, and it can be changed at any time by REQUIRED
 # and OPTIONAL keywords.
 #
-# ONE_OF_BEGIN/ONE_OF_END determine a section for which no more than one 
-# function among all listed there should exist. FATAL_ERROR message is 
-# printed otherwise. When mode is REQUIRED, precisely one function must 
+# ONE_OF_BEGIN/ONE_OF_END determine a section for which no more than one
+# function among all listed there should exist. FATAL_ERROR message is
+# printed otherwise. When mode is REQUIRED, precisely one function must
 # exist.
-# Inside this section other keywords must not be used (even another 
+# Inside this section other keywords must not be used (even another
 # ONE_OF_BEGIN).
 
 function(kmodule_configure_kernel_functions output_list)
@@ -165,7 +197,7 @@ function(kmodule_configure_kernel_functions output_list)
 	foreach(arg ${ARGN})
 		if(arg STREQUAL "REQUIRED" OR arg STREQUAL "OPTIONAL")
 			if(kmodule_configure_kernel_functions_one_of_section)
-				message(FATAL_ERROR 
+				message(FATAL_ERROR
 "Inside ONE_OF_BEGIN/ONE_OF_END section, other keywords are not allowed."
 				)
 			endif(kmodule_configure_kernel_functions_one_of_section)
@@ -181,10 +213,10 @@ function(kmodule_configure_kernel_functions output_list)
 				message(FATAL_ERROR "ONE_OF_END without ONE_OF_BEGIN is not allowed.")
 			endif(NOT kmodule_configure_kernel_functions_one_of_section)
 			if(kmodule_configure_kernel_functions_one_of_section_function)
-				list(APPEND output_list_tmp ${kmodule_configure_kernel_functions_one_of_section_function})				
+				list(APPEND output_list_tmp ${kmodule_configure_kernel_functions_one_of_section_function})
 			else(kmodule_configure_kernel_functions_one_of_section_function)
 				if(kmodule_configure_kernel_functions_mode STREQUAL "REQUIRED")
-					message(FATAL_ERROR 
+					message(FATAL_ERROR
 "None of the functions listed in ONE_OF section exist in the kernel but it is required."
 					)
 				endif(kmodule_configure_kernel_functions_mode STREQUAL "REQUIRED")
@@ -198,7 +230,7 @@ function(kmodule_configure_kernel_functions output_list)
 					if(kmodule_configure_kernel_functions_one_of_section_function)
 						message(FATAL_ERROR "Two functions from ONE_OF sections exist in the kernel.")
 					else(kmodule_configure_kernel_functions_one_of_section_function)
-						set(kmodule_configure_kernel_functions_one_of_section_function ${arg})	
+						set(kmodule_configure_kernel_functions_one_of_section_function ${arg})
 					endif(kmodule_configure_kernel_functions_one_of_section_function)
 				endif(${kmodule_func_varname})
 			else(kmodule_configure_kernel_functions_one_of_section)
@@ -220,25 +252,25 @@ endfunction(kmodule_configure_kernel_functions output_list)
 
 ############################################################################
 # Utility macros to check for particular features. If the particular feature
-# is supported, the macros will set the corresponding variable to TRUE, 
-# otherwise - to FALSE (the name of variable is mentioned in the comments 
-# for the macro). 
+# is supported, the macros will set the corresponding variable to TRUE,
+# otherwise - to FALSE (the name of variable is mentioned in the comments
+# for the macro).
 ############################################################################
 
 # Check if the system has everything necessary to build at least simple
-# kernel modules. 
+# kernel modules.
 # The macro sets variable 'MODULE_BUILD_SUPPORTED'.
 macro(check_module_build)
-	set(check_module_build_message 
+	set(check_module_build_message
 		"Checking if kernel modules can be built on this system"
 	)
 	message(STATUS "${check_module_build_message}")
 	if (DEFINED MODULE_BUILD_SUPPORTED)
-		set(check_module_build_message 
+		set(check_module_build_message
 "${check_module_build_message} [cached] - ${MODULE_BUILD_SUPPORTED}"
 		)
 	else (DEFINED MODULE_BUILD_SUPPORTED)
-		kmodule_try_compile(module_build_supported_impl 
+		kmodule_try_compile(module_build_supported_impl
 			"${CMAKE_BINARY_DIR}/check_module_build"
 			"${kmodule_test_sources_dir}/check_module_build/module.c"
 		)
@@ -248,14 +280,14 @@ macro(check_module_build)
 			)
 		else (module_build_supported_impl)
 			set(MODULE_BUILD_SUPPORTED "no")
-			message(FATAL_ERROR 
+			message(FATAL_ERROR
 "There are problems with building kernel modules on this system. "
 "Please check that the appropriate kernel headers and build tools "
 "are installed."
 			)
 		endif (module_build_supported_impl)
-				
-		set(check_module_build_message 
+
+		set(check_module_build_message
 "${check_module_build_message} - ${MODULE_BUILD_SUPPORTED}"
 		)
 	endif (DEFINED MODULE_BUILD_SUPPORTED)
@@ -267,10 +299,10 @@ endmacro(check_module_build)
 # It also sets 'KERNEL_VERSION', which is the version of the kernel in the
 # form "major.minor.micro".
 macro(check_kernel_version kversion_major kversion_minor kversion_micro)
-	set(check_kernel_version_string 
+	set(check_kernel_version_string
 "${kversion_major}.${kversion_minor}.${kversion_micro}"
 	)
-	set(check_kernel_version_message 
+	set(check_kernel_version_message
 "Checking if the kernel version is ${check_kernel_version_string} or newer"
 	)
 	message(STATUS "${check_kernel_version_message}")
@@ -279,15 +311,15 @@ macro(check_kernel_version kversion_major kversion_minor kversion_micro)
 		KERNEL_VERSION
 		"${KBUILD_VERSION_STRING}"
 	)
-	
+
 	if (DEFINED KERNEL_VERSION_OK)
-		set(check_kernel_version_message 
+		set(check_kernel_version_message
 "${check_kernel_version_message} [cached] - ${KERNEL_VERSION_OK}"
 		)
 	else (DEFINED KERNEL_VERSION_OK)
 		if (KERNEL_VERSION VERSION_LESS check_kernel_version_string)
 			set(KERNEL_VERSION_OK "no")
-			message(FATAL_ERROR 
+			message(FATAL_ERROR
 "Kernel version is ${KERNEL_VERSION} but ${check_kernel_version_string} or newer is required."
 			)
 		else ()
@@ -295,29 +327,29 @@ macro(check_kernel_version kversion_major kversion_minor kversion_micro)
 				"Is kernel version high enough?"
 			)
 		endif ()
-				
-		set(check_kernel_version_message 
+
+		set(check_kernel_version_message
 "${check_kernel_version_message} - ${KERNEL_VERSION_OK}"
 		)
 	endif (DEFINED KERNEL_VERSION_OK)
 	message(STATUS "${check_kernel_version_message}")
 endmacro(check_kernel_version kversion_major kversion_minor kversion_micro)
 
-# Check if reliable stack trace information can be obtained. 
+# Check if reliable stack trace information can be obtained.
 # This is the case, for example, if the kernel is compiled with support
 # for frame pointers and/or stack unwind on.
 # The macro sets variable 'STACK_TRACE_RELIABLE'.
 macro(check_stack_trace)
-	set(check_stack_trace_message 
+	set(check_stack_trace_message
 		"Checking if stack trace information is reliable"
 	)
 	message(STATUS "${check_stack_trace_message}")
 	if (DEFINED STACK_TRACE_RELIABLE)
-		set(check_stack_trace_message 
+		set(check_stack_trace_message
 "${check_stack_trace_message} [cached] - ${STACK_TRACE_RELIABLE}"
 		)
 	else (DEFINED STACK_TRACE_RELIABLE)
-		kmodule_try_compile(stack_trace_reliable_impl 
+		kmodule_try_compile(stack_trace_reliable_impl
 			"${CMAKE_BINARY_DIR}/check_stack_trace"
 			"${kmodule_test_sources_dir}/check_stack_trace/module.c"
 		)
@@ -330,8 +362,8 @@ macro(check_stack_trace)
 				"Are stack traces reliable on this system?"
 			)
 		endif (stack_trace_reliable_impl)
-				
-		set(check_stack_trace_message 
+
+		set(check_stack_trace_message
 "${check_stack_trace_message} - ${STACK_TRACE_RELIABLE}"
 		)
 	endif (DEFINED STACK_TRACE_RELIABLE)
@@ -350,16 +382,16 @@ endmacro(check_stack_trace)
 # Check whether ring buffer is implemented by the kernel.
 # Set cache variable RING_BUFFER_IMPLEMENTED according to this checking.
 function(check_ring_buffer)
-	set(check_ring_buffer_message 
+	set(check_ring_buffer_message
 		"Checking if ring buffer is implemented in the kernel"
 	)
 	message(STATUS "${check_ring_buffer_message}")
 	if (DEFINED RING_BUFFER_IMPLEMENTED)
-		set(check_ring_buffer_message 
+		set(check_ring_buffer_message
 "${check_ring_buffer_message} [cached] - ${RING_BUFFER_IMPLEMENTED}"
 		)
 	else (DEFINED RING_BUFFER_IMPLEMENTED)
-		kmodule_try_compile(ring_buffer_implemented_impl 
+		kmodule_try_compile(ring_buffer_implemented_impl
 			"${CMAKE_BINARY_DIR}/check_ring_buffer"
 			"${kmodule_test_sources_dir}/check_ring_buffer/module.c"
 		)
@@ -372,13 +404,13 @@ function(check_ring_buffer)
 				"Whether ring buffer is implemented in the kernel"
 			)
 		endif (ring_buffer_implemented_impl)
-				
-		set(check_ring_buffer_message 
+
+		set(check_ring_buffer_message
 "${check_ring_buffer_message} - ${RING_BUFFER_IMPLEMENTED}"
 		)
 	endif (DEFINED RING_BUFFER_IMPLEMENTED)
 	message(STATUS "${check_ring_buffer_message}")
-	
+
 	if (NOT RING_BUFFER_IMPLEMENTED)
 		message(FATAL_ERROR
 			"\n[WARNING]\n Ring buffer functionality is not supported by "
@@ -395,16 +427,16 @@ endfunction(check_ring_buffer)
 #
 # Some functions in that allocators may have same names, but different signatures.
 function(check_allocator)
-	set(check_allocator_message 
+	set(check_allocator_message
 		"Checking which memory allocator is used by the kernel"
 	)
 		message(STATUS "${check_allocator_message}")
 	if (DEFINED KERNEL_MEMORY_ALLOCATOR)
-		set(check_allocator_message 
+		set(check_allocator_message
 "${check_allocator_message} [cached] - ${KERNEL_MEMORY_ALLOCATOR}"
 		)
 	else (DEFINED KERNEL_MEMORY_ALLOCATOR)
-		kmodule_try_compile(is_allocator_slab 
+		kmodule_try_compile(is_allocator_slab
 			"${CMAKE_BINARY_DIR}/check_allocator_slab"
 			"${kmodule_test_sources_dir}/check_allocator/module.c"
 			COMPILE_DEFINITIONS "-DIS_ALLOCATOR_SLAB"
@@ -412,7 +444,7 @@ function(check_allocator)
 		if (is_allocator_slab)
 			set(allocator "slab")
 		else (is_allocator_slab)
-			kmodule_try_compile(is_allocator_slub 
+			kmodule_try_compile(is_allocator_slub
 				"${CMAKE_BINARY_DIR}/check_allocator_slub"
 				"${kmodule_test_sources_dir}/check_allocator/module.c"
 				COMPILE_DEFINITIONS "-DIS_ALLOCATOR_SLUB"
@@ -420,7 +452,7 @@ function(check_allocator)
 			if (is_allocator_slub)
 				set(allocator "slub")
 			else (is_allocator_slub)
-				kmodule_try_compile(is_allocator_slob 
+				kmodule_try_compile(is_allocator_slob
 					"${CMAKE_BINARY_DIR}/check_allocator_slob"
 					"${kmodule_test_sources_dir}/check_allocator/module.c"
 					COMPILE_DEFINITIONS "-DIS_ALLOCATOR_SLOB"
@@ -435,8 +467,8 @@ function(check_allocator)
 		set(KERNEL_MEMORY_ALLOCATOR "${allocator}" CACHE INTERNAL
 			"Memory allocator which is used by the kernel"
 		)
-				
-		set(check_allocator_message 
+
+		set(check_allocator_message
 "${check_allocator_message} - ${KERNEL_MEMORY_ALLOCATOR}"
 		)
 	endif (DEFINED KERNEL_MEMORY_ALLOCATOR)
@@ -444,23 +476,23 @@ function(check_allocator)
 
 endfunction(check_allocator)
 
-# Check if 'kfree_rcu' is available in the kernel (it is likely to be 
-# a macro or an inline). If it is available, we should handle it as 
+# Check if 'kfree_rcu' is available in the kernel (it is likely to be
+# a macro or an inline). If it is available, we should handle it as
 # 'free' in LeakCheck. As KEDR cannot normally intercept kfree_rcu()
 # itself, it needs to intercept call_rcu/call_rcu_sched and check their
 # arguments.
 # The macro sets variable 'HAVE_KFREE_RCU'.
 macro(check_kfree_rcu)
-	set(check_kfree_rcu_message 
+	set(check_kfree_rcu_message
 		"Checking if kfree_rcu() is available"
 	)
 	message(STATUS "${check_kfree_rcu_message}")
 	if (DEFINED HAVE_KFREE_RCU)
-		set(check_kfree_rcu_message 
+		set(check_kfree_rcu_message
 "${check_kfree_rcu_message} [cached] - ${HAVE_KFREE_RCU}"
 		)
 	else (DEFINED HAVE_KFREE_RCU)
-		kmodule_try_compile(have_kfree_rcu_impl 
+		kmodule_try_compile(have_kfree_rcu_impl
 			"${CMAKE_BINARY_DIR}/check_kfree_rcu"
 			"${kmodule_test_sources_dir}/check_kfree_rcu/module.c"
 		)
@@ -473,25 +505,25 @@ macro(check_kfree_rcu)
 				"Is kfree_rcu() available?"
 			)
 		endif (have_kfree_rcu_impl)
-				
-		set(check_kfree_rcu_message 
+
+		set(check_kfree_rcu_message
 "${check_kfree_rcu_message} - ${HAVE_KFREE_RCU}"
 		)
 	endif (DEFINED HAVE_KFREE_RCU)
 	message(STATUS "${check_kfree_rcu_message}")
 endmacro(check_kfree_rcu)
 
-# Check if the required kernel parameters are set in the kernel 
+# Check if the required kernel parameters are set in the kernel
 # configuration.
 macro(check_kernel_config)
-	set(check_kernel_config_message 
+	set(check_kernel_config_message
 		"Checking the basic configuration of the kernel"
 	)
 	message(STATUS "${check_kernel_config_message}")
 	if (DEFINED KERNEL_CONFIG_OK)
 		message(STATUS "${check_kernel_config_message} [cached] - ok")
 	else (DEFINED KERNEL_CONFIG_OK)
-		kmodule_try_compile(kernel_config_impl 
+		kmodule_try_compile(kernel_config_impl
 			"${CMAKE_BINARY_DIR}/check_kernel_config"
 			"${kmodule_test_sources_dir}/check_kernel_config/module.c"
 		)
@@ -501,7 +533,7 @@ macro(check_kernel_config)
 			)
 			message(STATUS "${check_kernel_config_message} - ok")
 		else (kernel_config_impl)
-			message(FATAL_ERROR 
+			message(FATAL_ERROR
 				"Some of the required configuration parameters of the kernel "
 				"are not set. Please check the configuration file for the "
 				"kernel.\n"
@@ -561,16 +593,16 @@ endfunction(check_vm_split)
 # Check if __alloc_workqueue_key() accepts a variable argument list and
 # if so, set KEDR_ALLOC_WQ_KEY_VARARG.
 function(check_alloc_wq_key)
-	set(check_alloc_wq_key_message 
+	set(check_alloc_wq_key_message
 		"Checking if __alloc_workqueue_key() accepts variable argument list"
 	)
 	message(STATUS "${check_alloc_wq_key_message}")
 	if (DEFINED ALLOC_WQ_KEY_VARARG)
-		set(check_alloc_wq_key_message 
+		set(check_alloc_wq_key_message
 "${check_alloc_wq_key_message} [cached] - ${ALLOC_WQ_KEY_VARARG}"
 		)
 	else ()
-		kmodule_try_compile(alloc_wq_key_vararg_impl 
+		kmodule_try_compile(alloc_wq_key_vararg_impl
 			"${CMAKE_BINARY_DIR}/check_alloc_wq_key"
 			"${kmodule_test_sources_dir}/check_alloc_workqueue_key/module.c"
 		)
@@ -583,15 +615,15 @@ function(check_alloc_wq_key)
 				"Does __alloc_workqueue_key() accept variable argument list?"
 			)
 		endif (alloc_wq_key_vararg_impl)
-				
-		set(check_alloc_wq_key_message 
+
+		set(check_alloc_wq_key_message
 "${check_alloc_wq_key_message} - ${ALLOC_WQ_KEY_VARARG}"
 		)
 	endif (DEFINED ALLOC_WQ_KEY_VARARG)
 	message(STATUS "${check_alloc_wq_key_message}")
-	
+
 	if (ALLOC_WQ_KEY_VARARG)
-		set(KEDR_ALLOC_WQ_KEY_VARARG 1 CACHE INTERNAL 
+		set(KEDR_ALLOC_WQ_KEY_VARARG 1 CACHE INTERNAL
 			"Preprocessor symbol for ALLOC_WQ_KEY_VARARG."
 		)
 	endif ()
@@ -670,14 +702,14 @@ endmacro(check_random32)
 # Check if 'request_firmware_nowait' accepts 7 arguments.
 # In 2.6.32, accepts 6 arguments, in 2.6.33 and newer kernels - 7 arguments.
 # The last argument is the callback function in each case.
-# 
+#
 # The macro sets variable 'REQUEST_FW_HAS_7_ARGS'.
 macro(check_request_fw)
 	set(check_request_fw_message
 		"Checking the signature of request_firmware_nowait()"
 	)
 	message(STATUS "${check_request_fw_message}")
-	if (DEFINED REQUEST_FW_HAS_7_ARGS) 
+	if (DEFINED REQUEST_FW_HAS_7_ARGS)
 		set(check_request_fw_message
 "${check_request_fw_message} [cached] - done"
 		)
@@ -705,24 +737,24 @@ macro(check_request_fw)
 endmacro(check_request_fw)
 ############################################################################
 
-# Check if net_device_ops::ndo_fdb_add has 'struct net_device *' as its 
+# Check if net_device_ops::ndo_fdb_add has 'struct net_device *' as its
 # 2nd or 3rd argument. Sets KEDR_NDO_FDB_ADD_DEV2 or KEDR_NDO_FDB_ADD_DEV3
 # (or none) accordingly.
 #
 # Note that we add '-Werror' to the compile definitions because GCC only
-# warns about incompatible pointer types if the type of the callback does 
+# warns about incompatible pointer types if the type of the callback does
 # not match but does not issue an error by default.
 function(check_ndo_fdb_add)
-	set(check_ndo_fdb_add_message 
+	set(check_ndo_fdb_add_message
 		"Checking the signature of net_device_ops::ndo_fdb_add()"
 	)
 	message(STATUS "${check_ndo_fdb_add_message}")
 	if (DEFINED NDO_FDB_ADD_SIG)
-		set(check_ndo_fdb_add_message 
+		set(check_ndo_fdb_add_message
 "${check_ndo_fdb_add_message} [cached] - done"
 		)
 	else ()
-		kmodule_try_compile(ndo_fdb_add_impl 
+		kmodule_try_compile(ndo_fdb_add_impl
 			"${CMAKE_BINARY_DIR}/check_ndo_fdb_add"
 			"${kmodule_test_sources_dir}/check_ndo_fdb_add/module.c"
 			COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_ADD_DEV2"
@@ -731,10 +763,10 @@ function(check_ndo_fdb_add)
 			set(NDO_FDB_ADD_SIG "yes" CACHE INTERNAL
 				"Is the signature of net_device_ops::ndo_fdb_add() known?"
 			)
-			set(KEDR_NDO_FDB_ADD_DEV2 1 CACHE INTERNAL 
+			set(KEDR_NDO_FDB_ADD_DEV2 1 CACHE INTERNAL
 				"net_device_ops::ndo_fdb_add(): dev is the 2nd arg.")
 		else ()
-			kmodule_try_compile(ndo_fdb_add_impl3 
+			kmodule_try_compile(ndo_fdb_add_impl3
 				"${CMAKE_BINARY_DIR}/check_ndo_fdb_add"
 				"${kmodule_test_sources_dir}/check_ndo_fdb_add/module.c"
 				COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_ADD_DEV3"
@@ -743,15 +775,15 @@ function(check_ndo_fdb_add)
 				set(NDO_FDB_ADD_SIG "yes" CACHE INTERNAL
 					"Is the signature of net_device_ops::ndo_fdb_add() known?"
 				)
-				set(KEDR_NDO_FDB_ADD_DEV3 1 CACHE INTERNAL 
+				set(KEDR_NDO_FDB_ADD_DEV3 1 CACHE INTERNAL
 					"net_device_ops::ndo_fdb_add(): dev is the 3rd arg.")
 			else ()
-				message(FATAL_ERROR 
+				message(FATAL_ERROR
 					"Unknown signature of net_device_ops::ndo_fdb_add()")
 			endif (ndo_fdb_add_impl3)
 		endif (ndo_fdb_add_impl)
-				
-		set(check_ndo_fdb_add_message 
+
+		set(check_ndo_fdb_add_message
 "${check_ndo_fdb_add_message} - done"
 		)
 	endif (DEFINED NDO_FDB_ADD_SIG)
@@ -760,16 +792,16 @@ endfunction(check_ndo_fdb_add)
 
 # A similar checker but for ndo_fdb_del.
 function(check_ndo_fdb_del)
-	set(check_ndo_fdb_del_message 
+	set(check_ndo_fdb_del_message
 		"Checking the signature of net_device_ops::ndo_fdb_del()"
 	)
 	message(STATUS "${check_ndo_fdb_del_message}")
 	if (DEFINED NDO_FDB_DEL_SIG)
-		set(check_ndo_fdb_del_message 
+		set(check_ndo_fdb_del_message
 "${check_ndo_fdb_del_message} [cached] - done"
 		)
 	else ()
-		kmodule_try_compile(ndo_fdb_del_impl 
+		kmodule_try_compile(ndo_fdb_del_impl
 			"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
 			"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
 			COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV2"
@@ -778,10 +810,10 @@ function(check_ndo_fdb_del)
 			set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
 				"Is the signature of net_device_ops::ndo_fdb_del() known?"
 			)
-			set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL 
+			set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL
 				"net_device_ops::ndo_fdb_del(): dev is the 2nd arg.")
 		else ()
-			kmodule_try_compile(ndo_fdb_del_impl3 
+			kmodule_try_compile(ndo_fdb_del_impl3
 				"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
 				"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
 				COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV3"
@@ -790,10 +822,10 @@ function(check_ndo_fdb_del)
 				set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
 					"Is the signature of net_device_ops::ndo_fdb_del() known?"
 				)
-				set(KEDR_NDO_FDB_DEL_DEV3 1 CACHE INTERNAL 
+				set(KEDR_NDO_FDB_DEL_DEV3 1 CACHE INTERNAL
 					"net_device_ops::ndo_fdb_del(): dev is the 3rd arg.")
 			else ()
-				kmodule_try_compile(ndo_fdb_del_impl 
+				kmodule_try_compile(ndo_fdb_del_impl
 					"${CMAKE_BINARY_DIR}/check_ndo_fdb_del"
 					"${kmodule_test_sources_dir}/check_ndo_fdb_del/module.c"
 					COMPILE_DEFINITIONS "-Werror -DIS_NDO_FDB_DEL_DEV2_NOCONST"
@@ -802,16 +834,16 @@ function(check_ndo_fdb_del)
 					set(NDO_FDB_DEL_SIG "yes" CACHE INTERNAL
 						"Is the signature of net_device_ops::ndo_fdb_del() known?"
 					)
-					set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL 
+					set(KEDR_NDO_FDB_DEL_DEV2 1 CACHE INTERNAL
 						"net_device_ops::ndo_fdb_del(): dev is the 2nd arg.")
 				else()
-					message(FATAL_ERROR 
+					message(FATAL_ERROR
 						"Unknown signature of net_device_ops::ndo_fdb_del()")
 				endif (ndo_fdb_del_impl)
 			endif (ndo_fdb_del_impl3)
 		endif (ndo_fdb_del_impl)
-				
-		set(check_ndo_fdb_del_message 
+
+		set(check_ndo_fdb_del_message
 "${check_ndo_fdb_del_message} - done"
 		)
 	endif (DEFINED NDO_FDB_DEL_SIG)
