@@ -1,0 +1,18 @@
+[group]
+	# Name of the target function
+	function.name = usb_submit_urb
+
+	code.pre =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct urb *urb = (struct urb *)KEDR_LS_ARG1(ls);
+	
+	if (urb != NULL && urb->complete != NULL) {
+		kedr_set_func_handlers(
+			urb->complete, complete_pre, complete_post, 
+			NULL, 0);
+
+		/* Relation #6 */
+		kedr_happens_before(ls->tid, info->pc, (unsigned long)urb);
+	}
+	<<
+#######################################################################

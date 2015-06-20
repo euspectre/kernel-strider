@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = usb_kill_anchored_urbs
+
+	code.post =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct usb_anchor *anchor = (struct usb_anchor *)KEDR_LS_ARG1(ls);
+
+	if (anchor)
+		on_kill_anchored_urbs(ls->tid, info->pc, anchor);
+	<<
+#######################################################################

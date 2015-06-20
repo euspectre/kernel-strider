@@ -1,0 +1,9 @@
+[group]
+	# Name of the target function
+	function.name = usb_deregister
+	
+	code.post =>>
+	struct usb_driver *drv = (struct usb_driver *)KEDR_LS_ARG1(ls);
+	on_deregister(ls, drv);
+	<<
+#######################################################################

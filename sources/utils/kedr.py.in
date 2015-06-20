@@ -110,6 +110,7 @@ def create_supported():
         KModComponent('kedr_fh_drd_common'),
         KModComponent('kedr_fh_drd_cdev'),
         KModComponent('kedr_fh_drd_net'),
+        KModComponent('kedr_fh_drd_usb'),
         KModComponent('kedr_simple_trace_recorder', ['nr_data_pages'])]
     return dict([(c.name, c) for c in comps])
 
@@ -119,6 +120,7 @@ def _process_kernel_strider(supported):
             supported['kedr_fh_drd_common'],
             supported['kedr_fh_drd_cdev'],
             supported['kedr_fh_drd_net'],
+            supported['kedr_fh_drd_usb'],
             supported['kedr_simple_trace_recorder']]
 
 

@@ -268,6 +268,7 @@ UMH_DIR="${BINARY_DIR}/core/um_helpers/"
 MODULE_FH_COMMON="${BINARY_DIR}/functions/common/kedr_fh_drd_common.ko"
 MODULE_FH_CDEV="${BINARY_DIR}/functions/cdev/kedr_fh_drd_cdev.ko"
 MODULE_FH_NET="${BINARY_DIR}/functions/net/kedr_fh_drd_net.ko"
+MODULE_FH_USB="${BINARY_DIR}/functions/usb/kedr_fh_drd_usb.ko"
 
 MODULE_REC="${BINARY_DIR}/utils/simple_trace_recorder/kernel/kedr_simple_trace_recorder.ko"
 APP_REC="${BINARY_DIR}/utils/simple_trace_recorder/user/kedr_st_recorder"
@@ -307,6 +308,7 @@ for mod in \
 	"${MODULE_FH_COMMON}" \
 	"${MODULE_FH_CDEV}" \
 	"${MODULE_FH_NET}" \
+	"${MODULE_FH_USB}" \
 	"${MODULE_REC}"; do
 	cp "${mod}" "${MODULES_DIR}"
 	if test $? -ne 0; then

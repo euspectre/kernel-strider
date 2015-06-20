@@ -1,0 +1,12 @@
+[group]
+	# Name of the target function
+	function.name = usb_poison_urb
+
+	code.post =>>
+	struct kedr_call_info *info = (struct kedr_call_info *)(ls->info);
+	struct urb *urb = (struct urb *)KEDR_LS_ARG1(ls);
+
+	if (urb)
+		on_kill_urb(ls->tid, info->pc, urb);
+	<<
+#######################################################################

@@ -226,7 +226,7 @@ add_subdirectory(common)
 add_subdirectory(net)
 
 if (KEDR_COI_INSTALL_DIR)
-    # This plugin handles ordering relationships in various file- and 
+	# This plugin handles ordering relationships in various file- and
 	# filesystem-related operations. Needs KEDR COI system.
 	add_subdirectory(fs)
 endif (KEDR_COI_INSTALL_DIR)
@@ -238,6 +238,8 @@ endif (KEDR_COI_INSTALL_DIR)
 # simultaneously with 'fs' plugin in the same analysis session.
 add_subdirectory(cdev)
 
+# USB-related operations.
+add_subdirectory(usb)
 ########################################################################
 
 kedr_test_add_subdirectory(tests)
