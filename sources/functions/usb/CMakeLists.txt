@@ -18,13 +18,20 @@ foreach (func ${functions})
 	set(val FALSE)
 	kmodule_is_exported(${func} "usbcore" val)
 	if (val)
-		message (STATUS 
+		message (STATUS
 			"Looking for ${func} in usbcore - found.")
 	else()
-		message (STATUS 
-			"Looking for ${func} in usbcore - not found.")
-		message (FATAL_ERROR 
-			"Failed to find a required function: ${func}.")
+		# usbcore may be built into the kernel
+		kmodule_is_exported(${func} "kernel" val)
+		if (val)
+			message (STATUS
+			"Looking for ${func} in the kernel - found.")
+		else ()
+			message (STATUS
+				"Looking for ${func} - not found.")
+			message (FATAL_ERROR
+				"Failed to find a required function: ${func}.")
+		endif()
 	endif()
 endforeach()
 
