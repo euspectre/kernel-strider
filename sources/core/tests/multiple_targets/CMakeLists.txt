@@ -27,9 +27,9 @@ kedr_test_add_script (mem_core.multi.init_exit.01
 	test_init_exit.sh
 )
 
-kedr_test_add_script (mem_core.multi.broken.01
-	test_broken.sh
-)
+#kedr_test_add_script (mem_core.multi.broken.01
+#	test_broken.sh
+#)
 
 add_subdirectory(kedr_multi_a)
 add_subdirectory(test_multi_a)

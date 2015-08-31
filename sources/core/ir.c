@@ -536,7 +536,14 @@ is_padding_insn(struct insn *insn)
  * Note that if is_incomplete_function() returns 0, it does not guarantee 
  * that the function is not incomplete. For example, it may have a jump at
  * the end that transfers control inside of another part of that larger 
- * function. For the present, we do not detect this. */
+ * function. For the present, we do not detect this.
+ *
+ * One special case when is_incomplete_function() may return non-zero is
+ * when .exit.text is immediately followed by .altinstr_replacement section.
+ * The latter contains no functions, so the size of the last function in
+ * .exit_text will be determined incorrectly, as if that function included
+ * .altinstr_replacement as well. Unfortunately, we cannot detect this case
+ * reliably yet. */
 static int
 is_incomplete_function(struct list_head *ir)
 {
@@ -2075,14 +2082,10 @@ kedr_ir_create(struct kedr_ifunc *func, struct kedr_i13n *i13n,
 		pr_warning(KEDR_MSG_PREFIX 
 		"Such functions may appear if there are '.global' or "
 		"'.local' symbol definitions in the inline assembly "
-		"within an original function.\n");
+		"within an original function or this is the last function "
+		"in a section followed by .altinstr_replacement.\n");
 		pr_warning(KEDR_MSG_PREFIX 
 		"Or, may be, the function is written in an unusual way.\n");
-		
-		pr_warning(KEDR_MSG_PREFIX 
-			"Unable to perform instrumentation.\n");
-		ret = -EILSEQ;
-		goto out;
 	}
 	
 	ret = ir_make_links_for_jumps(func, ir, node_map);

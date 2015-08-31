@@ -1,5 +1,5 @@
 # A module with a split function. The instrumentation system should
-# detect that and refuse to instrument the module.
+# detect that.
 set(KMODULE_TARGET_NAME "test_ir_create_split_func")
 
 kbuild_add_module(${KMODULE_TARGET_NAME} 

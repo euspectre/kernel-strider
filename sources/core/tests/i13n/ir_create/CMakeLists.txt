@@ -60,8 +60,8 @@ kedr_test_add_script (mem_core.i13n.ir_create.11
     test.sh "common_blocks"
 )
 
-# Tests for the error conditions. The core should detect these and
-# refuse to instrument the target module.
+# Tests for the unusual conditions. The core should detect these and
+# decide whether to instrument the target module or refuse.
 configure_file (
   "${CMAKE_CURRENT_SOURCE_DIR}/test_err.sh.in"
   "${CMAKE_CURRENT_BINARY_DIR}/test_err.sh"

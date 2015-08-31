@@ -1,8 +1,8 @@
 #!/bin/sh
 
 ########################################################################
-# This test checks how the IR creation subsystem detects the error
-# conditions (the constructs in the target that is cannot handle). 
+# This test checks how the IR creation subsystem detects the unusual
+# conditions (the special constructs in the target).
 # 
 # Usage: 
 #   sh test_err.sh <short_target_function_name>
@@ -102,8 +102,11 @@ doTest()
 	
 	SAVED_DUMP=$(cat "${TEST_DUMP_FILE}")
 	if test ! -z "${SAVED_DUMP}"; then
-		printf "The core did not detect an unexpected construct in the function "
-        printf "${TARGET_FUNCTION}()\n"
+		# The unisual conditions might have been detected but,
+		# for now, the code should be instrumented anyway.
+		printf "The core has instrumented the function ${TARGET_FUNCTION}()\n"
+	else
+		printf "Failed to instrument the function ${TARGET_FUNCTION}()\n"
 		cleanupAll
 		exit 1
 	fi
