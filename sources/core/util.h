@@ -8,6 +8,7 @@
 #include <kedr/asm/insn.h> /* instruction analysis facilities */
 
 #include "ifunc.h"
+#include "config.h"
 /* ====================================================================== */
 
 struct module;
@@ -120,13 +121,13 @@ kedr_choose_work_register(unsigned int mask_choose_from,
 static inline int
 kedr_has_init_text(struct module *mod)
 {
-	return (mod->module_init != NULL && mod->init_text_size > 0);
+	return (module_init_addr(mod) && init_text_size(mod));
 }
 
 static inline int
 kedr_has_core_text(struct module *mod)
 {
-	return (mod->module_core != NULL && mod->core_text_size > 0);
+	return (module_core_addr(mod) && core_text_size(mod));
 }
 
 /* Nonzero if 'addr' is the address of some location in the code of the 

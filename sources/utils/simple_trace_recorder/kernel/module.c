@@ -74,6 +74,8 @@
 
 #include <simple_trace_recorder/recorder.h>
 #include <kedr_st_rec_config.h>
+
+#include "config.h"
 /* ====================================================================== */
 
 #define KEDR_MSG_PREFIX "[" KEDR_ST_REC_KMODULE_NAME "] "
@@ -648,13 +650,13 @@ handle_load_unload_impl(enum kedr_tr_event_type et, struct module *mod)
 	strncpy(ev->name, module_name(mod), KEDR_TARGET_NAME_LEN);
 
 	if (et == KEDR_TR_EVENT_TARGET_LOAD) {
-		ev->init_addr = (__u32)(unsigned long)mod->module_init;
+		ev->init_addr = (__u32)(unsigned long)module_init_addr(mod);
 		if (ev->init_addr != 0)
-			ev->init_size = (__u32)mod->init_text_size;
+			ev->init_size = (__u32)init_text_size(mod);
 
-		ev->core_addr = (__u32)(unsigned long)mod->module_core;
+		ev->core_addr = (__u32)(unsigned long)module_core_addr(mod);
 		if (ev->core_addr != 0)
-			ev->core_size = (__u32)mod->core_text_size;
+			ev->core_size = (__u32)core_text_size(mod);
 	}
 	
 	++cached_events_num;

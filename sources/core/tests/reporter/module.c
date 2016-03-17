@@ -166,6 +166,7 @@
 #include <kedr/object_types.h>
 
 #include "debug_util.h"
+#include "config.h"
 /* ====================================================================== */
 
 #define KEDR_MSG_PREFIX "[kedr_test_reporter] "
@@ -1441,7 +1442,7 @@ report_event_allowed(unsigned long tid)
 		return 1;
 	
 	if (target == NULL ||
-	    (target->module_init != NULL && resolve_symbols != 0))
+	    (module_init_addr(target) != NULL && resolve_symbols != 0))
 		return 0;
 	
 	return within_target_func;
@@ -1496,14 +1497,14 @@ report_load_event(struct module *mod)
 	 * need to copy the relevant data here. */
 	strncpy(wol->name, module_name(mod), KEDR_TARGET_NAME_LEN);
 
-	wol->init_addr = mod->module_init;
+	wol->init_addr = module_init_addr(mod);
 	if (wol->init_addr == NULL)
 		wol->init_size = 0;
 	else
-		wol->init_size = mod->init_text_size;
+		wol->init_size = init_text_size(mod);
 
-	wol->core_addr = mod->module_core;
-	wol->core_size = mod->core_text_size;
+	wol->core_addr = module_core_addr(mod);
+	wol->core_size = core_text_size(mod);
 	
 	INIT_WORK(&wol->work, work_func_load);
 	queue_work(wq, &wol->work);

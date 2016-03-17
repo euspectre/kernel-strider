@@ -65,22 +65,22 @@ alloc_fallback_areas(struct kedr_i13n *i13n)
 	 */
 	if (kedr_has_init_text(mod)) {
 		i13n->fallback_init_area = kedr_module_alloc(
-			mod->init_text_size);
+			init_text_size(mod));
 		if (i13n->fallback_init_area == NULL)
 			goto no_mem;
 		
-		memcpy(i13n->fallback_init_area, mod->module_init, 
-			mod->init_text_size);
+		memcpy(i13n->fallback_init_area, module_init_addr(mod),
+			init_text_size(mod));
 	}
 	
 	if (kedr_has_core_text(mod)) {
 		i13n->fallback_core_area = kedr_module_alloc(
-			mod->core_text_size);
+			core_text_size(mod));
 		if (i13n->fallback_core_area == NULL)
 			goto no_mem;
 		
-		memcpy(i13n->fallback_core_area, mod->module_core,
-			mod->core_text_size);
+		memcpy(i13n->fallback_core_area, module_core_addr(mod),
+			core_text_size(mod));
 	}
 	return 0; /* success */
 

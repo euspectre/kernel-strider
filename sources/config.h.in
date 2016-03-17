@@ -1,6 +1,9 @@
 #ifndef CONFIG_H_1734_INCLUDED
 #define CONFIG_H_1734_INCLUDED
-	
+
+#include <linux/version.h>
+#include <linux/module.h>
+
 /* How many arguments ring_buffer_consume() takes */
 #cmakedefine RING_BUFFER_CONSUME_HAS_3_ARGS
 #cmakedefine RING_BUFFER_CONSUME_HAS_4_ARGS
@@ -75,6 +78,92 @@
 # define kedr_random32() random32()
 #else
 # define kedr_random32() prandom_u32()
+#endif
+/* ====================================================================== */
+
+/* Different fields of struct module are used to access the memory of a
+ * module before kernel 4.5 and after. See commit 7523e4dc5057 in the
+ * mainline kernel for details. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+static inline void *module_core_addr(struct module *mod)
+{
+	return mod->core_layout.base;
+}
+
+static inline unsigned int core_text_size(struct module *mod)
+{
+	return mod->core_layout.text_size;
+}
+
+static inline unsigned int core_ro_size(struct module *mod)
+{
+	return mod->core_layout.ro_size;
+}
+
+static inline unsigned int core_size(struct module *mod)
+{
+	return mod->core_layout.size;
+}
+
+static inline void *module_init_addr(struct module *mod)
+{
+	return mod->init_layout.base;
+}
+
+static inline unsigned int init_text_size(struct module *mod)
+{
+	return mod->init_layout.text_size;
+}
+
+static inline unsigned int init_ro_size(struct module *mod)
+{
+	return mod->init_layout.ro_size;
+}
+
+static inline unsigned int init_size(struct module *mod)
+{
+	return mod->init_layout.size;
+}
+#else
+static inline void *module_core_addr(struct module *mod)
+{
+	return mod->module_core;
+}
+
+static inline unsigned int core_text_size(struct module *mod)
+{
+	return mod->core_text_size;
+}
+
+static inline unsigned int core_ro_size(struct module *mod)
+{
+	return mod->core_ro_size;
+}
+
+static inline unsigned int core_size(struct module *mod)
+{
+	return mod->core_size;
+}
+
+static inline void *module_init_addr(struct module *mod)
+{
+	return mod->module_init;
+}
+
+static inline unsigned int init_text_size(struct module *mod)
+{
+	return mod->init_text_size;
+}
+
+static inline unsigned int init_ro_size(struct module *mod)
+{
+	return mod->init_ro_size;
+}
+
+static inline unsigned int init_size(struct module *mod)
+{
+	return mod->init_size;
+}
 #endif
 /* ====================================================================== */
 

@@ -854,14 +854,14 @@ set_page_attributes(void *start, void *end,
 static void
 set_module_pages_rw(struct module* mod)
 {
-	if (mod->module_core != NULL && mod->core_text_size) {
-		set_page_attributes(mod->module_core, 
-				    mod->module_core + mod->core_ro_size,
+	if (module_core_addr(mod) && core_text_size(mod)) {
+		set_page_attributes(module_core_addr(mod),
+				    module_core_addr(mod) + core_ro_size(mod),
 				    do_set_memory_rw);
 	}
-	if (mod->module_init != NULL && mod->init_text_size) {
-		set_page_attributes(mod->module_init, 
-				    mod->module_init + mod->init_ro_size, 
+	if (module_init_addr(mod) && init_text_size(mod)) {
+		set_page_attributes(module_init_addr(mod),
+				    module_init_addr(mod) + init_ro_size(mod),
 				    do_set_memory_rw);
 	}
 }
@@ -869,14 +869,14 @@ set_module_pages_rw(struct module* mod)
 static void
 set_module_pages_ro(struct module* mod)
 {
-	if (mod->module_core != NULL && mod->core_text_size) {
-		set_page_attributes(mod->module_core, 
-				    mod->module_core + mod->core_ro_size,
+	if (module_core_addr(mod) && core_text_size(mod)) {
+		set_page_attributes(module_core_addr(mod),
+				    module_core_addr(mod) + core_ro_size(mod),
 				    do_set_memory_ro);
 	}
-	if (mod->module_init != NULL && mod->init_text_size) {
-		set_page_attributes(mod->module_init, 
-				    mod->module_init + mod->init_ro_size, 
+	if (module_init_addr(mod) && init_text_size(mod)) {
+		set_page_attributes(module_init_addr(mod),
+				    module_init_addr(mod) + init_ro_size(mod),
 				    do_set_memory_ro);
 	}
 }

@@ -708,14 +708,14 @@ process_jmp_near_indirect(struct kedr_ifunc *func,
 	 * sections. */
 	if (kedr_is_core_address(jtable_addr, mod)) {
 		in_core = 1;
-		end_addr = (unsigned long)mod->module_core + 
-			(unsigned long)mod->core_size - 
+		end_addr = (unsigned long)module_core_addr(mod) +
+			(unsigned long)core_size(mod) -
 			sizeof(unsigned long);
 	}
 	else if (kedr_is_init_address(jtable_addr, mod)) {
 		in_init = 1;
-		end_addr = (unsigned long)mod->module_init + 
-			(unsigned long)mod->init_size - 
+		end_addr = (unsigned long)module_init_addr(mod) +
+			(unsigned long)init_size(mod) -
 			sizeof(unsigned long);
 	}
 	

@@ -203,11 +203,11 @@ do_prepare_function(struct kedr_i13n *i13n, const char *name,
 	 * in the module, respectively. */
 	if (kedr_is_core_text_address(addr, mod)) {
 		tf->fallback = fallback_address((void *)addr, 
-			mod->module_core, i13n->fallback_core_area);
+			module_core_addr(mod), i13n->fallback_core_area);
 	} 
 	else if (kedr_is_init_text_address(addr, mod)) {
 		tf->fallback = fallback_address((void *)addr,
-			mod->module_init, i13n->fallback_init_area);
+			module_init_addr(mod), i13n->fallback_init_area);
 	}
 	else {	
 		/* Must not get here */
@@ -306,8 +306,8 @@ create_special_items(struct kedr_i13n *i13n, struct list_head *items_list)
 	 * areas among other things. */
 	if (kedr_has_init_text(target)) {
 		item = construct_special_item(
-			(unsigned long)target->module_init + 
-			target->init_text_size);
+			(unsigned long)module_init_addr(target) +
+			init_text_size(target));
 		if (item == NULL) {
 			ret = -ENOMEM;
 			goto out;
@@ -318,8 +318,8 @@ create_special_items(struct kedr_i13n *i13n, struct list_head *items_list)
 
 	if (kedr_has_core_text(target)) {
 		item = construct_special_item(
-			(unsigned long)target->module_core + 
-			target->core_text_size);
+			(unsigned long)module_core_addr(target) +
+			core_text_size(target));
 		if (item == NULL) {
 			ret = -ENOMEM;
 			goto out;
