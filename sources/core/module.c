@@ -812,7 +812,7 @@ session_end(void)
  * We need to do this for rodata too, not only for the code, because jump
  * tables are commonly stored in rodata areas. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) && \
-    defined(CONFIG_DEBUG_SET_MODULE_RONX)
+    ( defined(CONFIG_DEBUG_SET_MODULE_RONX) || defined(CONFIG_ARCH_HAS_SET_MEMORY) )
 
 static int (*do_set_memory_ro)(unsigned long addr, int numpages) = NULL;
 static int (*do_set_memory_rw)(unsigned long addr, int numpages) = NULL;
